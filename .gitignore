@@ -1,0 +1,60 @@
+# ==============================================================================
+# ORBIS FOUNDATION - GIT IGNORE FILE
+# ==============================================================================
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Node modules
+node_modules/
+jspm_packages/
+web_modules/
+
+# Build and Production Folders
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# Typescript Cache
+*.tsbuildinfo
+
+# Environment Variables (CRITICAL: NEVER PUSH TO GITHUB)
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Spck Editor & Mobile Dev Specific
+.spck/
+.spck-workspace
+
+# OS and Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+
+# Caches
+.npm
+.eslintcache
+.stylelintcache
+.parcel-cache
