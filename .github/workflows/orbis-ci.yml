@@ -11,23 +11,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v3
+      uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
       with:
         fetch-depth: 0
 
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@60edb5dd545a775178f525247833159c0b191152
       with:
         node-version: '18'
 
     - name: Install Dependencies
-      run: npm ci
+      run: npm ci --ignore-scripts
 
     - name: Run Strict Unit Tests
       run: npm run test
 
     - name: SonarCloud Scan
-      uses: SonarSource/sonarcloud-github-action@master
+      uses: SonarSource/sonarcloud-github-action@49e6cd3b187936a73b8280d59faa9b1084852eed
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
