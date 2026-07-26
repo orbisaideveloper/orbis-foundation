@@ -13,6 +13,13 @@ jobs:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
         with:
           fetch-depth: 0
+          
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Tests and Generate Coverage
+        run: npm run coverage
+        
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@ad8210318ac8bb816e41990d5af2b304f7a6c213
         env:
