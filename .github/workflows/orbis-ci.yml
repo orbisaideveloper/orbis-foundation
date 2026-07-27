@@ -1,5 +1,5 @@
 cat << 'EOF' > .github/workflows/orbis-ci.yml
-name: "ORBIS Phase-01 CI Pipeline"
+name: "ORBIS Foundation CI Pipeline"
 on:
   push:
     branches:
@@ -31,5 +31,5 @@ jobs:
 EOF
 
 git add .github/workflows/orbis-ci.yml
-git commit -m "ci: fix yaml syntax formatting on line 2"
+git commit -m "ci: update pipeline name to match orbis-foundation repo"
 git push
