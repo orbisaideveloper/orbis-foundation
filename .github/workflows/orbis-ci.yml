@@ -1,4 +1,3 @@
-cat << 'EOF' > .github/workflows/orbis-ci.yml
 name: "ORBIS Foundation CI Pipeline"
 on:
   push:
@@ -28,8 +27,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-EOF
-
-git add .github/workflows/orbis-ci.yml
-git commit -m "ci: update pipeline name to match orbis-foundation repo"
-git push
