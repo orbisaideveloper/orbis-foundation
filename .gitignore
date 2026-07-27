@@ -58,3 +58,5 @@ coverage/
 .eslintcache
 .stylelintcache
 .parcel-cache
+
+/src/generated/prisma
