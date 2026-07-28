@@ -1,32 +1,40 @@
 name: "ORBIS Foundation CI Pipeline"
+
 on:
   push:
     branches:
       - main
   pull_request:
+    types: [opened, synchronize, reopened]
     branches:
       - main
+
 jobs:
   build-and-audit:
+    name: Build, Test & Sonar Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+          
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
+          cache: 'npm'
           
       - name: Install Dependencies
-        run: npm install --no-audit --no-fund
+        # --legacy-peer-deps ব্যবহার করা হলো যাতে প্যাকেজ কনফ্লিক্টে পাইপলাইন ব্রেক না করে
+        run: npm install --legacy-peer-deps
         
-      - name: Run Strict Unit Tests
-        run: npm run test --if-present
+      - name: Run Tests and Generate Coverage
+        # আপনার build.yml এর রিকোয়ারমেন্ট অনুযায়ী কভারেজ রান করানো হলো
+        run: npm run coverage
         
       - name: SonarCloud Scan
+        # Docker এরর এড়াতে @master এবং ক্লাউড অ্যাকশন ব্যবহার করা হলো
         uses: SonarSource/sonarcloud-github-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
