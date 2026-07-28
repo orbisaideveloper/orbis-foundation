@@ -14,6 +14,7 @@ export default defineConfig({
     sourcemap: true,
   },
   test: {
+    globals: true, // শুধু এই লাইনটি নতুন যোগ করা হয়েছে
     environment: 'jsdom',
     coverage: {
       provider: 'v8',
