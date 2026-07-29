@@ -28,8 +28,8 @@ export class EventBus {
      * Uses Generics <T> to ensure the payload is strictly typed.
      */
     public publish<T>(event: IEvent<T>): void {
-        if (!event.type || !event.id) {
-            throw new Error('Invalid Event: Missing required fields (type, id).');
+        if (!event.type) {
+            throw new Error('Invalid Event: Missing required field (type).');
         }
         this.emitter.emit(event.type, event);
     }
