@@ -2,7 +2,7 @@ import { IAdapter } from '../interfaces/IAdapter';
 import { EventBus } from '../events/EventBus';
 
 export class AdapterManager {
-    private adapters: Map<string, IAdapter> = new Map();
+    private readonly adapters: Map<string, IAdapter> = new Map();
     private static instance: AdapterManager;
 
     private constructor() {}

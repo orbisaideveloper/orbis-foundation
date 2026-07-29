@@ -1,7 +1,7 @@
 // File: src/core/events/EventBus.ts
 // Purpose: Centralized, decoupled, and generic event routing system.
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import { IEvent } from '../interfaces/IEvent';
 
 export class EventBus {

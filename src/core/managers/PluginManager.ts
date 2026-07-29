@@ -2,7 +2,7 @@ import { IPlugin } from '../interfaces/IPlugin';
 import { EventBus } from '../events/EventBus';
 
 export class PluginManager {
-    private plugins: Map<string, IPlugin> = new Map();
+    private readonly plugins: Map<string, IPlugin> = new Map();
     private static instance: PluginManager;
 
     private constructor() {}
