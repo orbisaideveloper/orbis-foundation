@@ -1,7 +1,7 @@
 import { CoreBridge } from '../integrations/CoreBridge';
 
 export class SystemStatusWidget {
-  private bridge = CoreBridge.getInstance();
+  private readonly bridge = CoreBridge.getInstance();
 
   public render() {
     const snapshot = this.bridge.getSystemSnapshot();

@@ -2,8 +2,8 @@ import { SystemStatusWidget } from '../widgets/SystemStatusWidget';
 import { CoreBridge } from '../integrations/CoreBridge';
 
 export class DashboardGrid {
-  private statusWidget = new SystemStatusWidget();
-  private bridge = CoreBridge.getInstance();
+  private readonly statusWidget = new SystemStatusWidget();
+  private readonly bridge = CoreBridge.getInstance();
 
   public render() {
     const components = this.bridge.getHealthComponents();
