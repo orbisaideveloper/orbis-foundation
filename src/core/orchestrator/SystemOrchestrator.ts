@@ -31,8 +31,9 @@ export class SystemOrchestrator {
     Logger.getInstance().info(this.MODULE_NAME, 'System initialization started.');
 
     try {
-      await PluginManager.getInstance().initialize();
-      await AdapterManager.getInstance().initialize();
+      // ✅ FIX: Changed from initialize() to initializeAll() matching Phase-01 real API
+      await PluginManager.getInstance().initializeAll();
+      await AdapterManager.getInstance().initializeAll();
       HealthReporter.getInstance().start(5000);
 
       this.currentStatus = 'READY';
