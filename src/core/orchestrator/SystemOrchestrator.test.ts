@@ -1,38 +1,32 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { SystemOrchestrator } from './SystemOrchestrator';
-import { EventBus } from '../events/EventBus';
-import { HealthReporter } from '../health/HealthReporter';
-import { Logger } from '../logging/Logger';
-
-vi.mock('../events/EventBus', () => ({
-  EventBus: { getInstance: vi.fn(() => ({ publish: vi.fn(), getTotalEventsPublished: vi.fn(() => 0) })) }
-}));
-vi.mock('../health/HealthReporter', () => ({
-  HealthReporter: { getInstance: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() })) }
-}));
-vi.mock('../logging/Logger', () => ({
-  Logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() }
-}));
 
 describe('SystemOrchestrator', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+  const orchestrator = SystemOrchestrator.getInstance();
 
-  it('should follow correct boot sequence', async () => {
-    const orchestrator = SystemOrchestrator.getInstance();
-    await orchestrator.boot();
-    
-    expect(Logger.info).toHaveBeenCalledWith('System is now READY.', expect.any(Object));
-    expect(orchestrator.getSnapshot().status).toBe('READY');
-  });
-
-  it('should follow correct shutdown sequence', async () => {
-    const orchestrator = SystemOrchestrator.getInstance();
+  afterEach(async () => {
+    // Ensure system is stopped after each test to prevent background intervals from hanging
     await orchestrator.shutdown();
+  });
+
+  it('should follow correct boot sequence with REAL data and components', async () => {
+    await orchestrator.boot();
+    const snapshot = orchestrator.getSnapshot();
     
-    expect(HealthReporter.getInstance().stop).toHaveBeenCalled();
-    expect(Logger.info).toHaveBeenCalledWith('System stopped safely.');
-    expect(orchestrator.getSnapshot().status).toBe('STOPPED');
+    expect(snapshot.status).toBe('READY');
+    // Real EventBus will have processed 'SYSTEM_STARTING' and 'SYSTEM_READY'
+    expect(snapshot.metrics.eventCount).toBeGreaterThanOrEqual(2); 
+  });
+
+  it('should follow correct shutdown sequence with REAL data', async () => {
+    // Ensure the system is running first
+    if (orchestrator.getSnapshot().status === 'STOPPED') {
+      await orchestrator.boot();
+    }
+    
+    await orchestrator.shutdown();
+    const snapshot = orchestrator.getSnapshot();
+    
+    expect(snapshot.status).toBe('STOPPED');
   });
 });
