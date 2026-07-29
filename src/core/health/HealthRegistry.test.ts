@@ -24,7 +24,7 @@ describe('HealthRegistry', () => {
 
         registry.register(mockComponent);
         expect(registry.getComponent('TestDB')).toBe(mockComponent);
-        expect(registry.getAllComponents().length).toBe(1);
+        expect(registry.getAllComponents()).toHaveLength(1);
     });
 
     it('should throw error when registering duplicate component', () => {

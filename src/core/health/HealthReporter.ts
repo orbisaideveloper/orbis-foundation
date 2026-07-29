@@ -32,7 +32,7 @@ export class HealthReporter {
                 if (!isHealthy) {
                     allHealthy = false;
                 }
-            } catch (error) {
+            } catch (error) { console.error('[ORBIS Health] Component check failed:', error);
                 results[component.name] = false;
                 allHealthy = false;
             }
