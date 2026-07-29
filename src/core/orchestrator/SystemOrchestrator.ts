@@ -9,6 +9,7 @@ import { SystemStatusSnapshot, SystemSnapshot } from './SystemStatusSnapshot';
 export class SystemOrchestrator {
   private static instance: SystemOrchestrator;
   private currentStatus: SystemSnapshot['status'] = 'STOPPED';
+  private readonly MODULE_NAME = 'SystemOrchestrator';
 
   private constructor() {}
 
@@ -21,14 +22,13 @@ export class SystemOrchestrator {
 
   public async boot(): Promise<void> {
     if (this.currentStatus !== 'STOPPED' && this.currentStatus !== 'ERROR') {
-      Logger.warn('System boot ignored: System is already running or starting.');
+      Logger.getInstance().warn(this.MODULE_NAME, 'System boot ignored: System is already running or starting.');
       return;
     }
 
     this.currentStatus = 'STARTING';
-    // ✅ FIX: Sending object with required 'type' field
     EventBus.getInstance().publish({ type: 'SYSTEM_STARTING', payload: { timestamp: new Date().toISOString() } } as any);
-    Logger.info('System initialization started.');
+    Logger.getInstance().info(this.MODULE_NAME, 'System initialization started.');
 
     try {
       await PluginManager.getInstance().initialize();
@@ -38,11 +38,12 @@ export class SystemOrchestrator {
       this.currentStatus = 'READY';
       const snapshot = this.getSnapshot();
       EventBus.getInstance().publish({ type: 'SYSTEM_READY', payload: snapshot } as any);
-      Logger.info('System is now READY.', { snapshot });
+      Logger.getInstance().info(this.MODULE_NAME, 'System is now READY.', { snapshot });
     } catch (error) {
       this.currentStatus = 'ERROR';
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      Logger.error('Boot sequence failed', { error: errorMessage });
+      const errObj = error instanceof Error ? error : undefined;
+      Logger.getInstance().error(this.MODULE_NAME, 'Boot sequence failed', errObj, { error: errorMessage });
       EventBus.getInstance().publish({ type: 'SYSTEM_ERROR', payload: { error: errorMessage } } as any);
       throw error;
     }
@@ -55,23 +56,23 @@ export class SystemOrchestrator {
 
     this.currentStatus = 'STOPPING';
     EventBus.getInstance().publish({ type: 'SYSTEM_STOPPING', payload: this.getSnapshot() } as any);
-    Logger.info('System shutdown initiated.');
+    Logger.getInstance().info(this.MODULE_NAME, 'System shutdown initiated.');
 
     try {
       HealthReporter.getInstance().stop();
       this.currentStatus = 'STOPPED';
       EventBus.getInstance().publish({ type: 'SYSTEM_STOPPED', payload: { timestamp: new Date().toISOString() } } as any);
-      Logger.info('System stopped safely.');
+      Logger.getInstance().info(this.MODULE_NAME, 'System stopped safely.');
     } catch (error) {
       this.currentStatus = 'ERROR';
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      Logger.error('Shutdown sequence failed', { error: errorMessage });
+      const errObj = error instanceof Error ? error : undefined;
+      Logger.getInstance().error(this.MODULE_NAME, 'Shutdown sequence failed', errObj, { error: errorMessage });
       throw error;
     }
   }
 
   public getSnapshot(): SystemSnapshot {
-    // ✅ FIX: Using getAllComponents() instead of non-existent getRegistryStatus()
     const components = HealthRegistry.getInstance().getAllComponents();
     const healthData: Record<string, string> = {};
     
@@ -79,8 +80,6 @@ export class SystemOrchestrator {
       healthData[component.name] = 'REGISTERED';
     });
 
-    // EventBus & LogStore do not track total counts in Phase-01 foundation.
-    // Defaulting to 0 to satisfy interface without modifying Phase-01.
     const eventCount = 0;
     const logCount = 0;
 
