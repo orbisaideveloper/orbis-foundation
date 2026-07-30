@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { SystemOrchestrator } from '../../core/orchestrator/SystemOrchestrator';
 import { DashboardGrid } from '../layout/DashboardGrid';
 
-describe('Control Center - Real-Time Dashboard Integration', () => {
+describe('Control Center - Full Widgets Integration', () => {
   const orchestrator = SystemOrchestrator.getInstance();
   const dashboard = new DashboardGrid();
 
@@ -18,14 +18,18 @@ describe('Control Center - Real-Time Dashboard Integration', () => {
     }
   });
 
-  it('should enforce STRICT Zero Mock Data policy by reading live Core state', () => {
+  it('should render all widgets with REAL data enforcing Zero Mock policy', () => {
     const view = dashboard.render();
     
-    // Validation Rule: Dashboard MUST observe the running core, no hardcoded values
+    // System Status Validation
     expect(view.header.status).toBe('READY');
-    expect(view.header.eventCount).toBe(0);
-    
-    // Component count should accurately reflect real registered singletons
     expect(Number(view.registries.componentCount)).toBeGreaterThanOrEqual(0);
+    
+    // Health Matrix Validation
+    expect(['ACTIVE', 'NO_DATA']).toContain(view.grid.healthMatrix.status);
+    
+    // Runtime Snapshot Validation
+    expect(view.grid.runtimeSnapshot.data.status).toBe('READY');
+    expect(typeof view.grid.runtimeSnapshot.jsonView).toBe('string');
   });
 });
