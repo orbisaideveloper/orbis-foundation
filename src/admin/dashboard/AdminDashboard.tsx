@@ -19,6 +19,7 @@ export const AdminDashboard: React.FC = () => {
             <p><strong>Role:</strong> {user?.role || 'GUEST'}</p>
           </div>
           <button 
+            type="button"
             onClick={actions.logout}
             className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition-colors"
           >
@@ -48,6 +49,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex flex-col gap-2">
             {!activeRelease && (
               <button 
+                type="button"
                 onClick={() => actions.initiateReleaseDraft('v2.0.0', ['Core optimization'])}
                 className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
               >
@@ -56,6 +58,7 @@ export const AdminDashboard: React.FC = () => {
             )}
             {activeRelease?.status === 'DRAFT' && (
               <button 
+                type="button"
                 onClick={() => actions.approveRelease(activeRelease.id)}
                 className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 transition-colors"
               >
@@ -64,6 +67,7 @@ export const AdminDashboard: React.FC = () => {
             )}
             {activeRelease?.status === 'APPROVED' && (
               <button 
+                type="button"
                 onClick={() => actions.publishRelease(activeRelease.id)}
                 className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition-colors"
               >
@@ -72,6 +76,7 @@ export const AdminDashboard: React.FC = () => {
             )}
             {activeRelease?.status === 'PUBLISHED' && (
               <button 
+                type="button"
                 onClick={() => actions.rollbackRelease(activeRelease.id)}
                 className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition-colors"
               >
