@@ -1,15 +1,20 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../../auth/AuthContext';
 import AuthGuard from '../../auth/AuthGuard';
 import { AdminRole } from '../../auth/types';
+import React from 'react';
 
-// Helper component to trigger login inside tests
+// Helper component to trigger login and navigation inside tests
 const TestLoginTrigger = ({ role }: { role: AdminRole }) => {
   const { login } = useAuth();
+  const navigate = useNavigate();
   return (
-    <button onClick={() => login({ id: 'u1', username: 'test', role })}>
+    <button onClick={() => {
+      login({ id: 'u1', username: 'test', role });
+      navigate('/role-protected'); // লগইন করার পর প্রটেক্টেড পেজে যাওয়ার চেষ্টা করবে
+    }}>
       Log In As {role}
     </button>
   );
@@ -35,26 +40,26 @@ describe('Security Foundation (Step-303)', () => {
 
   it('allows access to specific roles and blocks others', () => {
     render(
-      <MemoryRouter initialEntries={['/role-protected']}>
+      <MemoryRouter initialEntries={['/']}>
         <AuthProvider>
           <Routes>
+            <Route path="/" element={<TestLoginTrigger role={AdminRole.VIEWER} />} />
             <Route path="/role-protected" element={<AuthGuard allowedRoles={[AdminRole.RELEASE_MANAGER]} />}>
               <Route index element={<div>Release Manager Data</div>} />
             </Route>
             <Route path="/admin/dashboard" element={<div>Dashboard Redirected</div>} />
-            <Route path="/" element={<TestLoginTrigger role={AdminRole.VIEWER} />} />
           </Routes>
         </AuthProvider>
       </MemoryRouter>
     );
     
-    // Test Viewer trying to access Release Manager area
+    // 1. প্রথমে VIEWER হিসেবে লগইন বাটনে ক্লিক করবে
     const btn = screen.getByText('Log In As VIEWER');
     act(() => { btn.click(); });
     
-    // Navigate to protected route
-    // Since Viewer lacks RELEASE_MANAGER role, it should redirect to dashboard
-    // (Note: In a real DOM interaction test, navigation mocking handles this. 
-    // Here we just test the context logic natively).
+    // 2. AuthGuard চেক করবে। যেহেতু রোল VIEWER (কিন্তু দরকার RELEASE_MANAGER), 
+    // তাই এটি সিকিউরিটি মেনে /admin/dashboard-এ রিডাইরেক্ট করে দেবে।
+    expect(screen.getByText('Dashboard Redirected')).toBeDefined();
+    expect(screen.queryByText('Release Manager Data')).toBeNull();
   });
 });
