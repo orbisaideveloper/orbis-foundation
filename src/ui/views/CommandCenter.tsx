@@ -20,8 +20,7 @@ export const CommandCenter: React.FC = () => {
     <AppLayout>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[var(--spacing-widget)]">
         
-        {/* Widget: System Status */}
-        <GlassCard title="System Status" delay={0.1}>
+        <GlassCard title="System Status" delay={0.1} rawData={dashboardData.header}>
           <div className="flex flex-col gap-2">
             <div className="flex justify-between">
               <span className="text-gray-400">State</span>
@@ -34,20 +33,16 @@ export const CommandCenter: React.FC = () => {
           </div>
         </GlassCard>
 
-        {/* Widget: Registries */}
-        <GlassCard title="Active Components" delay={0.2}>
+        <GlassCard title="Active Components" delay={0.2} rawData={dashboardData.registries}>
           <div className="text-4xl font-light text-[#F97316]">
             {dashboardData.registries.componentCount}
           </div>
           <div className="text-sm text-gray-400 mt-2">Registered singletons observing core</div>
         </GlassCard>
 
-        {/* Widget: Runtime Snapshot (JSON Ready) */}
-        <GlassCard title="Runtime Snapshot" delay={0.3}>
-          <div className="bg-black/50 p-3 rounded-lg overflow-hidden max-h-32 text-xs font-mono text-gray-300">
-            {dashboardData.grid.runtimeSnapshot.jsonView 
-              ? dashboardData.grid.runtimeSnapshot.jsonView.slice(0, 150) + '...' 
-              : 'Awaiting Snapshot...'}
+        <GlassCard title="Runtime Snapshot" delay={0.3} rawData={dashboardData.grid.runtimeSnapshot}>
+          <div className="text-sm text-gray-400">
+            Expand card to view raw runtime configurations.
           </div>
         </GlassCard>
 

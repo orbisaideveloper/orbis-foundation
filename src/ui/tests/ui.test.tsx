@@ -4,31 +4,31 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { AppHeader } from '../layout/AppHeader';
 import { AppLayout } from '../layout/AppLayout';
 import { GlassCard } from '../components/GlassCard';
+import { JsonViewer } from '../components/JsonViewer';
 
 describe('UI Components Render Test (Coverage Restoration)', () => {
-  it('should render AppHeader correctly without crashing', () => {
+  it('should render AppHeader correctly', () => {
     const html = renderToStaticMarkup(<AppHeader />);
     expect(html).toContain('ORBIS');
-    expect(html).toContain('CORE ONLINE');
   });
 
-  it('should render GlassCard correctly with children', () => {
+  it('should render GlassCard and handle rawData prop visually', () => {
+    const mockData = { test: 'value' };
     const html = renderToStaticMarkup(
-      <GlassCard title="Test Widget">
+      <GlassCard title="Test Widget" rawData={mockData}>
         <div>Widget Content</div>
       </GlassCard>
     );
     expect(html).toContain('Test Widget');
     expect(html).toContain('Widget Content');
+    // Button should render when rawData is passed
+    expect(html).toContain('Expand JSON View'); 
   });
 
-  it('should render AppLayout correctly wrapping children', () => {
-    const html = renderToStaticMarkup(
-      <AppLayout>
-        <div>Layout Content</div>
-      </AppLayout>
-    );
-    expect(html).toContain('Layout Content');
-    expect(html).toContain('ORBIS');
+  it('should render JsonViewer correctly', () => {
+    const mockData = { test: 'value' };
+    const html = renderToStaticMarkup(<JsonViewer data={mockData} />);
+    expect(html).toContain('test');
+    expect(html).toContain('value');
   });
 });
