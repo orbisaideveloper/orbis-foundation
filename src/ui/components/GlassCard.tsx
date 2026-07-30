@@ -1,17 +1,33 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Maximize2, Minimize2, Copy } from 'lucide-react';
+import { Maximize2, Minimize2, Copy, Check } from 'lucide-react';
 import { JsonViewer } from './JsonViewer';
 
 interface GlassCardProps {
   title: string;
   children: React.ReactNode;
   delay?: number;
-  rawData?: any; // Enables Interactive JSON View
+  rawData?: any; // Enables Interactive JSON View and Copy
 }
 
 export const GlassCard: React.FC<GlassCardProps> = ({ title, children, delay = 0, rawData }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (!rawData) return;
+    try {
+      // Convert rawData to formatted JSON string if it's an object
+      const dataToCopy = typeof rawData === 'string' ? rawData : JSON.stringify(rawData, null, 2);
+      await navigator.clipboard.writeText(dataToCopy);
+      
+      // Visual feedback
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy data: ", err);
+    }
+  };
 
   return (
     <motion.div
@@ -25,8 +41,13 @@ export const GlassCard: React.FC<GlassCardProps> = ({ title, children, delay = 0
         <h3 className="text-sm font-semibold tracking-wider text-gray-300 uppercase">{title}</h3>
         <div className="flex gap-3 text-gray-500">
           {rawData && (
-            <button type="button" className="hover:text-white transition-colors" title="Copy to Clipboard">
-              <Copy size={16} />
+            <button 
+              type="button" 
+              onClick={handleCopy}
+              className="hover:text-white transition-colors" 
+              title={isCopied ? "Copied!" : "Copy to Clipboard"}
+            >
+              {isCopied ? <Check size={16} className="text-[#22C55E]" /> : <Copy size={16} />}
             </button>
           )}
           {rawData && (
