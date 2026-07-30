@@ -18,7 +18,8 @@ export const ReleaseProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const updateReleaseStatus = useCallback((id: string, newStatus: ReleaseStatus) => {
     setCurrentRelease(prev => {
-      if (prev && prev.id === id) {
+      // SonarCloud Fix: Using optional chaining for cleaner code
+      if (prev?.id === id) {
         return { ...prev, status: newStatus, updatedAt: Date.now() };
       }
       return prev;
