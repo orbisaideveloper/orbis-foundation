@@ -30,7 +30,8 @@ const ReleaseManagerView: React.FC = () => {
             <p>Approval Status: <span className="text-white">--</span></p>
           </div>
           <div className="mt-6">
-            <button disabled className="px-4 py-2 bg-gray-700 text-gray-400 rounded cursor-not-allowed text-sm font-semibold transition-all">
+            {/* Added type="button" here to fix SonarCloud Code Smell */}
+            <button type="button" disabled className="px-4 py-2 bg-gray-700 text-gray-400 rounded cursor-not-allowed text-sm font-semibold transition-all">
               Approve & Publish (Locked)
             </button>
           </div>
