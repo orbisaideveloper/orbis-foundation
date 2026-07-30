@@ -13,8 +13,8 @@ export const AppHeader: React.FC = () => {
       <div className="text-xs text-gray-400 flex gap-4">
         <span>AI-Native Engineering Command Center</span>
         <span className="text-[#22C55E] flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-[#22C55E] animate-pulse"></span>
-          CORE ONLINE
+          <span className="w-2 h-2 rounded-full bg-[#22C55E] animate-pulse" />
+          <span>CORE ONLINE</span>
         </span>
       </div>
     </header>
