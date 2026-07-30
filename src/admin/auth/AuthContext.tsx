@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo } from 'react';
 import { AdminRole, AdminUser, AuthSession } from './types';
 import { AuditLogger } from './AuditLogger';
 
@@ -35,8 +35,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return allowedRoles.includes(session.user.role);
   }, [session.user]);
 
+  // SonarCloud Fix: Memoize the context value for performance
+  const contextValue = useMemo(() => ({
+    ...session,
+    login,
+    logout,
+    hasRole
+  }), [session, login, logout, hasRole]);
+
   return (
-    <AuthContext.Provider value={{ ...session, login, logout, hasRole }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
