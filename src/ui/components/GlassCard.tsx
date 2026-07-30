@@ -25,12 +25,13 @@ export const GlassCard: React.FC<GlassCardProps> = ({ title, children, delay = 0
         <h3 className="text-sm font-semibold tracking-wider text-gray-300 uppercase">{title}</h3>
         <div className="flex gap-3 text-gray-500">
           {rawData && (
-            <button className="hover:text-white transition-colors" title="Copy to Clipboard">
+            <button type="button" className="hover:text-white transition-colors" title="Copy to Clipboard">
               <Copy size={16} />
             </button>
           )}
           {rawData && (
             <button 
+              type="button"
               onClick={() => setIsExpanded(!isExpanded)} 
               className="hover:text-white transition-colors"
               title={isExpanded ? "Collapse View" : "Expand JSON View"}
