@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo } from 'react';
-import { RuntimeState, RuntimeContextType, ServiceStatus } from './types';
+import { RuntimeState, RuntimeContextType } from './types';
 
 const initialState: RuntimeState = {
   engineStatus: 'UNKNOWN',
