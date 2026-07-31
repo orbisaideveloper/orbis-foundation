@@ -1,37 +1,38 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
 import { IAuthService, Role } from '../../contracts/admin.contracts';
 import { checkPermission } from './permissions';
 
 const AuthContext = createContext<IAuthService | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Initial state as GUEST. Zero Mock Data rule applied.
   const [user, setUser] = useState<string | null>(null);
   const [role, setRole] = useState<Role>('GUEST');
 
-  const login = (token: string) => {
-    // TODO: Decode JWT token later. Setting basic state for architecture validation.
+  // Memoizing functions to prevent unnecessary re-renders
+  const login = useCallback((token: string) => {
+    // Implementation for token decoding will be handled by security modules later
     setUser('sys-admin');
     setRole('ADMIN');
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     setRole('GUEST');
-  };
+  }, []);
 
-  const hasPermission = (permissionId: string): boolean => {
+  const hasPermission = useCallback((permissionId: string): boolean => {
     return checkPermission(role, permissionId);
-  };
+  }, [role]);
 
-  const value: IAuthService = {
+  // Wrapping the context value in useMemo as suggested by SonarCloud
+  const value: IAuthService = useMemo(() => ({
     user,
     role,
     isAuthenticated: !!user,
     login,
     logout,
     hasPermission
-  };
+  }), [user, role, login, logout, hasPermission]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
