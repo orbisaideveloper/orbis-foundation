@@ -1,25 +1,21 @@
-import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from './AuthContext';
-import { AdminRole } from './types';
+import React, { ReactNode } from 'react';
+import { useAuth } from './AuthProvider';
 
 interface AuthGuardProps {
-  allowedRoles?: AdminRole[];
+  children: ReactNode;
+  requiredPermission?: string;
 }
 
-const AuthGuard: React.FC<AuthGuardProps> = ({ allowedRoles }) => {
-  const { isAuthenticated, hasRole } = useAuth();
+export const AuthGuard: React.FC<AuthGuardProps> = ({ children, requiredPermission }) => {
+  const { isAuthenticated, hasPermission } = useAuth();
 
   if (!isAuthenticated) {
-    return <Navigate to="/admin/login" replace />;
+    return <div className="p-4 text-red-500 font-mono text-sm border border-red-500/30 rounded bg-red-900/10">SECURITY BREACH: Access Denied. Identity verification required.</div>;
   }
 
-  if (allowedRoles && allowedRoles.length > 0 && !hasRole(allowedRoles)) {
-    // Redirect to a generic safe place if not authorized for this specific view
-    return <Navigate to="/admin/dashboard" replace />;
+  if (requiredPermission && !hasPermission(requiredPermission)) {
+    return <div className="p-4 text-yellow-500 font-mono text-sm border border-yellow-500/30 rounded bg-yellow-900/10">RESTRICTED: Insufficient clearance level for this operation.</div>;
   }
 
-  return <Outlet />;
+  return <>{children}</>;
 };
-
-export default AuthGuard;
