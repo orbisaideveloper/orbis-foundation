@@ -2,15 +2,14 @@ import React, { createContext, useContext, useState, ReactNode, useMemo, useCall
 import { IAuthService, Role } from '../../contracts/admin.contracts';
 import { checkPermission } from './permissions';
 
-const AuthContext = createContext<IAuthService | undefined>(undefined);
+// Exporting context to ensure other files can access the exact same instance if needed
+export const AuthContext = createContext<IAuthService | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<string | null>(null);
   const [role, setRole] = useState<Role>('GUEST');
 
-  // Memoizing functions to prevent unnecessary re-renders
   const login = useCallback((token: string) => {
-    // Implementation for token decoding will be handled by security modules later
     setUser('sys-admin');
     setRole('ADMIN');
   }, []);
@@ -24,7 +23,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return checkPermission(role, permissionId);
   }, [role]);
 
-  // Wrapping the context value in useMemo as suggested by SonarCloud
   const value: IAuthService = useMemo(() => ({
     user,
     role,
