@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { vi, describe, it, expect } from 'vitest';
+import '@testing-library/jest-dom'; // <-- This is the missing import
 import { AdminDashboard } from '../../dashboard/AdminDashboard';
 import * as useAdminServicesModule from '../../services/useAdminServices';
 
@@ -10,7 +11,6 @@ vi.mock('../../services/useAdminServices', () => ({
 
 describe('Admin Dashboard UI (Step-307)', () => {
   it('renders dashboard with aggregated state successfully', () => {
-    // Supplying ALL required actions to the mock, including hasPermission
     vi.spyOn(useAdminServicesModule, 'useAdminServices').mockReturnValue({
       state: {
         user: 'sys-admin',
@@ -23,7 +23,7 @@ describe('Admin Dashboard UI (Step-307)', () => {
       actions: {
         login: vi.fn(),
         logout: vi.fn(),
-        hasPermission: vi.fn().mockReturnValue(true), // Fixed the TypeError
+        hasPermission: vi.fn().mockReturnValue(true),
         triggerRestart: vi.fn(),
         rollback: vi.fn(),
       },
