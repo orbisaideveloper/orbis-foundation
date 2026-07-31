@@ -5,21 +5,23 @@ import { useAdminServices } from '../../services/useAdminServices';
 import { AdminCoreProvider } from '../../providers/AdminCoreProvider';
 
 describe('Admin Service Layer (Step-401)', () => {
-  it('aggregates all core providers into a single IAdminService facade', () => {
-    // Wrap the hook in our robust AdminCoreProvider chain
+  it('aggregates all core providers into a structured state/actions facade', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <AdminCoreProvider>{children}</AdminCoreProvider>
     );
 
     const { result } = renderHook(() => useAdminServices(), { wrapper });
 
-    // Verify all domain services are successfully aggregated
-    expect(result.current).toHaveProperty('auth');
-    expect(result.current).toHaveProperty('runtime');
-    expect(result.current).toHaveProperty('release');
+    // Verify the correct structure
+    expect(result.current).toHaveProperty('state');
+    expect(result.current).toHaveProperty('actions');
 
-    // Verify the data flows correctly (checking default Auth state)
-    expect(result.current.auth.isAuthenticated).toBe(false);
-    expect(result.current.auth.role).toBe('GUEST');
+    // Verify default authentication state mapping
+    expect(result.current.state.isAuthenticated).toBe(false);
+    expect(result.current.state.role).toBe('GUEST');
+    
+    // Verify actions mapping
+    expect(typeof result.current.actions.login).toBe('function');
+    expect(typeof result.current.actions.logout).toBe('function');
   });
 });
