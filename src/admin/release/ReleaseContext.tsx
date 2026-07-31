@@ -1,63 +1,29 @@
-import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo } from 'react';
-import { ReleaseVersion, ReleaseContextType, ReleaseStatus } from './types';
+import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
 
-const ReleaseContext = createContext<ReleaseContextType | undefined>(undefined);
+export interface IReleaseService {
+  activeVersion: string;
+  rollback: (version: string) => void;
+}
+
+const ReleaseContext = createContext<IReleaseService | undefined>(undefined);
 
 export const ReleaseProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentRelease, setCurrentRelease] = useState<ReleaseVersion | null>(null);
+  const [activeVersion, setActiveVersion] = useState('v1.0.0-phase03');
 
-  const initiateDraft = useCallback((versionNumber: string, changes: string[]) => {
-    setCurrentRelease({
-      id: `rel_${Date.now()}`,
-      versionNumber,
-      status: 'DRAFT',
-      changes,
-      updatedAt: Date.now()
-    });
+  const rollback = useCallback((version: string) => {
+    setActiveVersion(version);
   }, []);
 
-  const updateReleaseStatus = useCallback((id: string, newStatus: ReleaseStatus) => {
-    setCurrentRelease(prev => {
-      // SonarCloud Fix: Using optional chaining for cleaner code
-      if (prev?.id === id) {
-        return { ...prev, status: newStatus, updatedAt: Date.now() };
-      }
-      return prev;
-    });
-  }, []);
+  const value = useMemo(() => ({
+    activeVersion,
+    rollback
+  }), [activeVersion, rollback]);
 
-  const approveRelease = useCallback((id: string) => {
-    updateReleaseStatus(id, 'APPROVED');
-  }, [updateReleaseStatus]);
-
-  const publishRelease = useCallback((id: string) => {
-    updateReleaseStatus(id, 'PUBLISHED');
-  }, [updateReleaseStatus]);
-
-  const rollbackRelease = useCallback((id: string) => {
-    updateReleaseStatus(id, 'ROLLED_BACK');
-  }, [updateReleaseStatus]);
-
-  // Memoize value to prevent SonarCloud Code Smell
-  const contextValue = useMemo(() => ({
-    currentRelease,
-    approveRelease,
-    publishRelease,
-    rollbackRelease,
-    initiateDraft
-  }), [currentRelease, approveRelease, publishRelease, rollbackRelease, initiateDraft]);
-
-  return (
-    <ReleaseContext.Provider value={contextValue}>
-      {children}
-    </ReleaseContext.Provider>
-  );
+  return <ReleaseContext.Provider value={value}>{children}</ReleaseContext.Provider>;
 };
 
-export const useRelease = (): ReleaseContextType => {
+export const useRelease = () => {
   const context = useContext(ReleaseContext);
-  if (context === undefined) {
-    throw new Error('useRelease must be used within a ReleaseProvider');
-  }
+  if (!context) throw new Error('useRelease must be used within a ReleaseProvider');
   return context;
 };
