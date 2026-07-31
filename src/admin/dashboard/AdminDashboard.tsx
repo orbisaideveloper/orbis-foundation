@@ -2,89 +2,76 @@ import React from 'react';
 import { useAdminServices } from '../services/useAdminServices';
 
 export const AdminDashboard: React.FC = () => {
-  // Consuming stable data and actions from the service layer bridging all contexts
   const { state, actions } = useAdminServices();
-  const { user, systemHealth, runtimeMetrics, activeRelease } = state;
+  const { user, role, isAuthenticated, systemHealth, runtimeMetrics, activeRelease } = state;
 
+  // Unauthenticated View
+  if (!isAuthenticated) {
+    return (
+      <div className="p-6 bg-gray-950 text-green-500 font-mono min-h-screen">
+        <h1 className="text-3xl mb-4 tracking-widest font-bold">ORBIS TERMINAL</h1>
+        <div className="border border-red-500/50 bg-red-900/10 p-4 inline-block mb-4">
+          <p className="text-red-500">SYSTEM STATUS: UNAUTHENTICATED</p>
+          <p className="text-sm text-red-400">Identity verification required to access core modules.</p>
+        </div>
+        <br />
+        <button 
+          onClick={() => actions.login('init-token')}
+          className="px-6 py-2 border border-green-500 hover:bg-green-900/30 transition-colors"
+        >
+          &gt; INITIATE LOGIN SEQUENCE
+        </button>
+      </div>
+    );
+  }
+
+  // Authenticated View (Command Center)
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <h2 className="text-3xl font-bold mb-8 border-b pb-4">ORBIS Command Center</h2>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Auth Section */}
-        <section className="border rounded-lg p-6 shadow-sm bg-white">
-          <h3 className="text-xl font-semibold mb-4">Operator Info</h3>
-          <div className="space-y-2 mb-4">
-            <p><strong>Name:</strong> {user?.name || 'Unknown'}</p>
-            <p><strong>Role:</strong> {user?.role || 'GUEST'}</p>
-          </div>
-          <button 
-            type="button"
-            onClick={actions.logout}
-            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition-colors"
-          >
-            Logout
-          </button>
-        </section>
+    <div className="p-6 bg-gray-950 text-green-500 font-mono min-h-screen">
+      <header className="flex justify-between items-end border-b border-green-500/50 pb-4 mb-6">
+        <div>
+          <h1 className="text-3xl tracking-widest font-bold text-green-400">ORBIS COMMAND CENTER</h1>
+          <p className="text-sm opacity-70">PHASE-03 ARCHITECTURE ACTIVE</p>
+        </div>
+        <button 
+          onClick={actions.logout}
+          className="px-4 py-1 border border-red-500 text-red-500 hover:bg-red-900/30 transition-colors text-sm"
+        >
+          [ TERMINATE SESSION ]
+        </button>
+      </header>
 
-        {/* Runtime/Health Section */}
-        <section className="border rounded-lg p-6 shadow-sm bg-white">
-          <h3 className="text-xl font-semibold mb-4">System Health</h3>
-          <div className="space-y-2">
-            <p><strong>Engine Status:</strong> {systemHealth.engine}</p>
-            <p><strong>Brain Status:</strong> {systemHealth.brain}</p>
-            <p><strong>CPU Usage:</strong> {runtimeMetrics.cpuUsage}%</p>
-            <p><strong>Memory Usage:</strong> {runtimeMetrics.memoryUsage}%</p>
-          </div>
-        </section>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Identity Module */}
+        <div className="border border-green-800 p-4 bg-gray-900/50 shadow-[0_0_15px_rgba(34,197,94,0.1)]">
+          <h2 className="text-xl mb-3 border-b border-green-800 pb-1 text-green-400"># IDENTITY_MODULE</h2>
+          <ul className="space-y-2">
+            <li><span className="opacity-50">USER_ID:</span> {user}</li>
+            <li><span className="opacity-50">ROLE_ACCESS:</span> {role}</li>
+            <li>
+              <span className="opacity-50">SYS_RESTART_PERM:</span>{' '}
+              {actions.hasPermission('SYSTEM_RESTART') ? (
+                <span className="text-green-400">GRANTED</span>
+              ) : (
+                <span className="text-red-500">DENIED</span>
+              )}
+            </li>
+          </ul>
+        </div>
 
-        {/* Release Pipeline Section */}
-        <section className="border rounded-lg p-6 shadow-sm bg-white">
-          <h3 className="text-xl font-semibold mb-4">Release Pipeline</h3>
-          <div className="space-y-2 mb-6">
-            <p><strong>Status:</strong> {activeRelease?.status || 'NO ACTIVE RELEASE'}</p>
-            <p><strong>Version:</strong> {activeRelease?.versionNumber || 'N/A'}</p>
-          </div>
-          
-          <div className="flex flex-col gap-2">
-            {!activeRelease && (
-              <button 
-                type="button"
-                onClick={() => actions.initiateReleaseDraft('v2.0.0', ['Core optimization'])}
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
-              >
-                Initiate Draft
-              </button>
-            )}
-            {activeRelease?.status === 'DRAFT' && (
-              <button 
-                type="button"
-                onClick={() => actions.approveRelease(activeRelease.id)}
-                className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 transition-colors"
-              >
-                Approve Release
-              </button>
-            )}
-            {activeRelease?.status === 'APPROVED' && (
-              <button 
-                type="button"
-                onClick={() => actions.publishRelease(activeRelease.id)}
-                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition-colors"
-              >
-                Publish Release
-              </button>
-            )}
-            {activeRelease?.status === 'PUBLISHED' && (
-              <button 
-                type="button"
-                onClick={() => actions.rollbackRelease(activeRelease.id)}
-                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition-colors"
-              >
-                Rollback
-              </button>
-            )}
-          </div>
-        </section>
+        {/* Telemetry Module */}
+        <div className="border border-green-800 p-4 bg-gray-900/50 shadow-[0_0_15px_rgba(34,197,94,0.1)]">
+          <h2 className="text-xl mb-3 border-b border-green-800 pb-1 text-green-400"># TELEMETRY_DATA</h2>
+          <ul className="space-y-2">
+            <li><span className="opacity-50">HEALTH:</span> {systemHealth}</li>
+            <li><span className="opacity-50">ACTIVE_RELEASE:</span> {activeRelease}</li>
+            <li>
+              <span className="opacity-50">CPU_LOAD:</span> {runtimeMetrics.cpu}% 
+              <span className="mx-2 opacity-50">|</span> 
+              <span className="opacity-50">MEM_USAGE:</span> {runtimeMetrics.memory}%
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   );
