@@ -10,11 +10,10 @@ const RuntimeContext = createContext<IRuntimeService | undefined>(undefined);
 
 export const RuntimeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [systemHealth, setSystemHealth] = useState<'STABLE' | 'DEGRADED' | 'CRITICAL'>('STABLE');
-  const [metrics, setMetrics] = useState({ cpu: 12, memory: 45 });
+  const [metrics] = useState({ cpu: 12, memory: 45 }); // Removed setMetrics unused assignment
 
   const triggerRestart = useCallback(() => {
     setSystemHealth('DEGRADED');
-    // Simulated backend trigger delay
     setTimeout(() => setSystemHealth('STABLE'), 2500);
   }, []);
 

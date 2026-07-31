@@ -16,6 +16,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
         <br />
         <button 
+          type="button" 
           onClick={() => actions.login('init-token')}
           className="px-6 py-2 border border-green-500 hover:bg-green-900/30 transition-colors"
         >
@@ -34,6 +35,7 @@ export const AdminDashboard: React.FC = () => {
           <p className="text-sm opacity-70">PHASE-03 ARCHITECTURE ACTIVE</p>
         </div>
         <button 
+          type="button" 
           onClick={actions.logout}
           className="px-4 py-1 border border-red-500 text-red-500 hover:bg-red-900/30 transition-colors text-sm"
         >
