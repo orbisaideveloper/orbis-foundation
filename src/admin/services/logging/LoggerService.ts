@@ -1,4 +1,4 @@
-import { supabase } from '../../../core/supabase/client'; // Assuming this is your Supabase client path
+import { supabase } from '../../../core/supabase/client';
 import { RuntimeErrorLog, AuditTrailLog } from './logging.types';
 
 export const LoggerService = {
@@ -6,9 +6,9 @@ export const LoggerService = {
   logError: async (log: RuntimeErrorLog) => {
     try {
       const { error } = await supabase
-        .from('logs_runtime_error')
+        .from('orbis_foundation_runtime_errors')
         .insert([log]);
-      
+
       if (error) console.error('Failed to log error to Supabase:', error);
     } catch (e) {
       console.error('Critical failure in LoggerService:', e);
@@ -19,7 +19,7 @@ export const LoggerService = {
   logAudit: async (log: AuditTrailLog) => {
     try {
       const { error } = await supabase
-        .from('logs_audit_trail')
+        .from('orbis_foundation_logs_audit_trail')
         .insert([log]);
 
       if (error) console.error('Failed to log audit trail:', error);
