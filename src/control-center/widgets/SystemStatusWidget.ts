@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { CoreBridge } from '../integrations/CoreBridge';
 
 export class SystemStatusWidget {

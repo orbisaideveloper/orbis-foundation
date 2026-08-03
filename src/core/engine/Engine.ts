@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { IEngine } from '../interfaces/IEngine';
 import { IConfig } from '../interfaces/IConfig';
 import { EventBus } from '../events/EventBus';

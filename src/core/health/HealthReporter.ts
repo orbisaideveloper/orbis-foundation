@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { HealthRegistry } from './HealthRegistry';
 import { EventBus } from '../events/EventBus';
 

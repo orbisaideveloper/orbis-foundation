@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { createClient } from '@supabase/supabase-js';
 
 // Environment variables থেকে Supabase Credentials নেওয়া হচ্ছে

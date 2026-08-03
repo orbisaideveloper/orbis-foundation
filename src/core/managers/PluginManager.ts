@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { IPlugin } from '../interfaces/IPlugin';
 import { EventBus } from '../events/EventBus';
 

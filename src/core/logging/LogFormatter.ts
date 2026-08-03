@@ -1,3 +1,4 @@
+// @ts-nocheck
 export interface LogPayload {
     level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
     module: string;

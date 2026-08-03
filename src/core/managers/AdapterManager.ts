@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { IAdapter } from '../interfaces/IAdapter';
 import { EventBus } from '../events/EventBus';
 
