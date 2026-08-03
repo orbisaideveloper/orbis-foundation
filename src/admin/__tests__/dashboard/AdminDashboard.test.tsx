@@ -13,9 +13,9 @@ describe('Admin Dashboard UI (Step-307)', () => {
     expect(screen.getByText(/Architecture/i)).toBeInTheDocument();
 
     // ২. মডিউলার সেকশনগুলো রেন্ডার হয়েছে কি না চেক করা
-    expect(screen.getByText(/System Overview/i)).toBeInTheDocument();
+    expect(screen.getByText(/RAM Usage/i)).toBeInTheDocument();
     expect(screen.getByText(/Engine Status/i)).toBeInTheDocument();
-    expect(screen.getByText(/Brain Status/i)).toBeInTheDocument();
+    expect(screen.getByText(/Brain Sync/i)).toBeInTheDocument();
     expect(screen.getByText(/Installed Modules/i)).toBeInTheDocument();
 
     // ৩. Coming Soon ব্যাজগুলো চেক করা
