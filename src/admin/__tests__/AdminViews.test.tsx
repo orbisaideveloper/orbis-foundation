@@ -1,3 +1,4 @@
+import '@testing-library/jest-dom';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import DashboardView from '../views/DashboardView';
@@ -12,7 +13,6 @@ describe('Admin Core Views Scaffold', () => {
         </AdminCoreProvider>
       </MemoryRouter>
     );
-    // Checking for the header in DashboardView
     expect(screen.getByText(/ORBIS COMMAND CENTER/i)).toBeInTheDocument();
   });
 });
