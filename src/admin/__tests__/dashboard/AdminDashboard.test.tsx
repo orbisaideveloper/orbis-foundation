@@ -8,9 +8,9 @@ describe('Admin Dashboard UI (Step-307)', () => {
     render(<AdminDashboard />);
 
     // ১. হেডার চেক করা
-    expect(screen.getByText(/ORBIS/i)).toBeInTheDocument();
-    expect(screen.getByText(/Cockpit/i)).toBeInTheDocument();
-    expect(screen.getByText(/Status: SECURE/i)).toBeInTheDocument();
+    expect(screen.getByText(/Engine Status/i)).toBeInTheDocument();
+    expect(screen.getByText(/RAM Usage/i)).toBeInTheDocument();
+    expect(screen.getByText(/Architecture/i)).toBeInTheDocument();
 
     // ২. মডিউলার সেকশনগুলো রেন্ডার হয়েছে কি না চেক করা
     expect(screen.getByText(/System Overview/i)).toBeInTheDocument();
