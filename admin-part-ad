@@ -1,0 +1,76 @@
+        {
+          "extension": ".cjs",
+          "available": true
+        },
+        {
+          "extension": ".mjs",
+          "available": true
+        },
+        {
+          "extension": ".jsx",
+          "available": true
+        },
+        {
+          "extension": ".ts",
+          "available": true
+        },
+        {
+          "extension": ".tsx",
+          "available": true
+        },
+        {
+          "extension": ".d.ts",
+          "available": true
+        },
+        {
+          "extension": ".cts",
+          "available": true
+        },
+        {
+          "extension": ".d.cts",
+          "available": true
+        },
+        {
+          "extension": ".mts",
+          "available": true
+        },
+        {
+          "extension": ".d.mts",
+          "available": true
+        },
+        {
+          "extension": ".vue",
+          "available": false
+        },
+        {
+          "extension": ".svelte",
+          "available": false
+        },
+        {
+          "extension": ".ls",
+          "available": false
+        },
+        {
+          "extension": ".coffee",
+          "available": false
+        },
+        {
+          "extension": ".litcoffee",
+          "available": false
+        },
+        {
+          "extension": ".coffee.md",
+          "available": false
+        },
+        {
+          "extension": ".csx",
+          "available": false
+        },
+        {
+          "extension": ".cjsx",
+          "available": false
+        }
+      ]
+    }
+  }
+}

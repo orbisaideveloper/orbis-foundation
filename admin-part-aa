@@ -1,0 +1,300 @@
+{
+  "modules": [
+    {
+      "source": "src/admin/__tests__/AdminLayout.test.tsx",
+      "dependencies": [
+        {
+          "module": "../layout/AdminLayout",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/layout/AdminLayout.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/layout/AdminLayout.tsx",
+      "dependencies": [
+        {
+          "module": "./AdminSidebar",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/layout/AdminSidebar.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/admin/__tests__/AdminLayout.test.tsx",
+        "src/admin/routes/AdminRoutes.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/layout/AdminSidebar.tsx",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/layout/AdminLayout.tsx",
+        "src/admin/__tests__/AdminSidebar.test.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/AdminSidebar.test.tsx",
+      "dependencies": [
+        {
+          "module": "../layout/AdminSidebar",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/layout/AdminSidebar.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/AdminViews.test.tsx",
+      "dependencies": [
+        {
+          "module": "../views/DashboardView",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/views/DashboardView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../views/ReleaseManagerView",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/views/ReleaseManagerView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../views/SystemHealthView",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/views/SystemHealthView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/views/DashboardView.tsx",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/__tests__/AdminViews.test.tsx",
+        "src/admin/routes/AdminRoutes.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/views/ReleaseManagerView.tsx",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/__tests__/AdminViews.test.tsx",
+        "src/admin/routes/AdminRoutes.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/views/SystemHealthView.tsx",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/__tests__/AdminViews.test.tsx",
+        "src/admin/routes/AdminRoutes.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/auth/Security.test.tsx",
+      "dependencies": [
+        {
+          "module": "../../auth/AuthGuard",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/AuthGuard.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../../auth/AuthProvider",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/AuthProvider.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/auth/AuthGuard.tsx",
+      "dependencies": [
+        {
+          "module": "./AuthProvider",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/AuthProvider.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/admin/__tests__/auth/Security.test.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/auth/AuthProvider.tsx",
+      "dependencies": [
+        {
+          "module": "./permissions",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/permissions.ts",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/admin/__tests__/auth/Security.test.tsx",
+        "src/admin/auth/AuthGuard.tsx",
+        "src/admin/services/useAdminServices.ts",
+        "src/admin/__tests__/providers/AdminCoreProvider.test.tsx",
+        "src/admin/auth/AuthContext.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/auth/permissions.ts",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/auth/AuthProvider.tsx",
+        "src/admin/__tests__/auth/permissions.test.ts"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/auth/permissions.test.ts",
+      "dependencies": [
+        {
+          "module": "../../auth/permissions",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"

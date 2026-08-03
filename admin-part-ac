@@ -1,0 +1,300 @@
+      "source": "src/admin/__tests__/release/ReleaseProvider.test.tsx",
+      "dependencies": [
+        {
+          "module": "../../release/ReleaseContext",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/release/ReleaseContext.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/runtime/RuntimeProvider.test.tsx",
+      "dependencies": [
+        {
+          "module": "../../runtime/RuntimeContext",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/runtime/RuntimeContext.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/services/useAdminServices.test.tsx",
+      "dependencies": [
+        {
+          "module": "../../providers/AdminCoreProvider",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/providers/AdminCoreProvider.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../../services/useAdminServices",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/services/useAdminServices.ts",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/auth/AuditLogger.ts",
+      "dependencies": [],
+      "dependents": [],
+      "orphan": true,
+      "valid": true
+    },
+    {
+      "source": "src/admin/auth/types.ts",
+      "dependencies": [],
+      "dependents": [],
+      "orphan": true,
+      "valid": true
+    },
+    {
+      "source": "src/admin/release/types.ts",
+      "dependencies": [],
+      "dependents": [],
+      "orphan": true,
+      "valid": true
+    },
+    {
+      "source": "src/admin/routes/AdminRoutes.tsx",
+      "dependencies": [
+        {
+          "module": "../layout/AdminLayout",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/layout/AdminLayout.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../views/DashboardView",
+          "moduleSystem": "es6",
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "resolved": "src/admin/views/DashboardView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../views/ReleaseManagerView",
+          "moduleSystem": "es6",
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "resolved": "src/admin/views/ReleaseManagerView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../views/SystemHealthView",
+          "moduleSystem": "es6",
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "resolved": "src/admin/views/SystemHealthView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/runtime/types.ts",
+      "dependencies": [],
+      "dependents": [],
+      "orphan": true,
+      "valid": true
+    }
+  ],
+  "summary": {
+    "violations": [],
+    "error": 0,
+    "warn": 0,
+    "info": 0,
+    "ignore": 0,
+    "totalCruised": 29,
+    "totalDependenciesCruised": 31,
+    "optionsUsed": {
+      "baseDir": "/data/data/com.termux/files/home/orbis-foundation",
+      "combinedDependencies": false,
+      "detectJSDocImports": false,
+      "detectProcessBuiltinModuleCalls": false,
+      "exclude": {
+        "path": "^node_modules"
+      },
+      "exoticRequireStrings": [],
+      "externalModuleResolutionStrategy": "node_modules",
+      "metrics": false,
+      "moduleSystems": [
+        "es6",
+        "cjs",
+        "tsd",
+        "amd"
+      ],
+      "outputTo": "-",
+      "outputType": "json",
+      "preserveSymlinks": false,
+      "skipAnalysisNotInRules": false,
+      "tsPreCompilationDeps": false,
+      "args": "src/admin"
+    },
+    "environment": {
+      "version": "18.1.1",
+      "nodeVersionSupported": "^22||^24||>=26",
+      "nodeVersionFound": "v26.4.0",
+      "osVersionFound": "arm64 android@5.15.180-android13-8-00021-g46a5565a0982-ab13743836",
+      "transpilersFound": [
+        {
+          "name": "javascript",
+          "version": "*",
+          "available": true,
+          "currentVersion": "acorn@8.18.0"
+        },
+        {
+          "name": "babel",
+          "version": ">=7.0.0 <8.0.0",
+          "available": true,
+          "currentVersion": "@babel/core@7.29.7"
+        },
+        {
+          "name": "coffee-script",
+          "version": ">=1.0.0 <2.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "coffeescript",
+          "version": ">=1.0.0 <3.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "livescript",
+          "version": ">=1.0.0 <2.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "svelte",
+          "version": ">=3.0.0 <6.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "swc",
+          "version": ">=1.0.0 <2.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "typescript",
+          "version": ">=2.0.0 <7.0.0",
+          "available": true,
+          "currentVersion": "typescript@5.9.3"
+        },
+        {
+          "name": "vue-template-compiler",
+          "version": ">=2.0.0 <3.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "@vue/compiler-sfc",
+          "version": ">=3.0.0 <4.0.0",
+          "available": false,
+          "currentVersion": "-"
+        }
+      ],
+      "extensionsFound": [
+        {
+          "extension": ".js",
+          "available": true
+        },

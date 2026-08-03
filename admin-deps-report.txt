@@ -1,0 +1,976 @@
+{
+  "modules": [
+    {
+      "source": "src/admin/__tests__/AdminLayout.test.tsx",
+      "dependencies": [
+        {
+          "module": "../layout/AdminLayout",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/layout/AdminLayout.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/layout/AdminLayout.tsx",
+      "dependencies": [
+        {
+          "module": "./AdminSidebar",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/layout/AdminSidebar.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/admin/__tests__/AdminLayout.test.tsx",
+        "src/admin/routes/AdminRoutes.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/layout/AdminSidebar.tsx",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/layout/AdminLayout.tsx",
+        "src/admin/__tests__/AdminSidebar.test.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/AdminSidebar.test.tsx",
+      "dependencies": [
+        {
+          "module": "../layout/AdminSidebar",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/layout/AdminSidebar.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/AdminViews.test.tsx",
+      "dependencies": [
+        {
+          "module": "../views/DashboardView",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/views/DashboardView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../views/ReleaseManagerView",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/views/ReleaseManagerView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../views/SystemHealthView",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/views/SystemHealthView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/views/DashboardView.tsx",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/__tests__/AdminViews.test.tsx",
+        "src/admin/routes/AdminRoutes.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/views/ReleaseManagerView.tsx",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/__tests__/AdminViews.test.tsx",
+        "src/admin/routes/AdminRoutes.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/views/SystemHealthView.tsx",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/__tests__/AdminViews.test.tsx",
+        "src/admin/routes/AdminRoutes.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/auth/Security.test.tsx",
+      "dependencies": [
+        {
+          "module": "../../auth/AuthGuard",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/AuthGuard.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../../auth/AuthProvider",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/AuthProvider.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/auth/AuthGuard.tsx",
+      "dependencies": [
+        {
+          "module": "./AuthProvider",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/AuthProvider.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/admin/__tests__/auth/Security.test.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/auth/AuthProvider.tsx",
+      "dependencies": [
+        {
+          "module": "./permissions",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/permissions.ts",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/admin/__tests__/auth/Security.test.tsx",
+        "src/admin/auth/AuthGuard.tsx",
+        "src/admin/services/useAdminServices.ts",
+        "src/admin/__tests__/providers/AdminCoreProvider.test.tsx",
+        "src/admin/auth/AuthContext.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/auth/permissions.ts",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/auth/AuthProvider.tsx",
+        "src/admin/__tests__/auth/permissions.test.ts"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/auth/permissions.test.ts",
+      "dependencies": [
+        {
+          "module": "../../auth/permissions",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/permissions.ts",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/dashboard/AdminDashboard.test.tsx",
+      "dependencies": [
+        {
+          "module": "../../dashboard/AdminDashboard",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/dashboard/AdminDashboard.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../../services/useAdminServices",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/services/useAdminServices.ts",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/dashboard/AdminDashboard.tsx",
+      "dependencies": [
+        {
+          "module": "../services/useAdminServices",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/services/useAdminServices.ts",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/admin/__tests__/dashboard/AdminDashboard.test.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/services/useAdminServices.ts",
+      "dependencies": [
+        {
+          "module": "../auth/AuthProvider",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/AuthProvider.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../release/ReleaseContext",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/release/ReleaseContext.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../runtime/RuntimeContext",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/runtime/RuntimeContext.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/admin/__tests__/dashboard/AdminDashboard.test.tsx",
+        "src/admin/dashboard/AdminDashboard.tsx",
+        "src/admin/__tests__/services/useAdminServices.test.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/release/ReleaseContext.tsx",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/services/useAdminServices.ts",
+        "src/admin/providers/AdminCoreProvider.tsx",
+        "src/admin/__tests__/release/ReleaseProvider.test.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/runtime/RuntimeContext.tsx",
+      "dependencies": [],
+      "dependents": [
+        "src/admin/services/useAdminServices.ts",
+        "src/admin/providers/AdminCoreProvider.tsx",
+        "src/admin/__tests__/runtime/RuntimeProvider.test.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/providers/AdminCoreProvider.test.tsx",
+      "dependencies": [
+        {
+          "module": "../../auth/AuthProvider",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/AuthProvider.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../../providers/AdminCoreProvider",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/providers/AdminCoreProvider.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/providers/AdminCoreProvider.tsx",
+      "dependencies": [
+        {
+          "module": "../auth/AuthContext",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/auth/AuthContext.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../release/ReleaseContext",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/release/ReleaseContext.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../runtime/RuntimeContext",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/runtime/RuntimeContext.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/admin/__tests__/providers/AdminCoreProvider.test.tsx",
+        "src/admin/__tests__/services/useAdminServices.test.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/auth/AuthContext.tsx",
+      "dependencies": [
+        {
+          "module": "./AuthProvider",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "export"
+          ],
+          "resolved": "src/admin/auth/AuthProvider.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "src/admin/providers/AdminCoreProvider.tsx"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/release/ReleaseProvider.test.tsx",
+      "dependencies": [
+        {
+          "module": "../../release/ReleaseContext",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/release/ReleaseContext.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/runtime/RuntimeProvider.test.tsx",
+      "dependencies": [
+        {
+          "module": "../../runtime/RuntimeContext",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/runtime/RuntimeContext.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/__tests__/services/useAdminServices.test.tsx",
+      "dependencies": [
+        {
+          "module": "../../providers/AdminCoreProvider",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/providers/AdminCoreProvider.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../../services/useAdminServices",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/services/useAdminServices.ts",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/auth/AuditLogger.ts",
+      "dependencies": [],
+      "dependents": [],
+      "orphan": true,
+      "valid": true
+    },
+    {
+      "source": "src/admin/auth/types.ts",
+      "dependencies": [],
+      "dependents": [],
+      "orphan": true,
+      "valid": true
+    },
+    {
+      "source": "src/admin/release/types.ts",
+      "dependencies": [],
+      "dependents": [],
+      "orphan": true,
+      "valid": true
+    },
+    {
+      "source": "src/admin/routes/AdminRoutes.tsx",
+      "dependencies": [
+        {
+          "module": "../layout/AdminLayout",
+          "moduleSystem": "es6",
+          "dynamic": false,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "src/admin/layout/AdminLayout.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../views/DashboardView",
+          "moduleSystem": "es6",
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "resolved": "src/admin/views/DashboardView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../views/ReleaseManagerView",
+          "moduleSystem": "es6",
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "resolved": "src/admin/views/ReleaseManagerView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "module": "../views/SystemHealthView",
+          "moduleSystem": "es6",
+          "dynamic": true,
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "dynamic-import"
+          ],
+          "resolved": "src/admin/views/SystemHealthView.tsx",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "src/admin/runtime/types.ts",
+      "dependencies": [],
+      "dependents": [],
+      "orphan": true,
+      "valid": true
+    }
+  ],
+  "summary": {
+    "violations": [],
+    "error": 0,
+    "warn": 0,
+    "info": 0,
+    "ignore": 0,
+    "totalCruised": 29,
+    "totalDependenciesCruised": 31,
+    "optionsUsed": {
+      "baseDir": "/data/data/com.termux/files/home/orbis-foundation",
+      "combinedDependencies": false,
+      "detectJSDocImports": false,
+      "detectProcessBuiltinModuleCalls": false,
+      "exclude": {
+        "path": "^node_modules"
+      },
+      "exoticRequireStrings": [],
+      "externalModuleResolutionStrategy": "node_modules",
+      "metrics": false,
+      "moduleSystems": [
+        "es6",
+        "cjs",
+        "tsd",
+        "amd"
+      ],
+      "outputTo": "-",
+      "outputType": "json",
+      "preserveSymlinks": false,
+      "skipAnalysisNotInRules": false,
+      "tsPreCompilationDeps": false,
+      "args": "src/admin"
+    },
+    "environment": {
+      "version": "18.1.1",
+      "nodeVersionSupported": "^22||^24||>=26",
+      "nodeVersionFound": "v26.4.0",
+      "osVersionFound": "arm64 android@5.15.180-android13-8-00021-g46a5565a0982-ab13743836",
+      "transpilersFound": [
+        {
+          "name": "javascript",
+          "version": "*",
+          "available": true,
+          "currentVersion": "acorn@8.18.0"
+        },
+        {
+          "name": "babel",
+          "version": ">=7.0.0 <8.0.0",
+          "available": true,
+          "currentVersion": "@babel/core@7.29.7"
+        },
+        {
+          "name": "coffee-script",
+          "version": ">=1.0.0 <2.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "coffeescript",
+          "version": ">=1.0.0 <3.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "livescript",
+          "version": ">=1.0.0 <2.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "svelte",
+          "version": ">=3.0.0 <6.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "swc",
+          "version": ">=1.0.0 <2.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "typescript",
+          "version": ">=2.0.0 <7.0.0",
+          "available": true,
+          "currentVersion": "typescript@5.9.3"
+        },
+        {
+          "name": "vue-template-compiler",
+          "version": ">=2.0.0 <3.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "@vue/compiler-sfc",
+          "version": ">=3.0.0 <4.0.0",
+          "available": false,
+          "currentVersion": "-"
+        }
+      ],
+      "extensionsFound": [
+        {
+          "extension": ".js",
+          "available": true
+        },
+        {
+          "extension": ".cjs",
+          "available": true
+        },
+        {
+          "extension": ".mjs",
+          "available": true
+        },
+        {
+          "extension": ".jsx",
+          "available": true
+        },
+        {
+          "extension": ".ts",
+          "available": true
+        },
+        {
+          "extension": ".tsx",
+          "available": true
+        },
+        {
+          "extension": ".d.ts",
+          "available": true
+        },
+        {
+          "extension": ".cts",
+          "available": true
+        },
+        {
+          "extension": ".d.cts",
+          "available": true
+        },
+        {
+          "extension": ".mts",
+          "available": true
+        },
+        {
+          "extension": ".d.mts",
+          "available": true
+        },
+        {
+          "extension": ".vue",
+          "available": false
+        },
+        {
+          "extension": ".svelte",
+          "available": false
+        },
+        {
+          "extension": ".ls",
+          "available": false
+        },
+        {
+          "extension": ".coffee",
+          "available": false
+        },
+        {
+          "extension": ".litcoffee",
+          "available": false
+        },
+        {
+          "extension": ".coffee.md",
+          "available": false
+        },
+        {
+          "extension": ".csx",
+          "available": false
+        },
+        {
+          "extension": ".cjsx",
+          "available": false
+        }
+      ]
+    }
+  }
+}
