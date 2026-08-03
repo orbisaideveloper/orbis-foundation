@@ -1,24 +1,18 @@
 import React from 'react';
+import { AdminDashboard } from '../dashboard/AdminDashboard';
 
 const DashboardView: React.FC = () => {
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-semibold text-white">Platform Overview</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Structure Ready for Engine, Brain, and Runtime Stats */}
-        <div className="bg-gray-800 border border-gray-700 p-6 rounded-lg shadow-sm">
-          <h3 className="text-gray-400 text-sm font-medium uppercase">Engine Status</h3>
-          <p className="text-xl text-white mt-2 font-mono">Awaiting Metrics...</p>
+    <div className="space-y-6 fade-in">
+      <header className="flex justify-between items-end border-b border-green-500/50 pb-4 mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-green-400 tracking-widest">ORBIS COMMAND CENTER</h2>
+          <p className="text-sm opacity-70 text-green-500 font-mono">PHASE-03 ARCHITECTURE ACTIVE</p>
         </div>
-        <div className="bg-gray-800 border border-gray-700 p-6 rounded-lg shadow-sm">
-          <h3 className="text-gray-400 text-sm font-medium uppercase">Brain Status</h3>
-          <p className="text-xl text-white mt-2 font-mono">Awaiting Metrics...</p>
-        </div>
-        <div className="bg-gray-800 border border-gray-700 p-6 rounded-lg shadow-sm">
-          <h3 className="text-gray-400 text-sm font-medium uppercase">Active Modules</h3>
-          <p className="text-xl text-white mt-2 font-mono">Awaiting Metrics...</p>
-        </div>
-      </div>
+      </header>
+      
+      {/* Delegating Dashboard UI rendering to AdminDashboard */}
+      <AdminDashboard />
     </div>
   );
 };
