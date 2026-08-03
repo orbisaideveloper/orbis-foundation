@@ -2,6 +2,13 @@ import { render, screen } from '@testing-library/react';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { describe, it, expect, vi } from 'vitest';
 
+// 🛠️ LoggerService-কে মক করা হচ্ছে যাতে টেস্টের সময় আসল ফাংশন কল না হয়
+vi.mock('../services/logging/LoggerService', () => ({
+  LoggerService: {
+    logRuntimeError: vi.fn(),
+  },
+}));
+
 describe('ErrorBoundary', () => {
   it('should render children when no error occurs', () => {
     render(
@@ -13,7 +20,7 @@ describe('ErrorBoundary', () => {
   });
 
   it('should render fallback UI when an error occurs', () => {
-    // ErrorBoundary-র এরর হ্যান্ডলিং টেস্ট করার জন্য কনসোল এরর সাময়িকভাবে অফ করা
+    // কনসোল এরর সাময়িকভাবে অফ করা
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     
     const ThrowError = () => {
