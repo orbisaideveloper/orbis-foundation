@@ -1,6 +1,7 @@
 import { lazy } from 'react';
 import { RouteObject } from 'react-router-dom';
 import AdminLayout from '../layout/AdminLayout';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 // Lazy loading views for optimal performance
 const DashboardView = lazy(() => import('../views/DashboardView'));
@@ -13,7 +14,11 @@ const BrainMonitorView = lazy(() => Promise.resolve({ default: () => <div classN
 
 export const adminRoutes: RouteObject = {
   path: '/admin',
-  element: <AdminLayout />,
+  element: (
+    <ErrorBoundary>
+      <AdminLayout />
+    </ErrorBoundary>
+  ),
   children: [
     { path: 'dashboard', element: <DashboardView /> },
     { path: 'engine', element: <EngineMonitorView /> },
