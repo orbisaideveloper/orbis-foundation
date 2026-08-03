@@ -4,7 +4,7 @@ import AdminSidebar from './AdminSidebar';
 
 const AdminLayout: React.FC = () => {
   return (
-    <div className="flex flex-col md:flex-row h-screen w-full bg-[#0a0f0d] text-gray-100 overflow-hidden font-sans relative" role="application">
+    <div className="flex flex-col md:flex-row h-screen w-full bg-[#0a0f0d] text-gray-100 overflow-hidden font-sans relative" role="application" aria-label="Protected Admin Control Center">
       {/* Glassmorphism Background Glows */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
         <div className="absolute top-[-15%] left-[-10%] w-96 h-96 bg-green-500/20 rounded-full blur-[120px]"></div>
@@ -18,7 +18,7 @@ const AdminLayout: React.FC = () => {
       <main className="flex-1 flex flex-col h-full relative overflow-hidden">
         <header className="w-full h-16 bg-white/5 backdrop-blur-md border-b border-white/10 flex items-center px-4 md:px-6 justify-between shrink-0 z-10 shadow-sm">
           <h1 className="text-lg md:text-xl font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-orange-400">
-            ORBIS COMMAND CENTER
+            ORBIS Admin Command Center
           </h1>
           <div className="flex items-center space-x-3 bg-black/20 px-3 py-1.5 rounded-full border border-white/10 backdrop-blur-md">
             <span className="flex h-2.5 w-2.5 relative">

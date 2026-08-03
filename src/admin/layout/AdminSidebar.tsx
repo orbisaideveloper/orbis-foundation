@@ -43,7 +43,7 @@ const AdminSidebar: React.FC = () => {
       {/* Desktop Footer */}
       <div className="hidden md:block p-5 border-t border-white/10 text-xs font-mono text-gray-400 text-center bg-black/20 mt-auto">
         <span className="text-orange-500 animate-pulse mr-2">●</span> 
-        REAL-TIME SECURE SYNC
+        Zero Mock Data Policy Enforced
       </div>
     </aside>
   );
