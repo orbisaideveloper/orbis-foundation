@@ -206,13 +206,42 @@ export function AdminDashboard() {
               </button>
             </div>
             <div className="flex-1 p-5 overflow-y-auto bg-slate-50">
-              <div className="bg-black/90 rounded-xl p-4 shadow-inner">
-                <p className="text-green-400 font-mono text-[13px] leading-relaxed">
-                  [SYSTEM] Streaming secure logs for {activeCard}...<br/>
-                  [STATUS] Connection established.<br/>
-                  <span className="animate-pulse">_</span>
-                </p>
-              </div>
+              {activeCard === 'overview' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                    <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">System Phase</h4>
+                    <p className="text-lg font-black text-slate-800 mt-0.5">Phase {data.phase}</p>
+                  </div>
+                  <div className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                    <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">Architecture</h4>
+                    <p className="text-lg font-black text-slate-800 mt-0.5">Modular</p>
+                  </div>
+                  <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Microservices</h4>
+                    <p className="text-lg font-black text-slate-800 mt-0.5">14 Active</p>
+                  </div>
+                  <div className="bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                    <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Master Node</h4>
+                    <p className="text-lg font-black text-green-700 mt-0.5">Healthy</p>
+                  </div>
+                  <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">API Gateway</h4>
+                    <p className="text-lg font-black text-slate-800 mt-0.5">Online</p>
+                  </div>
+                  <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Avg Load</h4>
+                    <p className="text-lg font-black text-slate-800 mt-0.5">12.4%</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-black/90 rounded-xl p-4 shadow-inner">
+                  <p className="text-green-400 font-mono text-[13px] leading-relaxed">
+                    [SYSTEM] Streaming secure logs for {activeCard}...<br/>
+                    [STATUS] Connection established.<br/>
+                    <span className="animate-pulse">_</span>
+                  </p>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
