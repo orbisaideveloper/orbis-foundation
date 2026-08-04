@@ -7,12 +7,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- ১. আপনার পুরানো লজিক (১০০% অক্ষত) ---
+// --- ১. আপনার পুরোনো লজিক ---
 function getDirectoryTree(dirPath, indent = '') {
     let result = '';
+    if (!fs.existsSync(dirPath)) return 'Directory not found';
     const items = fs.readdirSync(dirPath);
     items.forEach(item => {
-        if (item === 'node_modules' || item.startsWith('.')) return;
+        if (item === 'node_modules' || item.startsWith('.') || item === 'dist') return;
         const fullPath = path.join(dirPath, item);
         const stat = fs.statSync(fullPath);
         if (stat.isDirectory()) {
@@ -30,7 +31,7 @@ function searchCodeFiles(dir, keyword, fileList = []) {
     if (!fs.existsSync(dir)) return fileList;
     const items = fs.readdirSync(dir);
     for (const item of items) {
-        if (item === 'node_modules' || item.startsWith('.')) continue;
+        if (item === 'node_modules' || item.startsWith('.') || item === 'dist') continue;
         const fullPath = path.join(dir, item);
         if (fs.statSync(fullPath).isDirectory()) {
             searchCodeFiles(fullPath, keyword, fileList);
@@ -89,21 +90,23 @@ app.post('/api/orbis-command', (req, res) => {
     const rootPath = path.join(__dirname, '../');
     const srcPath = path.join(rootPath, 'src');
 
-    // আপনার পুরোনো ট্রি কমান্ড
-    if (command.includes('ট্রি') || command.includes('ফোল্ডার') || command.includes('tree')) {
+    if (command.includes('ট্রি') || command.includes('ফোল্ডার') || command.includes('tree') || command.includes('সোর্স কোড')) {
         output += `--- LIVE SOURCE CODE DIRECTORY ---\n\n` + getDirectoryTree(rootPath);
     } 
-    // আপনার পুরোনো ডিপেন্ডেন্সি কমান্ড
     else if (command.includes('কানেকশন') || command.includes('ডিপেন্ডেন্সি')) {
         output += `--- DEPENDENCY MAP ---\n\n`;
         try {
-            const pkg = JSON.parse(fs.readFileSync(path.join(rootPath, 'package.json')));
-            output += JSON.stringify(pkg.dependencies, null, 2);
+            const pkgPath = path.join(rootPath, 'package.json');
+            if(fs.existsSync(pkgPath)) {
+                const pkg = JSON.parse(fs.readFileSync(pkgPath));
+                output += JSON.stringify(pkg.dependencies, null, 2);
+            } else {
+                output += 'package.json পাওয়া যায়নি।\n';
+            }
         } catch (e) {
             output += `Error: ${e.message}\n`;
         }
     } 
-    // --- নতুন ডায়াগনস্টিক কমান্ড ---
     else if (command.includes('কেন') || command.includes('কাজ') || command.includes('ফাইল') || command.includes('জড়িত') || command.includes('প্রবলেম') || command.includes('অসুবিধা') || command.includes('কিভাবে')) {
         output += `--- 🧠 ORBIS CODE DIAGNOSTIC ---\n\n`;
         let keyword = '';
@@ -130,7 +133,6 @@ app.post('/api/orbis-command', (req, res) => {
             output += `❌ '${keyword}' সম্পর্কিত কোনো ফাইল বা লজিক পাওয়া যায়নি।`;
         }
     } 
-    // আপনার পুরোনো ডিফল্ট কমান্ড
     else {
         output += `Command Received: "${command}"\nTry asking: "সোর্স ট্রি দেখাও" or "ডিপেন্ডেন্সি দেখাও"`;
     }
@@ -138,4 +140,14 @@ app.post('/api/orbis-command', (req, res) => {
     res.json({ result: output });
 });
 
-app.listen(3001, () => console.log(`ORBIS Local Bridge running on port 3001`));
+// --- ৩. রেন্ডার ক্লাউডের জন্য ফ্রন্টএন্ড স্ট্যাটিক ফাইল সার্ভিং (অত্যন্ত জরুরি) ---
+const distPath = path.join(__dirname, '../dist');
+app.use(express.static(distPath));
+
+app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+});
+
+// রেন্ডারের দেওয়া পোর্টে সার্ভার রান হবে
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`ORBIS Server running on port ${PORT}`));
