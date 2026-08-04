@@ -51,7 +51,7 @@ describe('AdminDashboard Full Coverage Tests', () => {
     fireEvent.click(closeTermBtn);
 
     fireEvent.click(screen.getAllByRole('button')[0]);
-    const treeSidebarBtn = screen.getByText('লাইভ ডিপেন্ডেন্সি ট্রি');
+    const treeSidebarBtn = screen.getAllByText('লাইভ ডিপেন্ডেন্সি ট্রি')[0];
     fireEvent.click(treeSidebarBtn);
     expect(screen.getByText('Live System Tree (Render Cloud)')).toBeInTheDocument();
   });
@@ -132,12 +132,19 @@ describe('AdminDashboard Full Coverage Tests', () => {
     consoleSpy.mockRestore();
   });
 
-  it('handles browser popstate event listener', () => {
+  it('handles browser popstate event listener', async () => {
     render(<AdminDashboard />);
     const runtimeCard = screen.getByText(/Runtime/i);
     fireEvent.click(runtimeCard);
 
+    await waitFor(() => {
+      expect(screen.getByText(/runtime Monitor/i)).toBeInTheDocument();
+    });
+
     window.dispatchEvent(new Event('popstate'));
-    expect(screen.queryByText('runtime Monitor')).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.queryByText(/runtime Monitor/i)).not.toBeInTheDocument();
+    });
   });
 });
