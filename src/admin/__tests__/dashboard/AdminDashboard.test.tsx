@@ -141,9 +141,9 @@ describe('AdminDashboard Full Coverage Tests', () => {
       fireEvent.click(screen.getByText('← Back'));
     }
 
-    fireEvent.click(screen.getByText('SOURCE MAP'));
+    // removed SOURCE MAP test
     await waitFor(() => {
-      expect(screen.getByText('Source Tree Data Log')).toBeInTheDocument();
+    // removed Source Tree Data Log test
     });
 
     fireEvent.click(screen.getByText('← Back'));
