@@ -101,13 +101,6 @@ export function AdminDashboard() {
     return () => { isMounted = false; clearInterval(interval); };
   }, []);
 
-  const handleSubCardKeyDown = (e: React.KeyboardEvent, cardName: string) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      setActiveSubCard(cardName);
-    }
-  };
-
   return (
     <div className="w-full min-h-screen bg-[#F8FAFC] flex flex-col relative pb-6 font-sans">
 
@@ -381,35 +374,35 @@ export function AdminDashboard() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
-                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('System Phase')} onKeyDown={(e) => handleSubCardKeyDown(e, 'System Phase')} className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  <button type="button" onClick={() => setActiveSubCard('System Phase')} className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">System Phase</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">Phase {data.phase}</p>
-                  </div>
-                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('Architecture')} onKeyDown={(e) => handleSubCardKeyDown(e, 'Architecture')} className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  </button>
+                  <button type="button" onClick={() => setActiveSubCard('Architecture')} className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">Architecture</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">Modular</p>
-                  </div>
-                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('Microservices')} onKeyDown={(e) => handleSubCardKeyDown(e, 'Microservices')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  </button>
+                  <button type="button" onClick={() => setActiveSubCard('Microservices')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Microservices</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">14 Active</p>
-                  </div>
-                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('Master Node')} onKeyDown={(e) => handleSubCardKeyDown(e, 'Master Node')} className="bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  </button>
+                  <button type="button" onClick={() => setActiveSubCard('Master Node')} className="text-left bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Master Node</h4>
                     <p className="text-lg font-black text-green-700 mt-0.5">Healthy</p>
-                  </div>
-                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('API Gateway')} onKeyDown={(e) => handleSubCardKeyDown(e, 'API Gateway')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  </button>
+                  <button type="button" onClick={() => setActiveSubCard('API Gateway')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">API Gateway</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">Online</p>
-                  </div>
-                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('Avg Load')} onKeyDown={(e) => handleSubCardKeyDown(e, 'Avg Load')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  </button>
+                  <button type="button" onClick={() => setActiveSubCard('Avg Load')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Avg Load</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">12.4%</p>
-                  </div>
+                  </button>
                   {/* 7th Card: Dependency Tree (Full Width) */}
-                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('Source Tree')} onKeyDown={(e) => handleSubCardKeyDown(e, 'Source Tree')} className="col-span-2 bg-indigo-50/40 border border-indigo-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-indigo-300 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  <button type="button" onClick={() => setActiveSubCard('Source Tree')} className="text-left col-span-2 bg-indigo-50/40 border border-indigo-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-indigo-300 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-extrabold text-indigo-500 tracking-wider mb-0.5 uppercase flex items-center gap-1.5"><span className="text-sm">🗂️</span> SOURCE MAP</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">Dependency Tree</p>
-                  </div>
+                  </button>
                 </div>
               )}</>
               ) : (
