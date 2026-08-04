@@ -20,6 +20,7 @@ const getLogContent = (cardName: string | null) => {
 export function AdminDashboard() {
   const [activeCard, setActiveCard] = useState<string | null>(null);
   const [activeSubCard, setActiveSubCard] = useState<string | null>(null);
+  const [sysStats, setSysStats] = useState({ load: '...', ramUsedPercent: '...', uptime: '...', cpuCores: 0, arch: '...', platform: '...', status: 'Connecting...' });
   const [copiedText, setCopiedText] = useState(false);
 
   const [showOutput, setShowOutput] = useState(false);
@@ -58,6 +59,16 @@ export function AdminDashboard() {
       setLiveTree('[ERROR] Live Tree Fetch Failed. Check API connection.');
     }
   };
+
+  
+  useEffect(() => {
+    if (activeCard === 'overview') {
+      fetch('/api/system-stats')
+        .then(res => res.json())
+        .then(data => setSysStats(data))
+        .catch(() => setSysStats(s => ({ ...s, status: 'OFFLINE', load: 'ERR' })));
+    }
+  }, [activeCard]);
 
   useEffect(() => {
     if (showOutput || activeSubCard === 'Source Tree') {
@@ -380,23 +391,23 @@ export function AdminDashboard() {
                   </button>
                   <button type="button" onClick={() => setActiveSubCard('Architecture')} className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">Architecture</h4>
-                    <p className="text-lg font-black text-slate-800 mt-0.5">Modular</p>
+                    <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.cpuCores} Cores ({sysStats.arch})</p>
                   </button>
                   <button type="button" onClick={() => setActiveSubCard('Microservices')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Microservices</h4>
-                    <p className="text-lg font-black text-slate-800 mt-0.5">14 Active</p>
+                    <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.ramUsedPercent}%</p>
                   </button>
                   <button type="button" onClick={() => setActiveSubCard('Master Node')} className="text-left bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Master Node</h4>
-                    <p className="text-lg font-black text-green-700 mt-0.5">Healthy</p>
+                    <p className="text-lg font-black text-green-700 mt-0.5">{sysStats.platform}</p>
                   </button>
                   <button type="button" onClick={() => setActiveSubCard('API Gateway')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">API Gateway</h4>
-                    <p className="text-lg font-black text-slate-800 mt-0.5">Online</p>
+                    <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.status}</p>
                   </button>
                   <button type="button" onClick={() => setActiveSubCard('Avg Load')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Avg Load</h4>
-                    <p className="text-lg font-black text-slate-800 mt-0.5">12.4%</p>
+                    <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.load}%</p>
                   </button>                </div>
               )}</>
               ) : (

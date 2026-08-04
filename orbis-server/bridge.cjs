@@ -89,6 +89,30 @@ function analyzeFileLogic(filePath) {
     }
 }
 
+
+app.get('/api/system-stats', (req, res) => {
+    const os = require('os');
+    const totalMem = os.totalmem() / (1024 * 1024 * 1024);
+    const freeMem = os.freemem() / (1024 * 1024 * 1024);
+    const usedMem = totalMem - freeMem;
+    const loadAvg = os.loadavg();
+    
+    // Uptime ক্যালকুলেশন
+    const uptimeSeconds = os.uptime();
+    const hours = Math.floor(uptimeSeconds / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+
+    res.json({
+        cpuCores: os.cpus().length,
+        arch: os.arch(),
+        platform: os.platform().toUpperCase(),
+        load: loadAvg[0].toFixed(2),
+        ramUsedPercent: ((usedMem / totalMem) * 100).toFixed(1),
+        uptime: `${hours}h ${minutes}m`,
+        status: 'ONLINE'
+    });
+});
+
 app.post('/api/orbis-command', (req, res) => {
     const { command } = req.body;
     let output = '';
