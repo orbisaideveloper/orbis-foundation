@@ -208,7 +208,7 @@ export function AdminDashboard() {
             </div>
             <div className="flex-1 p-5 overflow-y-auto bg-slate-50">
               {activeCard === 'overview' ? (
-                {activeSubCard ? (
+                <>{activeSubCard ? (
                   <div className="flex flex-col h-full animate-in fade-in zoom-in duration-200">
                     <button onClick={() => setActiveSubCard(null)} className="mb-3 text-[13px] text-slate-600 font-bold hover:text-slate-900 flex items-center gap-1.5 w-fit bg-slate-200/60 px-3 py-1.5 rounded-lg transition-colors active:scale-95">
                       ← Back
@@ -263,7 +263,7 @@ No anomalies detected. Data stream is ready for copying.
                     <p className="text-lg font-black text-slate-800 mt-0.5">12.4%</p>
                   </div>
                 </div>
-              )}
+              )}</>
               ) : (
                 <div className="bg-black/90 rounded-xl p-4 shadow-inner">
                   <p className="text-green-400 font-mono text-[13px] leading-relaxed">
