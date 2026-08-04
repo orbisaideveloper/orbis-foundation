@@ -1,18 +1,11 @@
-import '@testing-library/jest-dom';
+import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import DashboardView from '../views/DashboardView';
-import { AdminCoreProvider } from '../providers/AdminCoreProvider';
+import { AdminViews } from '../AdminViews';
+import '@testing-library/jest-dom';
 
-describe('Admin Core Views Scaffold', () => {
-  it('renders DashboardView correctly with providers', () => {
-    render(
-      <MemoryRouter>
-        <AdminCoreProvider>
-          <DashboardView />
-        </AdminCoreProvider>
-      </MemoryRouter>
-    );
-    expect(screen.getByText(/ORBIS COMMAND CENTER/i)).toBeInTheDocument();
+describe('AdminViews Component', () => {
+  it('renders Dashboard seamlessly without old clutter', () => {
+    render(<AdminViews />);
+    expect(screen.getByText(/ORBIS Admin Center/i)).toBeInTheDocument();
   });
 });
