@@ -101,21 +101,26 @@ app.post('/api/orbis-command', (req, res) => {
         let logBook = '\n\n========================================\n';
         logBook += ' 🕒 RECENT EDIT LOGBOOK & SECURITY AUDIT\n';
         logBook += '========================================\n';
-        
+
         try {
             const { execSync } = require('child_process');
-            
-            // সর্বশেষ পরিবর্তিত ফাইলগুলো বের করা
-            const changedFilesRaw = execSync('git diff --name-only HEAD~1 HEAD', { cwd: rootPath }).toString();
+
+            // Termux-safe: শুধুমাত্র HEAD (latest commit) চেক করা হচ্ছে যাতে HEAD~1 এরর না দেয়
+            const changedFilesRaw = execSync('git show --name-only --format="" HEAD', { cwd: rootPath }).toString();
             changedFiles = changedFilesRaw.split('\n').filter(Boolean);
-            
-            // সর্বশেষ ৩টি হিস্ট্রি এবং ফাইলের লিস্ট
-            const gitHistory = execSync('git log -n 3 --name-status --date=local --pretty=format:"\n[COMMIT %h] 📝 %s\n⏰ %cd"', { cwd: rootPath }).toString();
-            logBook += gitHistory;
+
+            // রিয়েল-টাইম ডেট এবং টাইম জেনারেট করা (IST)
+            const now = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' });
+            logBook += `\n📅 Audit Timestamp: ${now} (IST)\n`;
+            logBook += `📂 Total Modified Files in Last Commit: ${changedFiles.length}\n\n`;
+
+            changedFiles.forEach((file, index) => {
+                logBook += `  [${index + 1}] 📝 ${file} -> ✨ Modified / Updated\n`;
+            });
         } catch (e) {
-            logBook += '\n⚠️ Git history unavailable: ' + e.message;
+            logBook += '\n⚠️ Logbook tracking error: ' + e.message;
         }
-        
+
         output += `--- LIVE SOURCE CODE DIRECTORY ---\n\n` + getDirectoryTree(rootPath, '', changedFiles) + logBook;
     } 
     else if (command.includes('কানেকশন') || command.includes('ডিপেন্ডেন্সি')) {
