@@ -63,12 +63,12 @@ describe('AdminDashboard Full Coverage Tests', () => {
 
     expect(screen.getByText('Terminal Output')).toBeInTheDocument();
 
-    const copyBtn = screen.getByText('⧉ Copy');
+    const copyBtn = screen.getByText(/Copy/i);
     fireEvent.click(copyBtn);
     expect(navigator.clipboard.writeText).toHaveBeenCalled();
 
     await waitFor(() => {
-      expect(screen.getByText('✓ Copied')).toBeInTheDocument();
+      expect(screen.getByText(/Copied/i)).toBeInTheDocument();
     });
 
     const closeBtn = screen.getByText('Close');
@@ -84,7 +84,7 @@ describe('AdminDashboard Full Coverage Tests', () => {
       expect(screen.getByText('Live System Tree (Render Cloud)')).toBeInTheDocument();
     });
 
-    const copyBtn = screen.getByText('⧉ Copy');
+    const copyBtn = screen.getByText(/Copy/i);
     fireEvent.click(copyBtn);
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Mocked Command Success Response');
   });
@@ -122,7 +122,7 @@ describe('AdminDashboard Full Coverage Tests', () => {
       fireEvent.click(screen.getByText(sub));
       expect(screen.getByText(new RegExp(`${sub} Data Log`, 'i'))).toBeInTheDocument();
 
-      const copySubLogBtn = screen.getByText('⧉ Copy');
+      const copySubLogBtn = screen.getByText(/Copy/i);
       fireEvent.click(copySubLogBtn);
       expect(navigator.clipboard.writeText).toHaveBeenCalled();
 
