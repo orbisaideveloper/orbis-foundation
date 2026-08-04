@@ -1,39 +1,62 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AdminDashboard from '../../dashboard/AdminDashboard';
 import '@testing-library/jest-dom';
 
-describe('Premium Admin Dashboard UI', () => {
-  it('renders all components, tests real-time data, and unmounts cleanly (100% coverage)', async () => {
+describe('Premium Admin Dashboard UI with 8 Cards & Sidebar', () => {
+  it('renders all 8 functional components and updates data', async () => {
     const { unmount } = render(<AdminDashboard />);
     
-    // Header Test
-    expect(screen.getByText(/ORBIS Center/i)).toBeInTheDocument();
+    // Check old logics/cards are present
+    expect(screen.getByText(/Overview/i)).toBeInTheDocument();
+    expect(screen.getByText(/Runtime/i)).toBeInTheDocument();
+    expect(screen.getByText(/Release/i)).toBeInTheDocument();
+    expect(screen.getByText(/Modules/i)).toBeInTheDocument();
     
     // Data Fetch Test
     await waitFor(() => {
       expect(screen.getByText(/99.99%/i)).toBeInTheDocument();
     });
+    unmount();
+  });
 
-    // Interaction Test (Open Modal)
-    const engineCard = screen.getByText(/Engine/i);
-    fireEvent.click(engineCard);
+  it('opens and closes the Sidebar Menu properly', () => {
+    const { unmount } = render(<AdminDashboard />);
+    
+    // Find hamburger button (first button without specific text usually)
+    const hamburgerBtn = screen.getAllByRole('button')[0];
+    fireEvent.click(hamburgerBtn);
+    
+    // Sidebar should be visible with options
+    expect(screen.getByText(/System Settings/i)).toBeInTheDocument();
+    
+    // Close sidebar
+    const closeSidebarBtn = screen.getByText('✕');
+    fireEvent.click(closeSidebarBtn);
+    
+    unmount();
+  });
+
+  it('opens and closes modal successfully', async () => {
+    const { unmount } = render(<AdminDashboard />);
+    
+    // Open Modal
+    const runtimeCard = screen.getByText(/Runtime/i);
+    fireEvent.click(runtimeCard);
     
     await waitFor(() => {
-      expect(screen.getByText(/Engine Monitor/i)).toBeInTheDocument();
+      expect(screen.getByText(/runtime Monitor/i)).toBeInTheDocument();
     });
 
-    // Check SonarCloud Security (button type)
+    // Close Modal
     const closeBtn = screen.getByRole('button', { name: /Close/i });
     expect(closeBtn).toHaveAttribute('type', 'button'); 
     
-    // Interaction Test (Close Modal)
     fireEvent.click(closeBtn);
     await waitFor(() => {
-      expect(screen.queryByText(/Engine Monitor/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/runtime Monitor/i)).not.toBeInTheDocument();
     });
 
-    // Trigger cleanup function (clearInterval) to hit 100% coverage
     unmount();
   });
 });

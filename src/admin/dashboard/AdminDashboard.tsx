@@ -3,9 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 export function AdminDashboard() {
   const [activeCard, setActiveCard] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [data, setData] = useState({
-    engine: 'Loading...', uptime: '---', health: 'Checking...',
-    ai: 'Scanning...', sync: '---', phase: '03'
+    engine: 'Loading...', uptime: '---', health: 'Checking...', db: 'N/A',
+    ai: 'Scanning...', latency: '---', sync: '---', phase: '03',
+    runtime: 'Node.js', runtimeVer: 'v24.18.0', 
+    release: 'v4.1.10', releaseType: 'Automated CI/CD',
+    core: 'Active', coreStatus: 'All nominal'
   });
 
   useEffect(() => {
@@ -13,8 +17,11 @@ export function AdminDashboard() {
     const fetchRealData = async () => {
       if (isMounted) {
         setData({
-          engine: 'ONLINE', uptime: '99.99%', health: 'Healthy',
-          ai: '2 Active', sync: '100%', phase: '04'
+          engine: 'ONLINE', uptime: '99.99%', health: 'Healthy', db: 'Connected',
+          ai: '2 Active', latency: '18ms', sync: '100%', phase: '04',
+          runtime: 'Node.js', runtimeVer: 'v24.18.0',
+          release: 'v4.1.10', releaseType: 'Automated CI/CD',
+          core: 'Active', coreStatus: 'All nominal'
         });
       }
     };
@@ -24,13 +31,34 @@ export function AdminDashboard() {
   }, []);
 
   return (
-    <div className="w-full min-h-screen bg-[#F8FAFC] flex flex-col relative pb-6">
+    <div className="w-full min-h-screen bg-[#F8FAFC] flex flex-col relative pb-6 font-sans">
       
-      {/* 1. MINIMAL HEADER (Like Farmer Brain) */}
+      {/* SIDEBAR OVERLAY & MENU */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm" />
+            <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', bounce: 0, duration: 0.3 }} className="fixed inset-y-0 left-0 w-64 bg-white shadow-2xl z-50 flex flex-col">
+              <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2"><span>🧠</span> Menu</h2>
+                <button type="button" onClick={() => setIsSidebarOpen(false)} className="bg-slate-200 text-slate-600 h-8 w-8 rounded-full font-bold flex items-center justify-center hover:bg-slate-300">✕</button>
+              </div>
+              <div className="p-4 flex flex-col gap-2">
+                <button type="button" className="text-left px-4 py-3 rounded-xl bg-green-50 text-green-700 font-semibold border border-green-100">📊 Dashboard</button>
+                <button type="button" className="text-left px-4 py-3 rounded-xl text-slate-600 font-medium hover:bg-slate-50">⚙️ System Settings</button>
+                <button type="button" className="text-left px-4 py-3 rounded-xl text-slate-600 font-medium hover:bg-slate-50">📋 Live Logs</button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* HEADER */}
       <header className="flex items-center justify-between px-5 py-4 bg-white sticky top-0 z-10 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
         <div className="flex items-center gap-3">
-          {/* Hamburger Menu Icon */}
-          <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+          <button type="button" onClick={() => setIsSidebarOpen(true)} className="text-slate-500 hover:text-slate-700 p-1">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
           <h1 className="text-[17px] font-bold text-slate-800 flex items-center gap-2">
             <span className="text-xl">🧠</span> ORBIS Center
           </h1>
@@ -44,7 +72,7 @@ export function AdminDashboard() {
         </div>
       </header>
 
-      {/* 2. WELCOME / ALERT CARD (Like 'Shuvo Provat' card) */}
+      {/* WELCOME CARD */}
       <div className="px-5 mt-5 mb-2">
         <div className="p-4 rounded-[20px] bg-gradient-to-br from-green-50 to-emerald-50/50 border border-green-100/60 shadow-sm relative overflow-hidden">
           <div className="flex items-start gap-3 relative z-10">
@@ -64,11 +92,23 @@ export function AdminDashboard() {
         <p className="text-[13px] text-slate-500">Smart Orchestration Management</p>
       </div>
 
-      {/* 3. PREMIUM GRID CARDS */}
+      {/* 8 PREMIUM GRID CARDS (Restored all options) */}
       <div className="px-5 grid grid-cols-2 gap-3.5">
         
-        {/* Card 1 */}
-        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('engine')} className="cursor-pointer bg-white border border-slate-100 shadow-[0_4px_20px_-8px_rgba(0,0,0,0.05)] rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
+        {/* 1. System Overview */}
+        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('overview')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="bg-orange-50 p-1.5 rounded-lg"><span className="text-sm">🏛️</span></div>
+            <h3 className="text-[12px] font-bold text-slate-600">Overview</h3>
+          </div>
+          <div>
+            <p className="text-xl font-black text-slate-800">Phase {data.phase}</p>
+            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">Modular Arch</p>
+          </div>
+        </motion.div>
+
+        {/* 2. Engine Monitor */}
+        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('engine')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-blue-50 p-1.5 rounded-lg"><span className="text-sm">⚙️</span></div>
             <h3 className="text-[12px] font-bold text-slate-600">Engine</h3>
@@ -79,51 +119,87 @@ export function AdminDashboard() {
           </div>
         </motion.div>
 
-        {/* Card 2 */}
-        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('brain')} className="cursor-pointer bg-white border border-slate-100 shadow-[0_4px_20px_-8px_rgba(0,0,0,0.05)] rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-orange-50 p-1.5 rounded-lg"><span className="text-sm">🧠</span></div>
-            <h3 className="text-[12px] font-bold text-slate-600">Brain Sync</h3>
-          </div>
-          <div>
-            <p className="text-xl font-black text-slate-800">{data.sync}</p>
-            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">Phase {data.phase} Active</p>
-          </div>
-        </motion.div>
-
-        {/* Card 3 */}
-        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('health')} className="cursor-pointer bg-gradient-to-br from-white to-green-50/30 border border-green-100 shadow-[0_4px_20px_-8px_rgba(0,0,0,0.05)] rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
+        {/* 3. System Health */}
+        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('health')} className="cursor-pointer bg-gradient-to-br from-white to-green-50/30 border border-green-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-green-100/50 p-1.5 rounded-lg"><span className="text-sm">💚</span></div>
             <h3 className="text-[12px] font-bold text-green-700">Health</h3>
           </div>
           <div>
             <p className="text-xl font-black text-green-800">{data.health}</p>
-            <p className="text-[11px] font-semibold text-green-600/70 mt-0.5">All nominal</p>
+            <p className="text-[11px] font-semibold text-green-600/70 mt-0.5">DB: {data.db}</p>
           </div>
         </motion.div>
 
-        {/* Card 4 */}
-        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('ai')} className="cursor-pointer bg-white border border-slate-100 shadow-[0_4px_20px_-8px_rgba(0,0,0,0.05)] rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
+        {/* 4. Brain Monitor */}
+        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('brain')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="bg-rose-50 p-1.5 rounded-lg"><span className="text-sm">🧠</span></div>
+            <h3 className="text-[12px] font-bold text-slate-600">Brain Sync</h3>
+          </div>
+          <div>
+            <p className="text-xl font-black text-slate-800">{data.sync}</p>
+            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">Neural Sync</p>
+          </div>
+        </motion.div>
+
+        {/* 5. AI Providers */}
+        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('ai')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-purple-50 p-1.5 rounded-lg"><span className="text-sm">🤖</span></div>
             <h3 className="text-[12px] font-bold text-slate-600">AI Agents</h3>
           </div>
           <div>
             <p className="text-xl font-black text-slate-800">{data.ai}</p>
-            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">Latency: 18ms</p>
+            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">Latency: {data.latency}</p>
+          </div>
+        </motion.div>
+
+        {/* 6. Runtime Env */}
+        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('runtime')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="bg-yellow-50 p-1.5 rounded-lg"><span className="text-sm">⚡</span></div>
+            <h3 className="text-[12px] font-bold text-slate-600">Runtime</h3>
+          </div>
+          <div>
+            <p className="text-xl font-black text-slate-800">{data.runtime}</p>
+            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">{data.runtimeVer}</p>
+          </div>
+        </motion.div>
+
+        {/* 7. Release Manager */}
+        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('release')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="bg-indigo-50 p-1.5 rounded-lg"><span className="text-sm">🚀</span></div>
+            <h3 className="text-[12px] font-bold text-slate-600">Release</h3>
+          </div>
+          <div>
+            <p className="text-xl font-black text-slate-800">{data.release}</p>
+            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">{data.releaseType}</p>
+          </div>
+        </motion.div>
+
+        {/* 8. Core Modules */}
+        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('core')} className="cursor-pointer bg-gradient-to-br from-orange-50/50 to-green-50/30 border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="bg-amber-100/50 p-1.5 rounded-lg"><span className="text-sm">📦</span></div>
+            <h3 className="text-[12px] font-bold text-slate-700">Modules</h3>
+          </div>
+          <div>
+            <p className="text-xl font-black text-slate-800">{data.core}</p>
+            <p className="text-[11px] font-semibold text-green-600/80 mt-0.5">{data.coreStatus}</p>
           </div>
         </motion.div>
 
       </div>
 
-      {/* 4. PREMIUM MODAL */}
+      {/* PREMIUM MODAL */}
       <AnimatePresence>
         {activeCard && (
           <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed inset-0 bg-white z-50 flex flex-col">
             <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center shadow-sm">
               <h2 className="text-[16px] font-bold text-slate-800 capitalize flex items-center gap-2">
-                <span className="text-xl">📊</span> {activeCard} Monitor
+                <span className="text-xl">📊</span> {activeCard.replace('_', ' ')} Monitor
               </h2>
               <button type="button" onClick={() => setActiveCard(null)} className="bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold text-[12px] hover:bg-slate-200 transition-colors">
                 Close
