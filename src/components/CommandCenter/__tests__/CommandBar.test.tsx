@@ -1,10 +1,11 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
 import CommandBar from '../CommandBar';
 
 describe('CommandBar Component', () => {
   it('renders correctly and handles input submit', () => {
-    const mockSubmit = jest.fn();
+    const mockSubmit = vi.fn();
     render(<CommandBar onCommandSubmit={mockSubmit} />);
 
     const input = screen.getByPlaceholderText('ORBIS-কে নির্দেশ দিন...');
@@ -17,7 +18,7 @@ describe('CommandBar Component', () => {
   });
 
   it('triggers submit on Enter key', () => {
-    const mockSubmit = jest.fn();
+    const mockSubmit = vi.fn();
     render(<CommandBar onCommandSubmit={mockSubmit} />);
 
     const input = screen.getByPlaceholderText('ORBIS-কে নির্দেশ দিন...');
@@ -28,8 +29,8 @@ describe('CommandBar Component', () => {
   });
 
   it('handles voice button click gracefully when speech recognition is missing', () => {
-    window.alert = jest.fn();
-    render(<CommandBar onCommandSubmit={jest.fn()} />);
+    window.alert = vi.fn();
+    render(<CommandBar onCommandSubmit={vi.fn()} />);
 
     const voiceBtn = screen.getByText('🎤');
     fireEvent.click(voiceBtn);
