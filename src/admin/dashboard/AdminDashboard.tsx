@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CommandBar from '../../components/CommandCenter/CommandBar';
 
-
 const getLogContent = (cardName: string | null) => {
   if (!cardName) return '';
   const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) + ' (IST)';
@@ -17,7 +16,6 @@ const getLogContent = (cardName: string | null) => {
   };
   return `[SYSTEM LOG] - ${time}\nTarget: ${cardName}\nStatus: ACTIVE / SECURE\n\nFetching real-time encrypted telemetry...\n${details[cardName] || '> Systems normal.'}\n\nData stream is ready for copying.`;
 };
-
 
 export function AdminDashboard() {
   const [activeCard, setActiveCard] = useState<string | null>(null);
@@ -56,6 +54,7 @@ export function AdminDashboard() {
       const data = await response.json();
       setLiveTree(data.result);
     } catch (error) {
+      console.error(error);
       setLiveTree('[ERROR] Live Tree Fetch Failed. Check API connection.');
     }
   };
@@ -66,19 +65,20 @@ export function AdminDashboard() {
     }
   }, [showOutput, activeSubCard]);
 
-
   useEffect(() => {
     if (activeSubCard || activeCard) {
       window.history.pushState({ modal: true }, '');
       const handlePop = () => { setActiveSubCard(null); setActiveCard(null); };
-      window.addEventListener('popstate', handlePop);return () => window.removeEventListener('popstate', handlePop);
+      window.addEventListener('popstate', handlePop);
+      return () => window.removeEventListener('popstate', handlePop);
     }
   }, [activeSubCard, activeCard]);
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [data, setData] = useState({
     engine: 'Loading...', uptime: '---', health: 'Checking...', db: 'N/A',
     ai: 'Scanning...', latency: '---', sync: '---', phase: '03',
-    runtime: 'Node.js', runtimeVer: 'v24.18.0', 
+    runtime: 'Node.js', runtimeVer: 'v24.18.0',
     release: 'v4.1.10', releaseType: 'Automated CI/CD',
     core: 'Active', coreStatus: 'All nominal'
   });
@@ -101,9 +101,16 @@ export function AdminDashboard() {
     return () => { isMounted = false; clearInterval(interval); };
   }, []);
 
+  const handleSubCardKeyDown = (e: React.KeyboardEvent, cardName: string) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setActiveSubCard(cardName);
+    }
+  };
+
   return (
     <div className="w-full min-h-screen bg-[#F8FAFC] flex flex-col relative pb-6 font-sans">
-      
+
       {/* SIDEBAR OVERLAY & MENU */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -164,12 +171,11 @@ export function AdminDashboard() {
           <h2 className="text-[19px] font-bold text-slate-800">System Overview</h2>
           <p className="text-[13px] text-slate-500">Smart Orchestration Management</p>
         </div>
-        <button onClick={() => { setViewMode('diagnostic'); setShowOutput(true); }} className="bg-slate-900 text-white px-3 py-1.5 rounded-[12px] text-[11px] font-bold flex items-center gap-1.5 shadow-md hover:bg-slate-800 active:scale-95 transition-all">
+        <button type="button" onClick={() => { setViewMode('diagnostic'); setShowOutput(true); }} className="bg-slate-900 text-white px-3 py-1.5 rounded-[12px] text-[11px] font-bold flex items-center gap-1.5 shadow-md hover:bg-slate-800 active:scale-95 transition-all">
           <span className="text-sm">💻</span> ডায়াগনস্টিক
         </button>
       </div>
 
-      
       {/* ORBIS Command Center Auto-Injected */}
       <div className="w-full px-5 mb-4">
         <CommandBar onCommandSubmit={executeOrbisCommand} />
@@ -191,7 +197,7 @@ export function AdminDashboard() {
                 <div className="bg-slate-900 text-emerald-400 p-4 rounded-xl font-mono text-[13px] flex-1 overflow-auto shadow-inner relative flex flex-col">
                   <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2 sticky top-0 bg-slate-900 z-10">
                     <span className="text-slate-400 text-[11px]">~/orbis/terminal</span>
-                    <button onClick={() => { navigator.clipboard.writeText(outputData); setCopiedText(true); setTimeout(() => setCopiedText(false), 2000); }} className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm">
+                    <button type="button" onClick={() => { navigator.clipboard.writeText(outputData); setCopiedText(true); setTimeout(() => setCopiedText(false), 2000); }} className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm">
                       {copiedText ? '✓ Copied' : '⧉ Copy'}
                     </button>
                   </div>
@@ -209,7 +215,7 @@ export function AdminDashboard() {
                       </span>
                       <span className="text-slate-300 font-bold uppercase tracking-wider text-[10px]">Live System Tree (Render Cloud)</span>
                     </div>
-                    <button onClick={() => { navigator.clipboard.writeText(liveTree); setCopiedText(true); setTimeout(() => setCopiedText(false), 2000); }} className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm">
+                    <button type="button" onClick={() => { navigator.clipboard.writeText(liveTree); setCopiedText(true); setTimeout(() => setCopiedText(false), 2000); }} className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm">
                       {copiedText ? '✓ Copied' : '⧉ Copy'}
                     </button>
                   </div>
@@ -221,16 +227,16 @@ export function AdminDashboard() {
         )}
       </AnimatePresence>
 
-            {/* QUICK ACCESS CARDS */}
+      {/* QUICK ACCESS CARDS */}
       <div className="px-5 mb-4">
-        <button onClick={() => { setViewMode('tree'); setShowOutput(true); }} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 p-3 rounded-[16px] text-[13px] font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-indigo-100 active:scale-95 transition-all">
+        <button type="button" onClick={() => { setViewMode('tree'); setShowOutput(true); }} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 p-3 rounded-[16px] text-[13px] font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-indigo-100 active:scale-95 transition-all">
           <span className="text-lg">🗂️</span> লাইভ ডিপেন্ডেন্সি ট্রি
         </button>
       </div>
 
       {/* 8 PREMIUM GRID CARDS */}
       <div className="px-5 grid grid-cols-2 gap-3.5">
-        
+
         {/* 1. System Overview */}
         <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('overview')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
@@ -345,7 +351,7 @@ export function AdminDashboard() {
               {activeCard === 'overview' ? (
                 <>{activeSubCard ? (
                   <div className="flex flex-col h-full animate-in fade-in zoom-in duration-200">
-                    <button onClick={() => setActiveSubCard(null)} className="mb-3 text-[13px] text-slate-600 font-bold hover:text-slate-900 flex items-center gap-1.5 w-fit bg-slate-200/60 px-3 py-1.5 rounded-lg transition-colors active:scale-95">
+                    <button type="button" onClick={() => setActiveSubCard(null)} className="mb-3 text-[13px] text-slate-600 font-bold hover:text-slate-900 flex items-center gap-1.5 w-fit bg-slate-200/60 px-3 py-1.5 rounded-lg transition-colors active:scale-95">
                       ← Back
                     </button>
                     <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col">
@@ -354,7 +360,8 @@ export function AdminDashboard() {
                           {activeSubCard} Data Log
                           <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse border border-emerald-200">LIVE</span>
                         </h3>
-                        <button 
+                        <button
+                          type="button"
                           onClick={() => {
                             navigator.clipboard.writeText(activeSubCard === 'Source Tree' ? liveTree : getLogContent(activeSubCard));
                             setCopiedText(true);
@@ -374,32 +381,32 @@ export function AdminDashboard() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
-                  <div onClick={() => setActiveSubCard('System Phase')} className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('System Phase')} onKeyDown={(e) => handleSubCardKeyDown(e, 'System Phase')} className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">System Phase</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">Phase {data.phase}</p>
                   </div>
-                  <div onClick={() => setActiveSubCard('Architecture')} className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('Architecture')} onKeyDown={(e) => handleSubCardKeyDown(e, 'Architecture')} className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">Architecture</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">Modular</p>
                   </div>
-                  <div onClick={() => setActiveSubCard('Microservices')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('Microservices')} onKeyDown={(e) => handleSubCardKeyDown(e, 'Microservices')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Microservices</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">14 Active</p>
                   </div>
-                  <div onClick={() => setActiveSubCard('Master Node')} className="bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('Master Node')} onKeyDown={(e) => handleSubCardKeyDown(e, 'Master Node')} className="bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Master Node</h4>
                     <p className="text-lg font-black text-green-700 mt-0.5">Healthy</p>
                   </div>
-                  <div onClick={() => setActiveSubCard('API Gateway')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('API Gateway')} onKeyDown={(e) => handleSubCardKeyDown(e, 'API Gateway')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">API Gateway</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">Online</p>
                   </div>
-                  <div onClick={() => setActiveSubCard('Avg Load')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('Avg Load')} onKeyDown={(e) => handleSubCardKeyDown(e, 'Avg Load')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Avg Load</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">12.4%</p>
                   </div>
                   {/* 7th Card: Dependency Tree (Full Width) */}
-                  <div onClick={() => setActiveSubCard('Source Tree')} className="col-span-2 bg-indigo-50/40 border border-indigo-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-indigo-300 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                  <div role="button" tabIndex={0} onClick={() => setActiveSubCard('Source Tree')} onKeyDown={(e) => handleSubCardKeyDown(e, 'Source Tree')} className="col-span-2 bg-indigo-50/40 border border-indigo-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-indigo-300 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-extrabold text-indigo-500 tracking-wider mb-0.5 uppercase flex items-center gap-1.5"><span className="text-sm">🗂️</span> SOURCE MAP</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">Dependency Tree</p>
                   </div>
