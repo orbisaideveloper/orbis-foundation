@@ -60,3 +60,21 @@ describe('Premium Admin Dashboard UI with 8 Cards & Sidebar', () => {
     unmount();
   });
 });
+
+describe('Overview Modal Sub-Cards Test', () => {
+  it('renders overview sub-cards correctly when clicked', async () => {
+    const { render, screen, fireEvent, waitFor } = await import('@testing-library/react');
+    const { default: AdminDashboard } = await import('../../dashboard/AdminDashboard');
+    const { unmount } = render(<AdminDashboard />);
+    
+    const overviewCard = screen.getAllByText(/Overview/i)[0];
+    fireEvent.click(overviewCard);
+    
+    await waitFor(() => {
+      expect(screen.getByText(/Microservices/i)).toBeInTheDocument();
+      expect(screen.getByText(/API Gateway/i)).toBeInTheDocument();
+    });
+    
+    unmount();
+  });
+});
