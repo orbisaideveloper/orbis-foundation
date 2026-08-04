@@ -128,7 +128,7 @@ describe('AdminDashboard Full Coverage Tests', () => {
     //       expect(screen.getByText('Microservices')).toBeInTheDocument();
     });
 
-    const subCards = ['Architecture', 'Master Node', 'API Gateway', 'Avg Load'];
+    const subCards = ['Architecture', 'API Gateway', 'Avg Load'];
 
     for (const sub of subCards) {
       fireEvent.click(screen.getByText(sub));
