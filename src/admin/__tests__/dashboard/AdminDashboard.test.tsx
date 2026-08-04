@@ -99,7 +99,7 @@ describe('Sub-Card Interaction & Log Selection', () => {
     // লগ ওপেন হলো কিনা চেক
     await waitFor(() => {
       expect(screen.getByText(/Architecture Data Log/i)).toBeInTheDocument();
-      expect(screen.getByText(/LIVE/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/LIVE/i).length).toBeGreaterThan(0);
     });
     
     // ব্যাক বাটনে ক্লিক
