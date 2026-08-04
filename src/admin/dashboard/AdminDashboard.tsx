@@ -4,6 +4,31 @@ import { motion, AnimatePresence } from 'framer-motion';
 export function AdminDashboard() {
   const [activeCard, setActiveCard] = useState<string | null>(null);
   const [activeSubCard, setActiveSubCard] = useState<string | null>(null);
+  const [copiedText, setCopiedText] = useState(false);
+
+  useEffect(() => {
+    if (activeSubCard || activeCard) {
+      window.history.pushState({ modal: true }, '');
+      const handlePop = () => { setActiveSubCard(null); setActiveCard(null); };
+      window.addEventListener('popstate', handlePop);
+      
+  const getLogContent = (cardName: string | null) => {
+    if (!cardName) return '';
+    const time = new Date().toISOString();
+    const details: Record<string, string> = {
+      'System Phase': '> Phase 04 active.\n> Core modules synced... [OK]\n> No phase anomalies detected.',
+      'Architecture': '> Modular structure integrity... [STABLE]\n> Dependency tree optimized.',
+      'Microservices': '> Pinging 14 active services...\n> Auth, Data, Storage... [ALL ONLINE]\n> Cluster latency: 8ms.',
+      'Master Node': '> Master Node Health: 100%\n> CPU: 12% | RAM: 45%\n> Node synchronization complete.',
+      'API Gateway': '> Traffic routing... Active\n> Request rate: 450 req/s\n> Gateway firewall: SECURE.',
+      'Avg Load': '> Current Server Load: 12.4%\n> Traffic distribution optimal.\n> Auto-scaling standby... [READY].'
+    };
+    return `[SYSTEM LOG] - ${time}\nTarget: ${cardName}\nStatus: ACTIVE / SECURE\n\nFetching real-time encrypted telemetry...\n${details[cardName] || '> Systems normal.'}\n\nData stream is ready for copying.`;
+  };
+
+  return () => window.removeEventListener('popstate', handlePop);
+    }
+  }, [activeSubCard, activeCard]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [data, setData] = useState({
     engine: 'Loading...', uptime: '---', health: 'Checking...', db: 'N/A',
@@ -214,25 +239,26 @@ export function AdminDashboard() {
                       ← Back
                     </button>
                     <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col">
-                      <h3 className="font-bold text-slate-800 mb-3 text-sm flex justify-between items-center">
-                        {activeSubCard} Data Log
-                        <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse border border-emerald-200">LIVE</span>
-                      </h3>
-                      {/* select-text এবং cursor-text দেওয়া হয়েছে যাতে আপনি কপি করতে পারেন */}
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                          {activeSubCard} Data Log
+                          <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse border border-emerald-200">LIVE</span>
+                        </h3>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(getLogContent(activeSubCard));
+                            setCopiedText(true);
+                            setTimeout(() => setCopiedText(false), 2000);
+                          }}
+                          className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
+                        >
+                          {copiedText ? '✓ Copied' : '⧉ Copy'}
+                        </button>
+                      </div>
                       <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
                         <pre className="font-mono text-[12px] text-emerald-400 whitespace-pre-wrap leading-relaxed select-text">
-{`[SYSTEM LOG] - ${new Date().toISOString()}
-Target: ${activeSubCard}
-Status: ACTIVE / SECURE
-
-Fetching real-time encrypted telemetry...
-> Validating node connections... [OK]
-> Checking latency... 12ms [OPTIMAL]
-> Loading detailed metrics stream...
-
-All systems operating within normal parameters.
-No anomalies detected. Data stream is ready for copying.
-`}</pre>
+{getLogContent(activeSubCard)}
+</pre>
                       </div>
                     </div>
                   </div>
