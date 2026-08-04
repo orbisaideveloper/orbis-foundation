@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 // --- ১. আপনার পুরোনো লজিক ---
-function getDirectoryTree(dirPath, indent = '') {
+function getDirectoryTree(dirPath, indent = '', changedFiles = []) {
     let result = '';
     if (!fs.existsSync(dirPath)) return 'Directory not found';
     const items = fs.readdirSync(dirPath);
@@ -16,11 +16,17 @@ function getDirectoryTree(dirPath, indent = '') {
         if (item === 'node_modules' || item.startsWith('.') || item === 'dist') return;
         const fullPath = path.join(dirPath, item);
         const stat = fs.statSync(fullPath);
+        
+        // ফাইলটি মডিফাই হয়েছে কিনা চেক করা
+        const relPath = fullPath.replace(/\\/g, '/');
+        const isChanged = changedFiles.some(f => relPath.endsWith(f));
+        const marker = isChanged ? ' ✨ [NEWLY EDITED]' : '';
+
         if (stat.isDirectory()) {
-            result += `${indent}📁 ${item}/\n`;
-            result += getDirectoryTree(fullPath, indent + '  │  ');
+            result += `${indent}📁 ${item}/${marker}\n`;
+            result += getDirectoryTree(fullPath, indent + '  │  ', changedFiles);
         } else {
-            result += `${indent}  📄 ${item}\n`;
+            result += `${indent}  📄 ${item}${marker}\n`;
         }
     });
     return result;
@@ -91,7 +97,26 @@ app.post('/api/orbis-command', (req, res) => {
     const srcPath = path.join(rootPath, 'src');
 
     if (command.includes('ট্রি') || command.includes('ফোল্ডার') || command.includes('tree') || command.includes('সোর্স কোড')) {
-        output += `--- LIVE SOURCE CODE DIRECTORY ---\n\n` + getDirectoryTree(rootPath);
+        let changedFiles = [];
+        let logBook = '\n\n========================================\n';
+        logBook += ' 🕒 RECENT EDIT LOGBOOK & SECURITY AUDIT\n';
+        logBook += '========================================\n';
+        
+        try {
+            const { execSync } = require('child_process');
+            
+            // সর্বশেষ পরিবর্তিত ফাইলগুলো বের করা
+            const changedFilesRaw = execSync('git diff --name-only HEAD~1 HEAD', { cwd: rootPath }).toString();
+            changedFiles = changedFilesRaw.split('\n').filter(Boolean);
+            
+            // সর্বশেষ ৩টি হিস্ট্রি এবং ফাইলের লিস্ট
+            const gitHistory = execSync('git log -n 3 --name-status --date=local --pretty=format:"\n[COMMIT %h] 📝 %s\n⏰ %cd"', { cwd: rootPath }).toString();
+            logBook += gitHistory;
+        } catch (e) {
+            logBook += '\n⚠️ Git history unavailable: ' + e.message;
+        }
+        
+        output += `--- LIVE SOURCE CODE DIRECTORY ---\n\n` + getDirectoryTree(rootPath, '', changedFiles) + logBook;
     } 
     else if (command.includes('কানেকশন') || command.includes('ডিপেন্ডেন্সি')) {
         output += `--- DEPENDENCY MAP ---\n\n`;
