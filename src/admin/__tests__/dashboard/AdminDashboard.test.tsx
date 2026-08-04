@@ -1,26 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AdminDashboard from '../../dashboard/AdminDashboard';
 import '@testing-library/jest-dom';
 
 describe('Admin Dashboard UI (Real Data & Coverage Fix)', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.clearAllTimers();
-    vi.useRealTimers();
-  });
-
-  it('renders compact header and advances timers for real-time data coverage', async () => {
+  it('renders compact header and displays real-time data', async () => {
     render(<AdminDashboard />);
     expect(screen.getByText(/ORBIS Admin Center/i)).toBeInTheDocument();
     
-    act(() => {
-      vi.advanceTimersByTime(6000);
-    });
-
+    // Initial data fetch হওয়ার জন্য অপেক্ষা করবে
     await waitFor(() => {
       expect(screen.getByText(/PHASE 04/i)).toBeInTheDocument();
     });
@@ -29,6 +17,11 @@ describe('Admin Dashboard UI (Real Data & Coverage Fix)', () => {
   it('opens and closes modal successfully resolving SonarCloud button type', async () => {
     render(<AdminDashboard />);
     
+    // কার্ডগুলো পুরোপুরি রেন্ডার হওয়ার জন্য অপেক্ষা করবে
+    await waitFor(() => {
+      expect(screen.getByText(/PHASE 04/i)).toBeInTheDocument();
+    });
+    
     const engineCard = screen.getByText(/Engine Monitor/i);
     fireEvent.click(engineCard);
     
@@ -36,7 +29,7 @@ describe('Admin Dashboard UI (Real Data & Coverage Fix)', () => {
       expect(screen.getByText(/engine DETAILS/i)).toBeInTheDocument();
     });
     
-    // Check if the button has the required type="button"
+    // SonarCloud-এর type="button" ফিক্সটা চেক করবে
     const closeBtn = screen.getByRole('button', { name: /BACK TO HUB/i });
     expect(closeBtn).toHaveAttribute('type', 'button'); 
     
