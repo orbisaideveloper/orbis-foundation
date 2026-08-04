@@ -142,33 +142,39 @@ export function AdminDashboard() {
 
       
       {/* ORBIS Command Center Auto-Injected */}
-      {!showOutput ? (
-        <div className="w-full px-5 mb-4">
-          <CommandBar onCommandSubmit={executeOrbisCommand} />
-        </div>
-      ) : (
-        <div className="w-full px-5 mb-4 z-10 relative">
-          <div className="bg-white rounded-[20px] shadow-sm p-4 border border-slate-200">
-            <div className="flex justify-between items-center mb-3">
-              <h2 className="text-[14px] font-bold text-teal-700">Terminal Output</h2>
-              <button onClick={() => setShowOutput(false)} className="bg-slate-100 hover:bg-slate-200 px-4 py-1.5 rounded-xl text-[12px] text-slate-700 font-bold transition-colors">← ব্যাক</button>
-            </div>
-            <div className="relative bg-slate-900 text-emerald-400 p-4 rounded-xl font-mono text-[12px] overflow-auto max-h-96 shadow-inner">
-              <button 
-                onClick={() => { 
-                  navigator.clipboard.writeText(outputData); 
-                  setCopiedText(true); 
-                  setTimeout(() => setCopiedText(false), 2000); 
-                }} 
-                className="absolute top-3 right-3 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-sm"
-              >
-                {copiedText ? '✓ Copied' : '⧉ কপি করুন'}
+      <div className="w-full px-5 mb-4">
+        <CommandBar onCommandSubmit={executeOrbisCommand} />
+      </div>
+
+      <AnimatePresence>
+        {showOutput && (
+          <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed inset-0 bg-white z-[60] flex flex-col">
+            <div className="px-5 py-4 pt-6 border-b border-slate-100 flex justify-between items-center shadow-sm">
+              <h2 className="text-[16px] font-bold text-teal-700 flex items-center gap-2">
+                <span className="text-xl">💻</span> Terminal Output
+              </h2>
+              <button type="button" onClick={() => setShowOutput(false)} className="bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold text-[12px] hover:bg-slate-200 transition-colors">
+                Close
               </button>
-              <pre className="whitespace-pre-wrap mt-2">{outputData}</pre>
             </div>
-          </div>
-        </div>
-      )}
+            <div className="flex-1 p-5 overflow-hidden bg-slate-50 flex flex-col">
+              <div className="bg-slate-900 text-emerald-400 p-4 rounded-xl font-mono text-[13px] flex-1 overflow-auto shadow-inner relative">
+                <button 
+                  onClick={() => { 
+                    navigator.clipboard.writeText(outputData); 
+                    setCopiedText(true); 
+                    setTimeout(() => setCopiedText(false), 2000); 
+                  }} 
+                  className="absolute top-3 right-3 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-sm z-10"
+                >
+                  {copiedText ? '✓ Copied' : '⧉ Copy'}
+                </button>
+                <pre className="whitespace-pre-wrap mt-6 select-text pb-4">{outputData}</pre>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 8 PREMIUM GRID CARDS (Restored all options) */}
       <div className="px-5 grid grid-cols-2 gap-3.5">
