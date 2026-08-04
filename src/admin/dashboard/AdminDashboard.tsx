@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import CommandBar from '../../components/CommandCenter/CommandBar';
+
 
 
 const getLogContent = (cardName: string | null) => {
@@ -27,7 +29,27 @@ export function AdminDashboard() {
     if (activeSubCard || activeCard) {
       window.history.pushState({ modal: true }, '');
       const handlePop = () => { setActiveSubCard(null); setActiveCard(null); };
-      window.addEventListener('popstate', handlePop);return () => window.removeEventListener('popstate', handlePop);
+      window.addEventListener('popstate', handlePop);
+  const [showOutput, setShowOutput] = React.useState(false);
+  const [outputData, setOutputData] = React.useState('');
+
+  const executeOrbisCommand = async (command: string) => {
+    setShowOutput(true);
+    setOutputData(`[ORBIS SYSTEM] Executing: "${command}"\nScanning...`);
+    try {
+      const response = await fetch('http://localhost:3001/api/orbis-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command })
+      });
+      const data = await response.json();
+      setOutputData(`[RESULT]\n${data.result}`);
+    } catch (error) {
+      setOutputData(`[ERROR] Bridge not running. Please run 'node orbis-server/bridge.js' in a new termux session.`);
+    }
+  };
+
+return () => window.removeEventListener('popstate', handlePop);
     }
   }, [activeSubCard, activeCard]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -309,7 +331,25 @@ export function AdminDashboard() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    
+      {/* ORBIS Command Center */}
+      {!showOutput ? (
+        <div className="w-full px-4 pb-8 mt-6">
+          <CommandBar onCommandSubmit={executeOrbisCommand} />
+        </div>
+      ) : (
+        <div className="flex-1 w-full mt-6 bg-white rounded-xl shadow-md p-4 border border-gray-200 z-50">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-bold text-teal-600">Terminal Output</h2>
+            <button onClick={() => setShowOutput(false)} className="bg-gray-100 hover:bg-gray-200 px-4 py-1.5 rounded-lg text-sm text-gray-700 font-semibold transition">← ব্যাক</button>
+          </div>
+          <div className="relative bg-gray-950 text-green-400 p-4 rounded-lg font-mono text-sm overflow-auto h-96 shadow-inner">
+            <button onClick={() => navigator.clipboard.writeText(outputData)} className="absolute top-3 right-3 bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-md text-xs transition">কপি করুন</button>
+            <pre className="whitespace-pre-wrap">{outputData}</pre>
+          </div>
+        </div>
+      )}
+</div>
   );
 }
 export default AdminDashboard;
