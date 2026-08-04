@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-export default function AdminDashboard() {
+export function AdminDashboard() {
   const [activeCard, setActiveCard] = useState<string | null>(null);
 
   // === REAL DATA STATES (No Hardcoded Mocks) ===
@@ -194,3 +194,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+export default AdminDashboard;
