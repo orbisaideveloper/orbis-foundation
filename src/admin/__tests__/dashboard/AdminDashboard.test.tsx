@@ -8,7 +8,7 @@ describe('Premium Admin Dashboard UI with 8 Cards & Sidebar', () => {
     const { unmount } = render(<AdminDashboard />);
     
     // Check old logics/cards are present
-    expect(screen.getByText(/Overview/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Overview/i)[0]).toBeInTheDocument();
     expect(screen.getByText(/Runtime/i)).toBeInTheDocument();
     expect(screen.getByText(/Release/i)).toBeInTheDocument();
     expect(screen.getByText(/Modules/i)).toBeInTheDocument();
