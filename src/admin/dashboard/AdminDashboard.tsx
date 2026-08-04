@@ -44,24 +44,25 @@ export function AdminDashboard() {
     }
   };
 
+  const fetchLiveTree = async () => {
+    try {
+      const response = await fetch('/api/orbis-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: 'সোর্স কোড দেখাও' })
+      });
+      const data = await response.json();
+      setLiveTree(data.result);
+    } catch (error) {
+      setLiveTree('[ERROR] Live Tree Fetch Failed. Check API connection.');
+    }
+  };
+
   useEffect(() => {
-    if (showOutput) {
-      const fetchLiveTree = async () => {
-        try {
-          const response = await fetch('/api/orbis-command', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ command: 'সোর্স কোড দেখাও' })
-          });
-          const data = await response.json();
-          setLiveTree(data.result);
-        } catch (error) {
-          setLiveTree('[ERROR] Live Tree Fetch Failed. Check API connection.');
-        }
-      };
+    if (showOutput || activeSubCard === 'Source Tree') {
       fetchLiveTree();
     }
-  }, [showOutput]);
+  }, [showOutput, activeSubCard]);
 
 
   useEffect(() => {
@@ -114,7 +115,8 @@ export function AdminDashboard() {
               <div className="p-4 flex flex-col gap-2">
                 <button type="button" className="text-left px-4 py-3 rounded-xl bg-green-50 text-green-700 font-semibold border border-green-100">📊 Dashboard</button>
                 <button type="button" className="text-left px-4 py-3 rounded-xl text-slate-600 font-medium hover:bg-slate-50">⚙️ System Settings</button>
-                <button type="button" className="text-left px-4 py-3 rounded-xl text-slate-600 font-medium hover:bg-slate-50">📋 Live Logs</button>
+                <button type="button" onClick={() => { setIsSidebarOpen(false); setShowOutput(true); }} className="text-left px-4 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 flex items-center gap-3"><span className="text-lg">💻</span> ডায়াগনস্টিক টার্মিনাল</button>
+                <button type="button" onClick={() => { setIsSidebarOpen(false); setActiveCard('overview'); setActiveSubCard('Source Tree'); }} className="text-left px-4 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 flex items-center gap-3"><span className="text-lg">🗂️</span> লাইভ ডিপেন্ডেন্সি ট্রি</button>
               </div>
             </motion.div>
           </>
@@ -222,7 +224,17 @@ export function AdminDashboard() {
         )}
       </AnimatePresence>
 
-      {/* 8 PREMIUM GRID CARDS (Restored all options) */}
+            {/* QUICK ACCESS CARDS */}
+      <div className="px-5 flex gap-3 mb-4">
+        <button onClick={() => setShowOutput(true)} className="flex-1 bg-slate-900 text-white p-3 rounded-[16px] text-[13px] font-bold flex items-center justify-center gap-2 shadow-md hover:bg-slate-800 active:scale-95 transition-all border border-slate-700">
+          <span className="text-lg">💻</span> ডায়াগনস্টিক টুল
+        </button>
+        <button onClick={() => { setActiveCard('overview'); setActiveSubCard('Source Tree'); }} className="flex-1 bg-indigo-50 text-indigo-700 border border-indigo-200 p-3 rounded-[16px] text-[13px] font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-indigo-100 active:scale-95 transition-all">
+          <span className="text-lg">🗂️</span> লাইভ ট্রি
+        </button>
+      </div>
+
+      {/* 8 PREMIUM GRID CARDS */}
       <div className="px-5 grid grid-cols-2 gap-3.5">
         
         {/* 1. System Overview */}
@@ -350,7 +362,7 @@ export function AdminDashboard() {
                         </h3>
                         <button 
                           onClick={() => {
-                            navigator.clipboard.writeText(getLogContent(activeSubCard));
+                            navigator.clipboard.writeText(activeSubCard === 'Source Tree' ? liveTree : getLogContent(activeSubCard));
                             setCopiedText(true);
                             setTimeout(() => setCopiedText(false), 2000);
                           }}
@@ -361,7 +373,7 @@ export function AdminDashboard() {
                       </div>
                       <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
                         <pre className="font-mono text-[12px] text-emerald-400 whitespace-pre-wrap leading-relaxed select-text">
-{getLogContent(activeSubCard)}
+{activeSubCard === 'Source Tree' ? liveTree : getLogContent(activeSubCard)}
 </pre>
                       </div>
                     </div>
