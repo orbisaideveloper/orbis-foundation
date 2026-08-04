@@ -11,7 +11,8 @@ const getLogContent = (cardName: string | null) => {
     'Microservices': '> Pinging 14 active services...\n> Auth, Data, Storage... [ALL ONLINE]\n> Cluster latency: 8ms.',
     'Master Node': '> Master Node Health: 100%\n> CPU: 12% | RAM: 45%\n> Node synchronization complete.',
     'API Gateway': '> Traffic routing... Active\n> Request rate: 450 req/s\n> Gateway firewall: SECURE.',
-    'Avg Load': '> Current Server Load: 12.4%\n> Traffic distribution optimal.\n> Auto-scaling standby... [READY].'
+    'Avg Load': '> Current Server Load: 12.4%\n> Traffic distribution optimal.\n> Auto-scaling standby... [READY].',
+    'Source Tree': '> Scanning directory structure...\n\n📦 src/\n ┣ 📂 admin/\n ┃ ┣ 📂 dashboard/\n ┃ ┃ ┗ 📜 AdminDashboard.tsx\n ┃ ┗ 📂 __tests__/\n ┣ 📂 core/\n ┃ ┣ 📂 events/\n ┃ ┗ 📂 managers/\n ┣ 📜 App.tsx\n ┗ 📜 main.tsx\n\n> System tree mapped successfully.'
   };
   return `[SYSTEM LOG] - ${time}\nTarget: ${cardName}\nStatus: ACTIVE / SECURE\n\nFetching real-time encrypted telemetry...\n${details[cardName] || '> Systems normal.'}\n\nData stream is ready for copying.`;
 };
@@ -287,6 +288,11 @@ export function AdminDashboard() {
                   <div onClick={() => setActiveSubCard('Avg Load')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Avg Load</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">12.4%</p>
+                  </div>
+                  {/* 7th Card: Dependency Tree (Full Width) */}
+                  <div onClick={() => setActiveSubCard('Source Tree')} className="col-span-2 bg-indigo-50/40 border border-indigo-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-indigo-300 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                    <h4 className="text-[10px] font-extrabold text-indigo-500 tracking-wider mb-0.5 uppercase flex items-center gap-1.5"><span className="text-sm">🗂️</span> SOURCE MAP</h4>
+                    <p className="text-lg font-black text-slate-800 mt-0.5">Dependency Tree</p>
                   </div>
                 </div>
               )}</>
