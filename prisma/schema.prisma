@@ -11,3 +11,24 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ==========================================
+// ORBIS FOUNDATION - ADMIN PORTION (LEGO BLOCK 1)
+// ==========================================
+
+model FoundationAdminAuditLog {
+  id            String   @id @default(uuid())
+  commitHash    String? // গিটহাবের কমিট আইডি
+  actionType    String   @default("GIT_PUSH") // কী ধরনের চেঞ্জ হয়েছে
+  changedFiles  Json // যে ফাইলগুলো পরিবর্তন হয়েছে তার লিস্ট (JSON ফরম্যাটে)
+  commitMessage String? // কমিট মেসেজ
+  createdAt     DateTime @default(now()) // কখন সেভ হলো তার অটোমেটিক টাইমস্ট্যাম্প
+}
+
+model FoundationAdminMetric {
+  id         String   @id @default(uuid())
+  ramUsageMb Float? // র‍্যাম কতটুকু ব্যবহার হচ্ছে
+  cpuLoad    Float? // সিপিইউ লোড
+  status     String   @default("ONLINE") // সার্ভারের বর্তমান অবস্থা
+  recordedAt DateTime @default(now())
+}
