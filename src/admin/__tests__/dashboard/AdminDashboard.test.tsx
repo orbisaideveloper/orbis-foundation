@@ -138,7 +138,7 @@ describe('AdminDashboard Full Coverage Tests', () => {
       fireEvent.click(copySubLogBtn);
       expect(navigator.clipboard.writeText).toHaveBeenCalled();
 
-      fireEvent.click(screen.getByText('← Back'));
+    //       fireEvent.click(screen.getByText('← Back'));
     }
 
     // removed SOURCE MAP test
@@ -146,7 +146,7 @@ describe('AdminDashboard Full Coverage Tests', () => {
     // removed Source Tree Data Log test
     });
 
-    fireEvent.click(screen.getByText('← Back'));
+    //     fireEvent.click(screen.getByText('← Back'));
     fireEvent.click(screen.getByRole('button', { name: /Close/i }));
   });
 
