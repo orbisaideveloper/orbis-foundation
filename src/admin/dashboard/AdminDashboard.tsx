@@ -1,6 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+
+const getLogContent = (cardName: string | null) => {
+  if (!cardName) return '';
+  const time = new Date().toISOString();
+  const details: Record<string, string> = {
+    'System Phase': '> Phase 04 active.\n> Core modules synced... [OK]\n> No phase anomalies detected.',
+    'Architecture': '> Modular structure integrity... [STABLE]\n> Dependency tree optimized.',
+    'Microservices': '> Pinging 14 active services...\n> Auth, Data, Storage... [ALL ONLINE]\n> Cluster latency: 8ms.',
+    'Master Node': '> Master Node Health: 100%\n> CPU: 12% | RAM: 45%\n> Node synchronization complete.',
+    'API Gateway': '> Traffic routing... Active\n> Request rate: 450 req/s\n> Gateway firewall: SECURE.',
+    'Avg Load': '> Current Server Load: 12.4%\n> Traffic distribution optimal.\n> Auto-scaling standby... [READY].'
+  };
+  return `[SYSTEM LOG] - ${time}\nTarget: ${cardName}\nStatus: ACTIVE / SECURE\n\nFetching real-time encrypted telemetry...\n${details[cardName] || '> Systems normal.'}\n\nData stream is ready for copying.`;
+};
+
+
 export function AdminDashboard() {
   const [activeCard, setActiveCard] = useState<string | null>(null);
   const [activeSubCard, setActiveSubCard] = useState<string | null>(null);
@@ -10,23 +26,7 @@ export function AdminDashboard() {
     if (activeSubCard || activeCard) {
       window.history.pushState({ modal: true }, '');
       const handlePop = () => { setActiveSubCard(null); setActiveCard(null); };
-      window.addEventListener('popstate', handlePop);
-      
-  const getLogContent = (cardName: string | null) => {
-    if (!cardName) return '';
-    const time = new Date().toISOString();
-    const details: Record<string, string> = {
-      'System Phase': '> Phase 04 active.\n> Core modules synced... [OK]\n> No phase anomalies detected.',
-      'Architecture': '> Modular structure integrity... [STABLE]\n> Dependency tree optimized.',
-      'Microservices': '> Pinging 14 active services...\n> Auth, Data, Storage... [ALL ONLINE]\n> Cluster latency: 8ms.',
-      'Master Node': '> Master Node Health: 100%\n> CPU: 12% | RAM: 45%\n> Node synchronization complete.',
-      'API Gateway': '> Traffic routing... Active\n> Request rate: 450 req/s\n> Gateway firewall: SECURE.',
-      'Avg Load': '> Current Server Load: 12.4%\n> Traffic distribution optimal.\n> Auto-scaling standby... [READY].'
-    };
-    return `[SYSTEM LOG] - ${time}\nTarget: ${cardName}\nStatus: ACTIVE / SECURE\n\nFetching real-time encrypted telemetry...\n${details[cardName] || '> Systems normal.'}\n\nData stream is ready for copying.`;
-  };
-
-  return () => window.removeEventListener('popstate', handlePop);
+      window.addEventListener('popstate', handlePop);return () => window.removeEventListener('popstate', handlePop);
     }
   }, [activeSubCard, activeCard]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
