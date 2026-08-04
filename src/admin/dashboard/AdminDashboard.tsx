@@ -25,10 +25,12 @@ export function AdminDashboard() {
   const [copiedText, setCopiedText] = useState(false);
 
   const [showOutput, setShowOutput] = useState(false);
+  const [viewMode, setViewMode] = useState('diagnostic');
   const [outputData, setOutputData] = useState('');
   const [liveTree, setLiveTree] = useState('অপেক্ষা করুন, রেন্ডার সার্ভার থেকে লাইভ ট্রি আনা হচ্ছে...');
 
   const executeOrbisCommand = async (command: string) => {
+    setViewMode('diagnostic');
     setShowOutput(true);
     setOutputData(`[ORBIS SYSTEM] Executing: "${command}"\nScanning...`);
     try {
@@ -115,8 +117,8 @@ export function AdminDashboard() {
               <div className="p-4 flex flex-col gap-2">
                 <button type="button" className="text-left px-4 py-3 rounded-xl bg-green-50 text-green-700 font-semibold border border-green-100">📊 Dashboard</button>
                 <button type="button" className="text-left px-4 py-3 rounded-xl text-slate-600 font-medium hover:bg-slate-50">⚙️ System Settings</button>
-                <button type="button" onClick={() => { setIsSidebarOpen(false); setShowOutput(true); }} className="text-left px-4 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 flex items-center gap-3"><span className="text-lg">💻</span> ডায়াগনস্টিক টার্মিনাল</button>
-                <button type="button" onClick={() => { setIsSidebarOpen(false); setActiveCard('overview'); setActiveSubCard('Source Tree'); }} className="text-left px-4 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 flex items-center gap-3"><span className="text-lg">🗂️</span> লাইভ ডিপেন্ডেন্সি ট্রি</button>
+                <button type="button" onClick={() => { setIsSidebarOpen(false); setViewMode('diagnostic'); setShowOutput(true); }} className="text-left px-4 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 flex items-center gap-3"><span className="text-lg">💻</span> ডায়াগনস্টিক টার্মিনাল</button>
+                <button type="button" onClick={() => { setIsSidebarOpen(false); setViewMode('tree'); setShowOutput(true); }} className="text-left px-4 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 flex items-center gap-3"><span className="text-lg">🗂️</span> লাইভ ডিপেন্ডেন্সি ট্রি</button>
               </div>
             </motion.div>
           </>
@@ -157,9 +159,14 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      <div className="px-5 mt-4 mb-3">
-        <h2 className="text-[19px] font-bold text-slate-800">System Overview</h2>
-        <p className="text-[13px] text-slate-500">Smart Orchestration Management</p>
+      <div className="px-5 mt-4 mb-3 flex justify-between items-center">
+        <div>
+          <h2 className="text-[19px] font-bold text-slate-800">System Overview</h2>
+          <p className="text-[13px] text-slate-500">Smart Orchestration Management</p>
+        </div>
+        <button onClick={() => { setViewMode('diagnostic'); setShowOutput(true); }} className="bg-slate-900 text-white px-3 py-1.5 rounded-[12px] text-[11px] font-bold flex items-center gap-1.5 shadow-md hover:bg-slate-800 active:scale-95 transition-all">
+          <span className="text-sm">💻</span> ডায়াগনস্টিক
+        </button>
       </div>
 
       
@@ -180,57 +187,44 @@ export function AdminDashboard() {
               </button>
             </div>
             <div className="flex-1 p-4 overflow-hidden bg-slate-50 flex flex-col gap-4">
-              <div className="bg-slate-900 text-emerald-400 p-4 rounded-xl font-mono text-[13px] h-2/5 overflow-auto shadow-inner relative flex flex-col">
-                <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
-                  <span className="text-slate-400 text-[11px]">~/orbis/terminal</span>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(outputData);
-                      setCopiedText(true);
-                      setTimeout(() => setCopiedText(false), 2000);
-                    }}
-                    className="bg-slate-800 hover:bg-slate-700 text-white px-2 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
-                  >
-                    {copiedText ? '✓ Copied' : '⧉ Copy'}
-                  </button>
-                </div>
-                <pre className="whitespace-pre-wrap select-text">{outputData}</pre>
-              </div>
-
-              <div className="bg-[#0b1120] text-blue-300 p-4 rounded-xl font-mono text-[12px] flex-1 overflow-auto shadow-inner relative flex flex-col">
-                <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2 sticky top-0 bg-[#0b1120] pt-1 z-10">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                    </span>
-                    <span className="text-slate-300 font-bold uppercase tracking-wider text-[10px]">Live System Tree (Render Cloud)</span>
+              {viewMode === 'diagnostic' && (
+                <div className="bg-slate-900 text-emerald-400 p-4 rounded-xl font-mono text-[13px] flex-1 overflow-auto shadow-inner relative flex flex-col">
+                  <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2 sticky top-0 bg-slate-900 z-10">
+                    <span className="text-slate-400 text-[11px]">~/orbis/terminal</span>
+                    <button onClick={() => { navigator.clipboard.writeText(outputData); setCopiedText(true); setTimeout(() => setCopiedText(false), 2000); }} className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm">
+                      {copiedText ? '✓ Copied' : '⧉ Copy'}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(liveTree);
-                      setCopiedText(true);
-                      setTimeout(() => setCopiedText(false), 2000);
-                    }}
-                    className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
-                  >
-                    {copiedText ? '✓ Copied' : '⧉ Copy'}
-                  </button>
+                  <pre className="whitespace-pre-wrap select-text">{outputData}</pre>
                 </div>
-                <pre className="whitespace-pre-wrap select-text leading-relaxed text-[11px] pb-4">{liveTree}</pre>
-              </div>
+              )}
+
+              {viewMode === 'tree' && (
+                <div className="bg-[#0b1120] text-blue-300 p-4 rounded-xl font-mono text-[12px] flex-1 overflow-auto shadow-inner relative flex flex-col">
+                  <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2 sticky top-0 bg-[#0b1120] pt-1 z-10">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                      </span>
+                      <span className="text-slate-300 font-bold uppercase tracking-wider text-[10px]">Live System Tree (Render Cloud)</span>
+                    </div>
+                    <button onClick={() => { navigator.clipboard.writeText(liveTree); setCopiedText(true); setTimeout(() => setCopiedText(false), 2000); }} className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm">
+                      {copiedText ? '✓ Copied' : '⧉ Copy'}
+                    </button>
+                  </div>
+                  <pre className="whitespace-pre-wrap select-text leading-relaxed text-[11px] pb-4">{liveTree}</pre>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
             {/* QUICK ACCESS CARDS */}
-      <div className="px-5 flex gap-3 mb-4">
-        <button onClick={() => setShowOutput(true)} className="flex-1 bg-slate-900 text-white p-3 rounded-[16px] text-[13px] font-bold flex items-center justify-center gap-2 shadow-md hover:bg-slate-800 active:scale-95 transition-all border border-slate-700">
-          <span className="text-lg">💻</span> ডায়াগনস্টিক টুল
-        </button>
-        <button onClick={() => { setActiveCard('overview'); setActiveSubCard('Source Tree'); }} className="flex-1 bg-indigo-50 text-indigo-700 border border-indigo-200 p-3 rounded-[16px] text-[13px] font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-indigo-100 active:scale-95 transition-all">
-          <span className="text-lg">🗂️</span> লাইভ ট্রি
+      <div className="px-5 mb-4">
+        <button onClick={() => { setViewMode('tree'); setShowOutput(true); }} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 p-3 rounded-[16px] text-[13px] font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-indigo-100 active:scale-95 transition-all">
+          <span className="text-lg">🗂️</span> লাইভ ডিপেন্ডেন্সি ট্রি
         </button>
       </div>
 
