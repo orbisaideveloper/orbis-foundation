@@ -89,7 +89,25 @@ describe('AdminDashboard Full Coverage Tests', () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Mocked Command Success Response');
   });
 
-  it('handles overview sub-cards and source tree view / copy', async () => {
+  it('tests all remaining grid cards modal streams (Engine, Health, Brain, AI, Release, Modules)', async () => {
+    render(<AdminDashboard />);
+
+    const cardsToTest = ['Engine', 'Health', 'Brain Sync', 'AI Agents', 'Release', 'Modules'];
+
+    for (const cardTitle of cardsToTest) {
+      const card = screen.getByText(cardTitle);
+      fireEvent.click(card);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Streaming secure logs/i)).toBeInTheDocument();
+      });
+
+      const closeBtn = screen.getByRole('button', { name: /Close/i });
+      fireEvent.click(closeBtn);
+    }
+  });
+
+  it('handles all overview sub-cards (Architecture, Microservices, Master Node, API Gateway, Avg Load)', async () => {
     render(<AdminDashboard />);
     const overviewCard = screen.getAllByText('Overview')[0];
     fireEvent.click(overviewCard);
@@ -98,14 +116,18 @@ describe('AdminDashboard Full Coverage Tests', () => {
       expect(screen.getByText('Microservices')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('System Phase'));
-    expect(screen.getByText('System Phase Data Log')).toBeInTheDocument();
+    const subCards = ['Architecture', 'Microservices', 'Master Node', 'API Gateway', 'Avg Load'];
 
-    const copySubLogBtn = screen.getByText('⧉ Copy');
-    fireEvent.click(copySubLogBtn);
-    expect(navigator.clipboard.writeText).toHaveBeenCalled();
+    for (const sub of subCards) {
+      fireEvent.click(screen.getByText(sub));
+      expect(screen.getByText(new RegExp(`${sub} Data Log`, 'i'))).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('← Back'));
+      const copySubLogBtn = screen.getByText('⧉ Copy');
+      fireEvent.click(copySubLogBtn);
+      expect(navigator.clipboard.writeText).toHaveBeenCalled();
+
+      fireEvent.click(screen.getByText('← Back'));
+    }
 
     fireEvent.click(screen.getByText('SOURCE MAP'));
     await waitFor(() => {
@@ -114,6 +136,20 @@ describe('AdminDashboard Full Coverage Tests', () => {
 
     fireEvent.click(screen.getByText('← Back'));
     fireEvent.click(screen.getByRole('button', { name: /Close/i }));
+  });
+
+  it('submits command via CommandBar input', async () => {
+    render(<AdminDashboard />);
+    const input = screen.getByPlaceholderText('ORBIS-কে নির্দেশ দিন...');
+    fireEvent.change(input, { target: { value: 'status check' } });
+    
+    const runBtn = screen.getByText('রান');
+    fireEvent.click(runBtn);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith('/api/orbis-command', expect.any(Object));
+      expect(screen.getByText('Terminal Output')).toBeInTheDocument();
+    });
   });
 
   it('handles fetch errors gracefully in executeOrbisCommand and fetchLiveTree', async () => {
