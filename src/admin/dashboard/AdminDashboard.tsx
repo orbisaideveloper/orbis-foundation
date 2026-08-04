@@ -397,13 +397,7 @@ export function AdminDashboard() {
                   <button type="button" onClick={() => setActiveSubCard('Avg Load')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Avg Load</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">12.4%</p>
-                  </button>
-                  {/* 7th Card: Dependency Tree (Full Width) */}
-                  <button type="button" onClick={() => setActiveSubCard('Source Tree')} className="text-left col-span-2 bg-indigo-50/40 border border-indigo-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-indigo-300 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
-                    <h4 className="text-[10px] font-extrabold text-indigo-500 tracking-wider mb-0.5 uppercase flex items-center gap-1.5"><span className="text-sm">🗂️</span> SOURCE MAP</h4>
-                    <p className="text-lg font-black text-slate-800 mt-0.5">Dependency Tree</p>
-                  </button>
-                </div>
+                  </button>                </div>
               )}</>
               ) : (
                 <div className="bg-black/90 rounded-xl p-4 shadow-inner">
