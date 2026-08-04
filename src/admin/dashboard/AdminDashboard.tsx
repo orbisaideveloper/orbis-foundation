@@ -26,12 +26,13 @@ export function AdminDashboard() {
 
   const [showOutput, setShowOutput] = useState(false);
   const [outputData, setOutputData] = useState('');
+  const [liveTree, setLiveTree] = useState('অপেক্ষা করুন, রেন্ডার সার্ভার থেকে লাইভ ট্রি আনা হচ্ছে...');
 
   const executeOrbisCommand = async (command: string) => {
     setShowOutput(true);
     setOutputData(`[ORBIS SYSTEM] Executing: "${command}"\nScanning...`);
     try {
-      const response = await fetch('http://localhost:3001/api/orbis-command', {
+      const response = await fetch('/api/orbis-command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command })
@@ -39,9 +40,28 @@ export function AdminDashboard() {
       const data = await response.json();
       setOutputData(`[RESULT]\n${data.result}`);
     } catch (error) {
-      setOutputData(`[ERROR] Bridge not running. Please run 'node orbis-server/bridge.js' in a new termux session.`);
+      setOutputData(`[ERROR] Server API not responding.\nDetails: ${(error as Error).message}`);
     }
   };
+
+  useEffect(() => {
+    if (showOutput) {
+      const fetchLiveTree = async () => {
+        try {
+          const response = await fetch('/api/orbis-command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: 'সোর্স কোড দেখাও' })
+          });
+          const data = await response.json();
+          setLiveTree(data.result);
+        } catch (error) {
+          setLiveTree('[ERROR] Live Tree Fetch Failed. Check API connection.');
+        }
+      };
+      fetchLiveTree();
+    }
+  }, [showOutput]);
 
 
   useEffect(() => {
@@ -157,19 +177,33 @@ export function AdminDashboard() {
                 Close
               </button>
             </div>
-            <div className="flex-1 p-5 overflow-hidden bg-slate-50 flex flex-col">
-              <div className="bg-slate-900 text-emerald-400 p-4 rounded-xl font-mono text-[13px] flex-1 overflow-auto shadow-inner relative">
-                <button 
-                  onClick={() => { 
-                    navigator.clipboard.writeText(outputData); 
-                    setCopiedText(true); 
-                    setTimeout(() => setCopiedText(false), 2000); 
-                  }} 
-                  className="absolute top-3 right-3 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-sm z-10"
-                >
-                  {copiedText ? '✓ Copied' : '⧉ Copy'}
-                </button>
-                <pre className="whitespace-pre-wrap mt-6 select-text pb-4">{outputData}</pre>
+            <div className="flex-1 p-4 overflow-hidden bg-slate-50 flex flex-col gap-4">
+              <div className="bg-slate-900 text-emerald-400 p-4 rounded-xl font-mono text-[13px] h-2/5 overflow-auto shadow-inner relative flex flex-col">
+                <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
+                  <span className="text-slate-400 text-[11px]">~/orbis/terminal</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(outputData);
+                      setCopiedText(true);
+                      setTimeout(() => setCopiedText(false), 2000);
+                    }}
+                    className="bg-slate-800 hover:bg-slate-700 text-white px-2 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
+                  >
+                    {copiedText ? '✓ Copied' : '⧉ Copy'}
+                  </button>
+                </div>
+                <pre className="whitespace-pre-wrap select-text">{outputData}</pre>
+              </div>
+
+              <div className="bg-[#0b1120] text-blue-300 p-4 rounded-xl font-mono text-[12px] flex-1 overflow-auto shadow-inner relative flex flex-col">
+                <div className="flex items-center gap-2 mb-3 border-b border-slate-700 pb-2 sticky top-0 bg-[#0b1120] pt-1 z-10">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                  </span>
+                  <span className="text-slate-300 font-bold uppercase tracking-wider text-[10px]">Live System Tree (Render Cloud)</span>
+                </div>
+                <pre className="whitespace-pre-wrap select-text leading-relaxed text-[11px] pb-4">{liveTree}</pre>
               </div>
             </div>
           </motion.div>
