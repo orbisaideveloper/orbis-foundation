@@ -196,12 +196,24 @@ export function AdminDashboard() {
               </div>
 
               <div className="bg-[#0b1120] text-blue-300 p-4 rounded-xl font-mono text-[12px] flex-1 overflow-auto shadow-inner relative flex flex-col">
-                <div className="flex items-center gap-2 mb-3 border-b border-slate-700 pb-2 sticky top-0 bg-[#0b1120] pt-1 z-10">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                  </span>
-                  <span className="text-slate-300 font-bold uppercase tracking-wider text-[10px]">Live System Tree (Render Cloud)</span>
+                <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2 sticky top-0 bg-[#0b1120] pt-1 z-10">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    <span className="text-slate-300 font-bold uppercase tracking-wider text-[10px]">Live System Tree (Render Cloud)</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(liveTree);
+                      setCopiedText(true);
+                      setTimeout(() => setCopiedText(false), 2000);
+                    }}
+                    className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
+                  >
+                    {copiedText ? '✓ Copied' : '⧉ Copy'}
+                  </button>
                 </div>
                 <pre className="whitespace-pre-wrap select-text leading-relaxed text-[11px] pb-4">{liveTree}</pre>
               </div>
