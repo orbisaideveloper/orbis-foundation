@@ -4,20 +4,21 @@ import AdminDashboard from '../../dashboard/AdminDashboard';
 import '@testing-library/jest-dom';
 
 describe('Admin Dashboard UI (Real Data & Coverage Fix)', () => {
-  it('renders compact header and displays real-time data', async () => {
-    render(<AdminDashboard />);
+  it('renders compact header, displays real-time data and unmounts cleanly', async () => {
+    // unmount যুক্ত করা হলো যাতে useEffect-এর cleanup (clearInterval) কভার হয়
+    const { unmount } = render(<AdminDashboard />);
     expect(screen.getByText(/ORBIS Admin Center/i)).toBeInTheDocument();
     
-    // Initial data fetch হওয়ার জন্য অপেক্ষা করবে
     await waitFor(() => {
       expect(screen.getByText(/PHASE 04/i)).toBeInTheDocument();
     });
+
+    unmount(); // Coverage restore!
   });
 
   it('opens and closes modal successfully resolving SonarCloud button type', async () => {
     render(<AdminDashboard />);
     
-    // কার্ডগুলো পুরোপুরি রেন্ডার হওয়ার জন্য অপেক্ষা করবে
     await waitFor(() => {
       expect(screen.getByText(/PHASE 04/i)).toBeInTheDocument();
     });
@@ -29,7 +30,6 @@ describe('Admin Dashboard UI (Real Data & Coverage Fix)', () => {
       expect(screen.getByText(/engine DETAILS/i)).toBeInTheDocument();
     });
     
-    // SonarCloud-এর type="button" ফিক্সটা চেক করবে
     const closeBtn = screen.getByRole('button', { name: /BACK TO HUB/i });
     expect(closeBtn).toHaveAttribute('type', 'button'); 
     

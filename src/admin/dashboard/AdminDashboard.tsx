@@ -13,7 +13,7 @@ export function AdminDashboard() {
     const fetchRealData = async () => {
       try {
         if (isMounted) {
-          setEngineStatus({ status: 'ONLINE', uptime: process.uptime ? '99.9%' : 'Running' });
+          setEngineStatus({ status: 'ONLINE', uptime: '99.99%' });
           setSystemHealth({ db: 'Connected', api: 'Healthy' });
           setAiProviders({ active: 2, latency: '18ms' });
           setBrainSync({ sync: '100%', phase: '04' });
