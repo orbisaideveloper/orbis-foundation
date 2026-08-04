@@ -1,25 +1,33 @@
-import { render, screen } from '@testing-library/react';
-import '@testing-library/jest-dom';
 import { describe, it, expect } from 'vitest';
-import { AdminDashboard } from '../../dashboard/AdminDashboard';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import AdminDashboard from '../../dashboard/AdminDashboard';
+import '@testing-library/jest-dom';
 
-describe('Admin Dashboard UI (Step-307)', () => {
-  it('renders dashboard with aggregated state successfully', () => {
+describe('Admin Dashboard UI (Real Data Scalable Grid)', () => {
+  it('renders all original dashboard cards successfully', async () => {
     render(<AdminDashboard />);
 
-    // ১. হেডার চেক করা
-    expect(screen.getByText(/ORBIS/i)).toBeInTheDocument();
-    expect(screen.getByText(/Cockpit/i)).toBeInTheDocument();
-    expect(screen.getByText(/Status: SECURE/i)).toBeInTheDocument();
-
-    // ২. মডিউলার সেকশনগুলো রেন্ডার হয়েছে কি না চেক করা
     expect(screen.getByText(/System Overview/i)).toBeInTheDocument();
-    expect(screen.getByText(/Engine Status/i)).toBeInTheDocument();
-    expect(screen.getByText(/Brain Status/i)).toBeInTheDocument();
-    expect(screen.getByText(/Installed Modules/i)).toBeInTheDocument();
+    expect(screen.getByText(/Engine Monitor/i)).toBeInTheDocument();
+    expect(screen.getByText(/System Health/i)).toBeInTheDocument();
+    expect(screen.getByText(/Brain Monitor/i)).toBeInTheDocument();
+    expect(screen.getByText(/AI Providers/i)).toBeInTheDocument();
+    expect(screen.getByText(/Runtime Env/i)).toBeInTheDocument();
+    expect(screen.getByText(/Release Manager/i)).toBeInTheDocument();
+    expect(screen.getByText(/Core Modules/i)).toBeInTheDocument();
+  });
 
-    // ৩. Coming Soon ব্যাজগুলো চেক করা
-    const pendingBadges = screen.getAllByText(/Module Pending/i);
-    expect(pendingBadges.length).toBeGreaterThan(0);
+  it('opens detailed view on card click', async () => {
+    render(<AdminDashboard />);
+    
+    const engineCard = screen.getByText(/Engine Monitor/i);
+    fireEvent.click(engineCard);
+    
+    await waitFor(() => {
+      expect(screen.getByText(/engine DETAILS/i)).toBeInTheDocument();
+    });
+    
+    const closeBtn = screen.getByText(/BACK TO HUB/i);
+    fireEvent.click(closeBtn);
   });
 });
