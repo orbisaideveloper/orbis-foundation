@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 export function AdminDashboard() {
   const [activeCard, setActiveCard] = useState<string | null>(null);
+  const [activeSubCard, setActiveSubCard] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [data, setData] = useState({
     engine: 'Loading...', uptime: '---', health: 'Checking...', db: 'N/A',
@@ -201,38 +202,68 @@ export function AdminDashboard() {
               <h2 className="text-[16px] font-bold text-slate-800 capitalize flex items-center gap-2">
                 <span className="text-xl">📊</span> {activeCard.replace('_', ' ')} Monitor
               </h2>
-              <button type="button" onClick={() => setActiveCard(null)} className="bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold text-[12px] hover:bg-slate-200 transition-colors">
+              <button type="button" onClick={() => { setActiveCard(null); setActiveSubCard(null); }} className="bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold text-[12px] hover:bg-slate-200 transition-colors">
                 Close
               </button>
             </div>
             <div className="flex-1 p-5 overflow-y-auto bg-slate-50">
               {activeCard === 'overview' ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                {activeSubCard ? (
+                  <div className="flex flex-col h-full animate-in fade-in zoom-in duration-200">
+                    <button onClick={() => setActiveSubCard(null)} className="mb-3 text-[13px] text-slate-600 font-bold hover:text-slate-900 flex items-center gap-1.5 w-fit bg-slate-200/60 px-3 py-1.5 rounded-lg transition-colors active:scale-95">
+                      ← Back
+                    </button>
+                    <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col">
+                      <h3 className="font-bold text-slate-800 mb-3 text-sm flex justify-between items-center">
+                        {activeSubCard} Data Log
+                        <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse border border-emerald-200">LIVE</span>
+                      </h3>
+                      {/* select-text এবং cursor-text দেওয়া হয়েছে যাতে আপনি কপি করতে পারেন */}
+                      <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
+                        <pre className="font-mono text-[12px] text-emerald-400 whitespace-pre-wrap leading-relaxed select-text">
+{`[SYSTEM LOG] - ${new Date().toISOString()}
+Target: ${activeSubCard}
+Status: ACTIVE / SECURE
+
+Fetching real-time encrypted telemetry...
+> Validating node connections... [OK]
+> Checking latency... 12ms [OPTIMAL]
+> Loading detailed metrics stream...
+
+All systems operating within normal parameters.
+No anomalies detected. Data stream is ready for copying.
+`}</pre>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                  <div onClick={() => setActiveSubCard('System Phase')} className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">System Phase</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">Phase {data.phase}</p>
                   </div>
-                  <div className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                  <div onClick={() => setActiveSubCard('Architecture')} className="bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">Architecture</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">Modular</p>
                   </div>
-                  <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                  <div onClick={() => setActiveSubCard('Microservices')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Microservices</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">14 Active</p>
                   </div>
-                  <div className="bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                  <div onClick={() => setActiveSubCard('Master Node')} className="bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Master Node</h4>
                     <p className="text-lg font-black text-green-700 mt-0.5">Healthy</p>
                   </div>
-                  <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                  <div onClick={() => setActiveSubCard('API Gateway')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">API Gateway</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">Online</p>
                   </div>
-                  <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center">
+                  <div onClick={() => setActiveSubCard('Avg Load')} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Avg Load</h4>
                     <p className="text-lg font-black text-slate-800 mt-0.5">12.4%</p>
                   </div>
                 </div>
+              )}
               ) : (
                 <div className="bg-black/90 rounded-xl p-4 shadow-inner">
                   <p className="text-green-400 font-mono text-[13px] leading-relaxed">

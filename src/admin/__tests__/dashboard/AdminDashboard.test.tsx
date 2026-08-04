@@ -78,3 +78,39 @@ describe('Overview Modal Sub-Cards Test', () => {
     unmount();
   });
 });
+
+describe('Sub-Card Interaction & Log Selection', () => {
+  it('opens sub-card logs, allows text selection, and navigates back', async () => {
+    const { render, screen, fireEvent, waitFor } = await import('@testing-library/react');
+    const { default: AdminDashboard } = await import('../../dashboard/AdminDashboard');
+    const { unmount } = render(<AdminDashboard />);
+    
+    // মেইন কার্ড ওপেন
+    const overviewCard = screen.getAllByText('Overview')[0];
+    fireEvent.click(overviewCard);
+    
+    await waitFor(() => {
+      expect(screen.getByText('Architecture')).toBeInTheDocument();
+    });
+    
+    // সাব-কার্ডে ক্লিক (যেমন: Architecture)
+    fireEvent.click(screen.getByText('Architecture'));
+    
+    // লগ ওপেন হলো কিনা চেক
+    await waitFor(() => {
+      expect(screen.getByText(/Architecture Data Log/i)).toBeInTheDocument();
+      expect(screen.getByText(/LIVE/i)).toBeInTheDocument();
+    });
+    
+    // ব্যাক বাটনে ক্লিক
+    fireEvent.click(screen.getByText(/Back/i));
+    
+    // আবার পুরনো গ্রিডে ফিরে আসলো কিনা চেক
+    await waitFor(() => {
+      expect(screen.queryByText(/Architecture Data Log/i)).not.toBeInTheDocument();
+      expect(screen.getByText('Avg Load')).toBeInTheDocument();
+    });
+    
+    unmount();
+  });
+});
