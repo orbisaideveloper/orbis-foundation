@@ -1,11 +1,11 @@
-import '@testing-library/jest-dom';
+import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import App from './App';
+import '@testing-library/jest-dom';
 
 describe('App Component', () => {
   it('renders the application correctly', async () => {
     render(<App />);
-    // Layout header is rendered immediately, or wait for it
-    expect(await screen.findByText(/ORBIS Admin Command Center/i)).toBeInTheDocument();
+    expect(await screen.findByText(/ORBIS Center/i)).toBeInTheDocument();
   });
 });

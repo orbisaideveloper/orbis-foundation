@@ -6,6 +6,6 @@ import '@testing-library/jest-dom';
 describe('AdminViews Component', () => {
   it('renders Dashboard seamlessly without old clutter', () => {
     render(<AdminViews />);
-    expect(screen.getByText(/ORBIS Admin Center/i)).toBeInTheDocument();
+    expect(screen.getByText(/ORBIS Center/i)).toBeInTheDocument();
   });
 });
