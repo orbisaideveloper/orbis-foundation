@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const getLogContent = (cardName: string | null) => {
   if (!cardName) return '';
-  const time = new Date().toISOString();
+  const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) + ' (IST)';
   const details: Record<string, string> = {
     'System Phase': '> Phase 04 active.\n> Core modules synced... [OK]\n> No phase anomalies detected.',
     'Architecture': '> Modular structure integrity... [STABLE]\n> Dependency tree optimized.',
