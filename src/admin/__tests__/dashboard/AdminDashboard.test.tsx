@@ -36,12 +36,24 @@ describe('AdminDashboard Full Coverage Tests', () => {
     unmount();
   });
 
-  it('opens and closes sidebar and triggers menu items', () => {
+  it('opens and closes sidebar via overlay backdrop and close button', () => {
     render(<AdminDashboard />);
     const hamburgerBtn = screen.getAllByRole('button')[0];
     fireEvent.click(hamburgerBtn);
 
     expect(screen.getByText(/System Settings/i)).toBeInTheDocument();
+
+    const backdrop = document.querySelector('.fixed.inset-0.bg-black\\/20');
+    if (backdrop) fireEvent.click(backdrop);
+
+    fireEvent.click(screen.getAllByRole('button')[0]);
+    const closeBtn = screen.getByText('✕');
+    fireEvent.click(closeBtn);
+  });
+
+  it('opens terminal output from sidebar buttons', () => {
+    render(<AdminDashboard />);
+    fireEvent.click(screen.getAllByRole('button')[0]);
 
     const diagSidebarBtn = screen.getByText('ডায়াগনস্টিক টার্মিনাল');
     fireEvent.click(diagSidebarBtn);
@@ -107,7 +119,7 @@ describe('AdminDashboard Full Coverage Tests', () => {
     }
   });
 
-  it('handles all overview sub-cards (Architecture, Microservices, Master Node, API Gateway, Avg Load)', async () => {
+  it('handles all overview sub-cards and test fallback log content', async () => {
     render(<AdminDashboard />);
     const overviewCard = screen.getAllByText('Overview')[0];
     fireEvent.click(overviewCard);
