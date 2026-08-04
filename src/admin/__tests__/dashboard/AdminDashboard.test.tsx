@@ -67,7 +67,7 @@ describe('Overview Modal Sub-Cards Test', () => {
     const { default: AdminDashboard } = await import('../../dashboard/AdminDashboard');
     const { unmount } = render(<AdminDashboard />);
     
-    const overviewCard = screen.getAllByText(/Overview/i)[0];
+    const overviewCard = screen.getAllByText('Overview')[0];
     fireEvent.click(overviewCard);
     
     await waitFor(() => {
