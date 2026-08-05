@@ -137,13 +137,29 @@ export function AdminDashboard() {
     let isMounted = true;
     const fetchRealData = async () => {
       if (isMounted) {
-        setData({
-          engine: 'ONLINE', uptime: '99.99%', health: 'Healthy', db: 'Connected',
-          ai: '2 Active', latency: '18ms', sync: '100%', phase: '04',
-          runtime: 'Node.js', runtimeVer: 'v24.18.0',
-          release: 'v4.1.10', releaseType: 'Automated CI/CD',
-          core: 'Active', coreStatus: 'All nominal'
-        });
+        try {
+          const res = await fetch('/api/system-stats');
+          const stats = await res.json();
+          setData({
+            engine: stats.status, 
+            uptime: stats.uptime, 
+            health: parseFloat(stats.ramUsedPercent) < 85 ? 'Optimal' : 'Warning', 
+            db: 'Secured',
+            ai: 'Active', 
+            latency: stats.load + 'ms', 
+            sync: 'Synced', 
+            phase: '04',
+            runtime: 'Node.js', 
+            runtimeVer: stats.arch,
+            release: stats.release.substring(0, 15), 
+            releaseType: stats.platform,
+            core: stats.cpuCores + ' Cores', 
+            coreStatus: parseFloat(stats.load) < 5 ? 'All nominal' : 'High Load'
+          });
+          setSysStats(stats); // পপআপের জন্যও রিয়েল ডেটা সিঙ্ক করা হলো
+        } catch (err) {
+          console.error(err);
+        }
       }
     };
     fetchRealData();
@@ -453,7 +469,10 @@ export function AdminDashboard() {
                 <div className="bg-black/90 rounded-xl p-4 shadow-inner">
                   <p className="text-green-400 font-mono text-[13px] leading-relaxed">
                     [SYSTEM] Streaming secure logs for {activeCard}...<br/>
-                    [STATUS] Connection established.<br/>
+                    [STATUS] Connection established.<br/><br/>
+                    <span className="text-teal-300 block mt-2 whitespace-pre-wrap">
+                      {generateRawTelemetry(activeCard === 'health' ? 'Health' : activeCard === 'engine' ? 'Engine' : activeCard === 'core' ? 'Architecture' : activeCard === 'runtime' ? 'Microservices' : activeCard === 'release' ? 'Master Node' : activeCard, sysStats)}
+                    </span>
                     <span className="animate-pulse">_</span>
                   </p>
                 </div>
