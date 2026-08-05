@@ -297,3 +297,12 @@ app.listen(PORT, () => {
 });
 
 // Multi-model co-existence active: TinyLlama & Qwen 2.5 Bridge Routing
+
+// --- Multi-Agent Collaboration (TinyLlama + Qwen 2.5 MoA Router) ---
+function getActiveAiModel(prompt) {
+    // ছোট বা দ্রুত উত্তরের জন্য TinyLlama, আর ডিপ লজিকের জন্য Qwen 2.5 1.5B রাউট করা
+    if (prompt && prompt.length < 50) {
+        return "tinyllama";
+    }
+    return "qwen2.5:1.5b";
+}
