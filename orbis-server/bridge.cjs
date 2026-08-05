@@ -205,49 +205,98 @@ app.post('/api/orbis-command', (req, res) => {
     // ৩. নতুন ইন্টেলিজেন্ট ইঞ্জিন (শুধুমাত্র ভয়েস/ডায়াগনস্টিকের জন্য)
     // ==========================================
     else {
-        output += `🗣️ আপনার প্রশ্ন: "${command}"\n\n`;
-        output += `--- 🧠 ORBIS INTELLIGENT ENGINE ---\n\n`;
+        let output = `🗣️ আপনার প্রশ্ন: "${command}"\n\n`;
+        output += `+-------------------------------------------------------------------------+\n`;
+        output += `| 🔍 ORBIS ইন্টেলিজেন্ট স্ক্যানার: ডিপেন্ডেন্সি ম্যাপ                      |\n`;
+        output += `+-------------------------------------------------------------------------+\n\n`;
 
-        const stopWords = ['আমাকে', 'একটু', 'মানে', 'কোথায়', 'কি', 'কী', 'কেন', 'কিভাবে', 'কীভাবে', 'দেখাও', 'করো', 'দাও', 'এর', 'মধ্যে', 'টুল', 'টি', 'যে', 'লিস্ট', 'গুলো', 'গুলা', 'সম্পর্কে', 'খুঁজে', 'বের', 'করে', 'কোন', 'কোনো', 'সাথে', 'জড়িত', 'আছে', 'একটা', 'আগে', 'নেমে', 'নামে', 'দিয়ে', 'দিয়া'];
-        
-        let words = command.toLowerCase().split(/[\s,?.!]+/);
-        words = words.filter(w => !stopWords.includes(w) && w.length > 2);
-
-        let keyword = words.length > 0 ? words.sort((a,b) => b.length - a.length)[0] : '';
-
-        const dictionary = {
-            'ডাটাবেজ': 'prisma', 'ডাটাবেস': 'prisma', 'database': 'prisma',
-            'ভয়েস': 'command', 'voice': 'command', 'মাইক্রোফোন': 'command',
-            'ড্যাশবোর্ড': 'dashboard', 'লটারি': 'lottery'
-        };
-        if (dictionary[keyword]) keyword = dictionary[keyword];
-
-        if (!keyword) {
-            output += `❌ মডিউলের নাম পরিষ্কার নয়। দয়া করে নির্দিষ্ট নাম বলুন (যেমন: ডাটাবেজ, ড্যাশবোর্ড)।`;
-        } else {
-            output += `🔍 '${keyword}' লজিকের জন্য লাইভ সোর্স কোড স্ক্যান করা হচ্ছে...\n`;
-            
-            let foundFiles = [];
-            if (fs.existsSync(srcPath)) foundFiles = foundFiles.concat(searchCodeFiles(srcPath, keyword));
-            if (fs.existsSync(prismaPath)) foundFiles = foundFiles.concat(searchCodeFiles(prismaPath, keyword));
-            
-            const uniqueFiles = [...new Set(foundFiles)];
-
-            if (uniqueFiles.length > 0) {
-                output += `✅ ${uniqueFiles.length} টি সম্পর্কিত ফাইল পাওয়া গেছে।\n`;
-                uniqueFiles.slice(0, 4).forEach(f => {
-                    output += analyzeFileLogic(f);
-                });
-                if (uniqueFiles.length > 4) {
-                    output += `\n... আরও ${uniqueFiles.length - 4} টি ফাইল জড়িত আছে।`;
+        // ডাইনামিক রিকার্সিভ ফাইল ফাইন্ডার (কোনো হার্ডকোড নেই)
+        function getAllValidFiles(dir, fileList = []) {
+            if (!fs.existsSync(dir)) return fileList;
+            const items = fs.readdirSync(dir);
+            for (const item of items) {
+                if (item === 'node_modules' || item.startsWith('.') || item === 'dist') continue;
+                const fullPath = path.join(dir, item);
+                if (fs.statSync(fullPath).isDirectory()) {
+                    getAllValidFiles(fullPath, fileList);
+                } else if (item.match(/\.(tsx|ts|js|jsx)$/)) {
+                    // .test.tsx ইগনোর করবে যদি না ইউজার explicitly বলে
+                    if (item.includes('.test.') && !command.includes('.test.')) continue;
+                    fileList.push(fullPath);
                 }
-            } else {
-                output += `❌ '${keyword}' সম্পর্কিত কোনো লজিক সিস্টেমে পাওয়া যায়নি।`;
             }
+            return fileList;
+        }
+
+        const allSourceFiles = getAllValidFiles(srcPath);
+        if (fs.existsSync(prismaPath)) getAllValidFiles(prismaPath, allSourceFiles);
+
+        let targetFilePath = null;
+        let targetFileName = null;
+        let targetBaseName = null;
+
+        // কমান্ড থেকে লাইভ সোর্স ফাইলের নাম ম্যাচিং (Zero Hardcode Guessing)
+        const words = command.split(/[\s,?.!"']+/);
+        for (let word of words) {
+            word = word.trim();
+            if (word.length < 3) continue;
+            
+            const matchedFile = allSourceFiles.find(f => {
+                const basename = path.basename(f);
+                const nameWithoutExt = basename.replace(/\.[^/.]+$/, "");
+                return basename.toLowerCase() === word.toLowerCase() || nameWithoutExt.toLowerCase() === word.toLowerCase();
+            });
+
+            if (matchedFile) {
+                targetFilePath = matchedFile;
+                targetFileName = path.basename(matchedFile);
+                targetBaseName = targetFileName.replace(/\.[^/.]+$/, "");
+                break;
+            }
+        }
+
+        if (!targetFilePath) {
+            output += `+-------------------------------------------------------------------------+\n`;
+            output += `| [ স্ট্যাটাস ] ❌ টার্গেট ফাইল পাওয়া যায়নি                                  |\n`;
+            output += `+-------------------------------------------------------------------------+\n`;
+        } else {
+            const content = fs.readFileSync(targetFilePath, 'utf8');
+            
+            // ইমপোর্টস এবং এক্সপোর্টস এক্সট্র্যাকশন
+            const importsRaw = content.match(/import.*from\s+['"].*['"]/g) || [];
+            const imports = importsRaw.map(i => i.split('from')[1].replace(/['";]/g, '').trim());
+            
+            const exportsRaw = content.match(/export\s+(?:default\s+)?(?:const|let|var|function|class|interface|type)\s+([a-zA-Z0-9_]+)/g) || [];
+            const exportedSymbols = exportsRaw.map(e => e.split(/\s+/).pop());
+            const exportsList = content.match(/export\s+(default\s+[a-zA-Z0-9_]+|\{[^}]+\})/g) || [];
+
+            // রিভার্স ডিপেন্ডেন্সি (কারা এই ফাইলটিকে ইমপোর্ট করেছে)
+            const importedBy = [];
+            allSourceFiles.forEach(f => {
+                if (f === targetFilePath) return;
+                const fContent = fs.readFileSync(f, 'utf8');
+                if (fContent.includes(`/${targetBaseName}`) || fContent.includes(`'${targetBaseName}'`) || fContent.includes(`"${targetBaseName}"`)) {
+                    importedBy.push(f.replace(rootPath, '').replace(/^\//, ''));
+                }
+            });
+
+            const relativeTargetPath = targetFilePath.replace(rootPath, '').replace(/^\//, '');
+            const depCount = imports.length + exportedSymbols.length + importedBy.length;
+
+            output += ` 📄 টার্গেট ফাইল:           ${relativeTargetPath}\n\n`;
+            output += ` 🔗 ইমপোর্টস:               ${imports.length > 0 ? '- ' + imports.join('\n                            - ') : 'নেই'}\n\n`;
+            output += ` 📤 এক্সপোর্টস:             ${exportsList.length > 0 ? '- ' + exportsList.map(e => e.replace('export ', '')).join('\n                            - ') : 'নেই'}\n\n`;
+            output += ` 📥 যারা ইমপোর্ট করেছে:     ${importedBy.length > 0 ? '- ' + importedBy.join('\n                            - ') : 'কেউ ইমপোর্ট করেনি'}\n\n`;
+            output += ` 🧩 এক্সপোর্টেড সিম্বল:      ${exportedSymbols.length > 0 ? exportedSymbols.join(', ') : 'নেই'}\n\n`;
+            output += ` 📊 লোকাল ডিপেন্ডেন্সি সংখ্যা: ${depCount}\n\n`;
+            output += `+-------------------------------------------------------------------------+\n`;
+            output += `| [ স্ট্যাটাস ] ✅ লাইভ সোর্স ভেরিফাইড                                       |\n`;
+            output += `+-------------------------------------------------------------------------+\n`;
         }
         return res.json({ result: output });
     }
 });
+
 
 const distPath = path.join(__dirname, '../dist');
 app.use(express.static(distPath));
