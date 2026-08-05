@@ -3,11 +3,11 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 
-
 // --- 🤖 OLLAMA AI INTEGRATION (Brain) ---
 async function askOllama(prompt) {
+    const tunnelUrl = process.env.OLLAMA_URL || "https://range-lives-asking-ant.trycloudflare.com";
     try {
-        const response = await fetch("https://cpepz-2409-40e1-1137-2305-e84f-56c5-d072-3c92.run.pinggy-free.link/api/generate", {
+        const response = await fetch(`${tunnelUrl}/api/generate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -16,10 +16,11 @@ async function askOllama(prompt) {
                 stream: false
             })
         });
+        if (!response.ok) throw new Error(`Server status ${response.status}`);
         const data = await response.json();
         return data.response;
     } catch (err) {
-        return "⚠️ AI Server Error: " + err.message + " (Ollama কি চালু আছে?)";
+        return "⚠️ AI Server Error: " + err.message + " (Ollama বা টানেল কি চালু আছে?)";
     }
 }
 
@@ -36,7 +37,6 @@ function getDirectoryTree(dirPath, indent = '', changedFiles = []) {
         if (item === 'node_modules' || item.startsWith('.') || item === 'dist') return;
         const fullPath = path.join(dirPath, item);
         const stat = fs.statSync(fullPath);
-
         const relPath = fullPath.replace(/\\/g, '/');
         const isChanged = changedFiles.some(f => relPath.endsWith(f));
         const marker = isChanged ? ' ✨ [NEWLY EDITED]' : '';
@@ -78,7 +78,6 @@ function analyzeFileLogic(filePath) {
     try {
         const content = fs.readFileSync(filePath, 'utf8');
         let report = `\n📄 ফাইল: ${path.basename(filePath)}\n`;
-
         const imports = content.match(/import.*from.*/g) || [];
         const exports = content.match(/export\s+(const|let|var|function|class|default|{).*/g) || [];
 
@@ -142,12 +141,11 @@ app.get('/api/system-stats', (req, res) => {
 
 app.post('/api/orbis-command', async (req, res) => {
     let rawCommand = req.body.command || "";
-    // অদৃশ্য স্পেস বা ক্যারেক্টার ইগনোর করে AI: চেক করা (মাস্টার রাউটার)
     if (rawCommand.replace(/[^a-zA-Z:]/g, "").toLowerCase().startsWith("ai:")) {
         let cleanCommand = rawCommand.replace(/^.*?ai:\s*/i, "").trim();
         let aiResponse = await askOllama(cleanCommand);
-        return res.json({ 
-            result: "🧠 [BaaS AI Engine - TinyLlama]\n----------------------------------------\n" + aiResponse + "\n" 
+        return res.json({
+            result: "🧠 [BaaS AI Engine - TinyLlama]\n----------------------------------------\n" + aiResponse + "\n"
         });
     }
 
@@ -157,94 +155,56 @@ app.post('/api/orbis-command', async (req, res) => {
     const srcPath = path.join(rootPath, 'src');
     const prismaPath = path.join(rootPath, 'prisma');
 
-    // ==========================================
-    // ১. লাইভ ডিপেন্ডেন্সি ট্রি এবং গিট লগ
-    // ==========================================
     if (command.includes('ট্রি') || command.includes('ফোল্ডার') || command.includes('tree') || command.includes('সোর্স কোড')) {
         let changedFiles = [];
-        let logBook = '\n\n========================================\n';
-        logBook += ' 🕒 LIVE 20 ROLLING COMMIT TIME-SLOTS & AUDIT\n';
-        logBook += '========================================\n';
-
+        let logBook = '\n\n========================================\n 🕒 LIVE 20 ROLLING COMMIT TIME-SLOTS & AUDIT\n========================================\n';
         try {
             const { execSync } = require('child_process');
-            const lastCommitFilesRaw = execSync('git show --name-only --format="" HEAD', { cwd: rootPath }).toString();
-            changedFiles = lastCommitFilesRaw.split('\n').map(f => f.trim()).filter(Boolean);
-
-            const logRaw = execSync(
-                `git log -n 20 --pretty=format:"SPLIT_COMMIT|%h|%cd|%s" --date=format:'%d %b %Y, %I:%M:%S %p (IST)' --name-status`,
-                { cwd: rootPath }
-            ).toString();
-
+            changedFiles = execSync('git show --name-only --format="" HEAD', { cwd: rootPath }).toString().split('\n').map(f => f.trim()).filter(Boolean);
+            const logRaw = execSync(`git log -n 20 --pretty=format:"SPLIT_COMMIT|%h|%cd|%s" --date=format:'%d %b %Y, %I:%M:%S %p (IST)' --name-status`, { cwd: rootPath }).toString();
             const commitBlocks = logRaw.split('SPLIT_COMMIT|').filter(Boolean);
             logBook += `\n📊 Showing Last ${commitBlocks.length} Commit Time-Slots (Rolling Window)\n\n`;
-
             commitBlocks.forEach((block, index) => {
                 const lines = block.trim().split('\n');
                 const [hash, timestamp, ...msgArr] = lines[0].split('|');
                 const message = msgArr.join('|');
                 const files = lines.slice(1).filter(Boolean);
-
-                logBook += `========================================\n`;
-                logBook += `📅 Time-Slot [${index + 1}]: ${timestamp}\n`;
-                logBook += `💬 Commit (${hash}): ${message}\n`;
-                logBook += `----------------------------------------\n`;
-
-                if (files.length > 0) {
-                    files.forEach(f => { logBook += `   📝 ${f.trim()}\n`; });
-                } else {
-                    logBook += `   ℹ️ No files modified\n`;
-                }
+                logBook += `========================================\n📅 Time-Slot [${index + 1}]: ${timestamp}\n💬 Commit (${hash}): ${message}\n----------------------------------------\n`;
+                if (files.length > 0) files.forEach(f => { logBook += `   📝 ${f.trim()}\n`; });
+                else logBook += `   ℹ️ No files modified\n`;
                 logBook += `\n`;
             });
         } catch (e) {
             logBook += '\n⚠️ Logbook tracking error: ' + e.message;
         }
-
         output += `--- LIVE SOURCE CODE DIRECTORY ---\n\n` + getDirectoryTree(rootPath, '', changedFiles) + logBook;
         return res.json({ result: output });
     }
-    // ==========================================
-    // ২. প্যাকেজ ডিপেন্ডেন্সি
-    // ==========================================
     else if (command.includes('কানেকশন') || command.includes('ডিপেন্ডেন্সি')) {
         output += `--- DEPENDENCY MAP ---\n\n`;
         try {
             const pkgPath = path.join(rootPath, 'package.json');
-            if(fs.existsSync(pkgPath)) {
-                const pkg = JSON.parse(fs.readFileSync(pkgPath));
-                output += JSON.stringify(pkg.dependencies, null, 2);
-            } else {
-                output += 'package.json পাওয়া যায়নি।\n';
-            }
+            if(fs.existsSync(pkgPath)) output += JSON.stringify(JSON.parse(fs.readFileSync(pkgPath)).dependencies, null, 2);
+            else output += 'package.json পাওয়া যায়নি।\n';
         } catch (e) {
             output += `Error: ${e.message}\n`;
         }
         return res.json({ result: output });
     }
-    // ==========================================
-    // ৩. AST-ভিত্তিক ইন্টেলিজেন্ট ইঞ্জিন (Ready for Local AI/Ollama)
-    // ==========================================
     else {
         const ts = require('typescript');
         const isStrictParser = command.includes('PARSER TEST') || command.includes('Return ONLY:');
-        
         if (!isStrictParser) {
-            output += `🗣️ আপনার প্রশ্ন: "${command}"\n\n`;
-            output += `+-------------------------------------------------------------------------+\n`;
-            output += `| 🧠 ORBIS AST ইঞ্জিন: স্মার্ট ডিপেন্ডেন্সি স্ক্যানার                       |\n`;
-            output += `+-------------------------------------------------------------------------+\n\n`;
+            output += `🗣️ আপনার প্রশ্ন: "${command}"\n\n+-------------------------------------------------------------------------+\n| 🧠 ORBIS AST ইঞ্জিন: স্মার্ট ডিপেন্ডেন্সি স্ক্যানার                       |\n+-------------------------------------------------------------------------+\n\n`;
         }
-
         function getAllValidFiles(dir, fileList = []) {
             if (!fs.existsSync(dir)) return fileList;
             const items = fs.readdirSync(dir);
             for (const item of items) {
                 if (item === 'node_modules' || item.startsWith('.') || item === 'dist') continue;
                 const fullPath = path.join(dir, item);
-                if (fs.statSync(fullPath).isDirectory()) {
-                    getAllValidFiles(fullPath, fileList);
-                } else if (item.match(/\.(tsx|ts|js|jsx)$/)) {
+                if (fs.statSync(fullPath).isDirectory()) getAllValidFiles(fullPath, fileList);
+                else if (item.match(/\.(tsx|ts|js|jsx)$/)) {
                     if (item.includes('.test.') && command.includes('Ignore *.test.tsx')) continue;
                     else if (item.includes('.test.') && !command.includes('.test.')) continue;
                     fileList.push(fullPath);
@@ -252,16 +212,11 @@ app.post('/api/orbis-command', async (req, res) => {
             }
             return fileList;
         }
-
         const allSourceFiles = getAllValidFiles(srcPath);
         if (fs.existsSync(prismaPath)) getAllValidFiles(prismaPath, allSourceFiles);
-
-        let targetFilePath = null;
-        let targetFileName = null;
-        
+        let targetFilePath = null, targetFileName = null;
         const targetMatch = command.match(/Target file:\s*([a-zA-Z0-9_.-]+)/i) || command.match(/([a-zA-Z0-9_.-]+\.tsx?)/i);
         let searchWord = targetMatch ? targetMatch[1].trim() : null;
-
         if (!searchWord) {
             const words = command.split(/[\s,?.!"']+/);
             for (let word of words) {
@@ -270,55 +225,34 @@ app.post('/api/orbis-command', async (req, res) => {
                 }
             }
         }
-
         if (searchWord) {
             targetFilePath = allSourceFiles.find(f => path.basename(f).toLowerCase() === searchWord.toLowerCase() || path.basename(f).replace(/\.[^/.]+$/, "").toLowerCase() === searchWord.toLowerCase());
             if (targetFilePath) targetFileName = path.basename(targetFilePath);
         }
-
-        if (!targetFilePath) {
-            return res.json({ result: isStrictParser ? "ERROR: Target file not found." : output + "❌ টার্গেট ফাইল পাওয়া যায়নি" });
-        }
-
+        if (!targetFilePath) return res.json({ result: isStrictParser ? "ERROR: Target file not found." : output + "❌ টার্গেট ফাইল পাওয়া যায়নি" });
         const content = fs.readFileSync(targetFilePath, 'utf8');
         const sourceFile = ts.createSourceFile(targetFileName, content, ts.ScriptTarget.Latest, true);
-        
         const astImports = [];
-
         ts.forEachChild(sourceFile, node => {
             if (ts.isImportDeclaration(node)) {
-                const moduleName = node.moduleSpecifier.text;
-                const exactLine = content.substring(node.getFullStart(), node.getEnd()).trim();
                 astImports.push({
-                    module: moduleName,
-                    statement: exactLine,
-                    isLocal: moduleName.startsWith('.')
+                    module: node.moduleSpecifier.text,
+                    statement: content.substring(node.getFullStart(), node.getEnd()).trim(),
+                    isLocal: node.moduleSpecifier.text.startsWith('.')
                 });
             }
         });
-
         if (isStrictParser) {
             if (command.includes('first local file imported')) {
                 const firstLocal = astImports.find(i => i.isLocal);
-                if (firstLocal) {
-                    output = `Target File: ${targetFileName}\nImported File: ${firstLocal.module}\nImport Statement: ${firstLocal.statement}`;
-                } else {
-                    output = "No local imports found.";
-                }
-            } else {
-                output = "STRICT MODE: Query understood, but specific task handler not matched.";
-            }
+                if (firstLocal) output = `Target File: ${targetFileName}\nImported File: ${firstLocal.module}\nImport Statement: ${firstLocal.statement}`;
+                else output = "No local imports found.";
+            } else output = "STRICT MODE: Query understood, but specific task handler not matched.";
         } else {
-            output += ` 📄 টার্গেট ফাইল:           ${targetFilePath.replace(rootPath, '')}\n\n`;
-            output += ` 🔗 ইমপোর্টস (AST):\n`;
-            astImports.forEach(imp => {
-                output += `      - ${imp.isLocal ? 'লোকাল' : 'প্যাকেজ'}: ${imp.module}\n`;
-            });
-            output += `\n+-------------------------------------------------------------------------+\n`;
-            output += `| [ স্ট্যাটাস ] ✅ AST পার্সিং সম্পন্ন (Ready for AI Integration)           |\n`;
-            output += `+-------------------------------------------------------------------------+\n`;
+            output += ` 📄 টার্গেট ফাইল:           ${targetFilePath.replace(rootPath, '')}\n\n 🔗 ইমপোর্টস (AST):\n`;
+            astImports.forEach(imp => { output += `      - ${imp.isLocal ? 'লোকাল' : 'প্যাকেজ'}: ${imp.module}\n`; });
+            output += `\n+-------------------------------------------------------------------------+\n| [ স্ট্যাটাস ] ✅ AST পার্সিং সম্পন্ন (Ready for AI Integration)           |\n+-------------------------------------------------------------------------+\n`;
         }
-
         return res.json({ result: output });
     }
 });
