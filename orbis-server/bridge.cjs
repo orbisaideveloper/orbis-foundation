@@ -124,76 +124,129 @@ app.get('/api/system-stats', (req, res) => {
 
 app.post('/api/orbis-command', (req, res) => {
     const { command } = req.body;
-    let output = `🗣️ আপনার প্রশ্ন: "${command}"\n\n`;
-    output += `--- 🧠 ORBIS INTELLIGENT ENGINE ---\n\n`;
-
+    let output = '';
     const rootPath = path.join(__dirname, '../');
     const srcPath = path.join(rootPath, 'src');
     const prismaPath = path.join(rootPath, 'prisma');
 
-    // ১. ন্যাচারাল ল্যাঙ্গুয়েজ প্রসেসিং (NLP) স্টপ-ওয়ার্ড ফিল্টার
-    const stopWords = ['আমাকে', 'একটু', 'মানে', 'কোথায়', 'কি', 'কী', 'কেন', 'কিভাবে', 'কীভাবে', 'দেখাও', 'করো', 'দাও', 'এর', 'মধ্যে', 'টুল', 'টি', 'যে', 'লিস্ট', 'ট্রি', 'গুলো', 'গুলা', 'সম্পর্কে', 'খুঁজে', 'বের', 'করে', 'কোন', 'কোনো', 'সাথে', 'জড়িত', 'আছে', 'একটা', 'আগে', 'নেমে', 'নামে', 'দিয়ে', 'দিয়া', 'ফোল্ডার', 'ফাইল', 'ফোল্ডারগুলোর', 'ফাইলের'];
-
-    let words = command.toLowerCase().split(/[\s,?.!]+/);
-    words = words.filter(w => !stopWords.includes(w) && w.length > 2);
-
-    // ২. মূল ভেরিয়েবল এক্সট্র্যাকশন
-    let keyword = words.length > 0 ? words.sort((a,b) => b.length - a.length)[0] : '';
-
-    // Smart Dictionary (No hardcoded responses, just search mapping)
-    const dictionary = {
-        'ডাটাবেজ': 'prisma', 'ডাটাবেস': 'prisma', 'database': 'prisma',
-        'ভয়েস': 'command', 'voice': 'command', 'মাইক্রোফোন': 'command',
-        'ড্যাশবোর্ড': 'dashboard', 'লটারি': 'lottery', 'কানেকশন': 'package.json'
-    };
-    if (dictionary[keyword]) keyword = dictionary[keyword];
-
-    // ৩. ডায়নামিক এক্সিকিউশন (No if-else blocks)
-    if (!keyword || keyword === 'প্রজেক্ট' || keyword === 'project' || command.includes('সোর্স কোড')) {
+    // ==========================================
+    // ১. পুরানো লজিক (অক্ষত): লাইভ ডিপেন্ডেন্সি ট্রি এবং গিট লগ
+    // ==========================================
+    if (command.includes('ট্রি') || command.includes('ফোল্ডার') || command.includes('tree') || command.includes('সোর্স কোড')) {
         let changedFiles = [];
+        let logBook = '\n\n========================================\n';
+        logBook += ' 🕒 LIVE 20 ROLLING COMMIT TIME-SLOTS & AUDIT\n';
+        logBook += '========================================\n';
+
         try {
             const { execSync } = require('child_process');
-            changedFiles = execSync('git show --name-only --format="" HEAD', { cwd: rootPath }).toString().split('\n').map(f => f.trim()).filter(Boolean);
-        } catch(e) {}
-        output += `🔍 পুরো প্রজেক্টের কোর ডিরেক্টরি স্ক্যান করা হচ্ছে...\n\n`;
-        output += getDirectoryTree(rootPath, '', changedFiles);
-    } else {
-        output += `🔍 '${keyword}' লজিকের জন্য লাইভ সোর্স কোড স্ক্যান করা হচ্ছে...\n`;
-        
-        let foundFiles = [];
-        if (fs.existsSync(srcPath)) foundFiles = foundFiles.concat(searchCodeFiles(srcPath, keyword));
-        if (fs.existsSync(prismaPath)) foundFiles = foundFiles.concat(searchCodeFiles(prismaPath, keyword));
-        
-        const uniqueFiles = [...new Set(foundFiles)];
 
-        if (uniqueFiles.length > 0) {
-            output += `✅ ${uniqueFiles.length} টি সম্পর্কিত ফাইল পাওয়া গেছে।\n`;
-            uniqueFiles.slice(0, 4).forEach(f => {
-                output += analyzeFileLogic(f);
+            // লেটেস্ট কমিটের চেঞ্জ হওয়া ফাইল
+            const lastCommitFilesRaw = execSync('git show --name-only --format="" HEAD', { cwd: rootPath }).toString();
+            changedFiles = lastCommitFilesRaw.split('\n').map(f => f.trim()).filter(Boolean);
+
+            // ২০টি কমিটের ক্রমানুসারে হিস্ট্রি
+            const logRaw = execSync(
+                `git log -n 20 --pretty=format:"SPLIT_COMMIT|%h|%cd|%s" --date=format:'%d %b %Y, %I:%M:%S %p (IST)' --name-status`,
+                { cwd: rootPath }
+            ).toString();
+
+            const commitBlocks = logRaw.split('SPLIT_COMMIT|').filter(Boolean);
+
+            logBook += `\n📊 Showing Last ${commitBlocks.length} Commit Time-Slots (Rolling Window)\n\n`;
+
+            commitBlocks.forEach((block, index) => {
+                const lines = block.trim().split('\n');
+                const [hash, timestamp, ...msgArr] = lines[0].split('|');
+                const message = msgArr.join('|');
+                const files = lines.slice(1).filter(Boolean);
+
+                logBook += `========================================\n`;
+                logBook += `📅 Time-Slot [${index + 1}]: ${timestamp}\n`;
+                logBook += `💬 Commit (${hash}): ${message}\n`;
+                logBook += `----------------------------------------\n`;
+
+                if (files.length > 0) {
+                    files.forEach(f => {
+                        logBook += `   📝 ${f.trim()}\n`;
+                    });
+                } else {
+                    logBook += `   ℹ️ No files modified\n`;
+                }
+                logBook += `\n`;
             });
-            if (uniqueFiles.length > 4) {
-                output += `\n... আরও ${uniqueFiles.length - 4} টি ফাইল জড়িত আছে।`;
-            }
-        } else {
+
+        } catch (e) {
+            logBook += '\n⚠️ Logbook tracking error: ' + e.message;
+        }
+
+        output += `--- LIVE SOURCE CODE DIRECTORY ---\n\n` + getDirectoryTree(rootPath, '', changedFiles) + logBook;
+        return res.json({ result: output });
+    }
+    // ==========================================
+    // ২. পুরানো লজিক (অক্ষত): প্যাকেজ ডিপেন্ডেন্সি
+    // ==========================================
+    else if (command.includes('কানেকশন') || command.includes('ডিপেন্ডেন্সি')) {
+        output += `--- DEPENDENCY MAP ---\n\n`;
+        try {
             const pkgPath = path.join(rootPath, 'package.json');
-            let foundInPkg = false;
             if(fs.existsSync(pkgPath)) {
                 const pkg = JSON.parse(fs.readFileSync(pkgPath));
-                const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-                const matchedDeps = Object.keys(deps).filter(d => d.includes(keyword) || keyword.includes(d));
-                if (matchedDeps.length > 0) {
-                    output += `✅ সোর্স কোডে ফাইল পাওয়া যায়নি, তবে package.json-এ ${matchedDeps.length} টি ডিপেন্ডেন্সি পাওয়া গেছে:\n`;
-                    matchedDeps.forEach(d => output += `📦 ${d}: ${deps[d]}\n`);
-                    foundInPkg = true;
-                }
+                output += JSON.stringify(pkg.dependencies, null, 2);
+            } else {
+                output += 'package.json পাওয়া যায়নি।\n';
             }
-            if (!foundInPkg) {
-                output += `❌ '${keyword}' সম্পর্কিত কোনো লজিক, ফাইল বা ডিপেন্ডেন্সি সিস্টেমে পাওয়া যায়নি।`;
+        } catch (e) {
+            output += `Error: ${e.message}\n`;
+        }
+        return res.json({ result: output });
+    }
+    // ==========================================
+    // ৩. নতুন ইন্টেলিজেন্ট ইঞ্জিন (শুধুমাত্র ভয়েস/ডায়াগনস্টিকের জন্য)
+    // ==========================================
+    else {
+        output += `🗣️ আপনার প্রশ্ন: "${command}"\n\n`;
+        output += `--- 🧠 ORBIS INTELLIGENT ENGINE ---\n\n`;
+
+        const stopWords = ['আমাকে', 'একটু', 'মানে', 'কোথায়', 'কি', 'কী', 'কেন', 'কিভাবে', 'কীভাবে', 'দেখাও', 'করো', 'দাও', 'এর', 'মধ্যে', 'টুল', 'টি', 'যে', 'লিস্ট', 'গুলো', 'গুলা', 'সম্পর্কে', 'খুঁজে', 'বের', 'করে', 'কোন', 'কোনো', 'সাথে', 'জড়িত', 'আছে', 'একটা', 'আগে', 'নেমে', 'নামে', 'দিয়ে', 'দিয়া'];
+        
+        let words = command.toLowerCase().split(/[\s,?.!]+/);
+        words = words.filter(w => !stopWords.includes(w) && w.length > 2);
+
+        let keyword = words.length > 0 ? words.sort((a,b) => b.length - a.length)[0] : '';
+
+        const dictionary = {
+            'ডাটাবেজ': 'prisma', 'ডাটাবেস': 'prisma', 'database': 'prisma',
+            'ভয়েস': 'command', 'voice': 'command', 'মাইক্রোফোন': 'command',
+            'ড্যাশবোর্ড': 'dashboard', 'লটারি': 'lottery'
+        };
+        if (dictionary[keyword]) keyword = dictionary[keyword];
+
+        if (!keyword) {
+            output += `❌ মডিউলের নাম পরিষ্কার নয়। দয়া করে নির্দিষ্ট নাম বলুন (যেমন: ডাটাবেজ, ড্যাশবোর্ড)।`;
+        } else {
+            output += `🔍 '${keyword}' লজিকের জন্য লাইভ সোর্স কোড স্ক্যান করা হচ্ছে...\n`;
+            
+            let foundFiles = [];
+            if (fs.existsSync(srcPath)) foundFiles = foundFiles.concat(searchCodeFiles(srcPath, keyword));
+            if (fs.existsSync(prismaPath)) foundFiles = foundFiles.concat(searchCodeFiles(prismaPath, keyword));
+            
+            const uniqueFiles = [...new Set(foundFiles)];
+
+            if (uniqueFiles.length > 0) {
+                output += `✅ ${uniqueFiles.length} টি সম্পর্কিত ফাইল পাওয়া গেছে।\n`;
+                uniqueFiles.slice(0, 4).forEach(f => {
+                    output += analyzeFileLogic(f);
+                });
+                if (uniqueFiles.length > 4) {
+                    output += `\n... আরও ${uniqueFiles.length - 4} টি ফাইল জড়িত আছে।`;
+                }
+            } else {
+                output += `❌ '${keyword}' সম্পর্কিত কোনো লজিক সিস্টেমে পাওয়া যায়নি।`;
             }
         }
+        return res.json({ result: output });
     }
-
-    res.json({ result: output });
 });
 
 const distPath = path.join(__dirname, '../dist');
