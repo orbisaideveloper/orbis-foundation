@@ -124,7 +124,6 @@ app.get('/api/system-stats', (req, res) => {
         status: 'ONLINE'
     });
 });
-});
 
 app.post('/api/orbis-command', (req, res) => {
     const { command } = req.body;
