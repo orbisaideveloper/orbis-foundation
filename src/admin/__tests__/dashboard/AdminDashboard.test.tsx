@@ -127,7 +127,7 @@ describe('AdminDashboard Full Coverage Tests', () => {
       fireEvent.click(card);
 
       await waitFor(() => {
-        expect(screen.getByText(/Streaming secure logs/i)).toBeInTheDocument();
+        expect(screen.getByText(/Accessing secure node/i)).toBeInTheDocument();
       });
 
       const closeBtn = screen.getByRole('button', { name: /Close/i });
