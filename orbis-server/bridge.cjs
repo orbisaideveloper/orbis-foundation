@@ -124,109 +124,72 @@ app.get('/api/system-stats', (req, res) => {
 
 app.post('/api/orbis-command', (req, res) => {
     const { command } = req.body;
-    let output = '';
+    let output = `🗣️ আপনার প্রশ্ন: "${command}"\n\n`;
+    output += `--- 🧠 ORBIS INTELLIGENT ENGINE ---\n\n`;
+
     const rootPath = path.join(__dirname, '../');
     const srcPath = path.join(rootPath, 'src');
+    const prismaPath = path.join(rootPath, 'prisma');
 
-    if (command.includes('ট্রি') || command.includes('ফোল্ডার') || command.includes('tree') || command.includes('সোর্স কোড')) {
+    // ১. ন্যাচারাল ল্যাঙ্গুয়েজ প্রসেসিং (NLP) স্টপ-ওয়ার্ড ফিল্টার
+    const stopWords = ['আমাকে', 'একটু', 'মানে', 'কোথায়', 'কি', 'কী', 'কেন', 'কিভাবে', 'কীভাবে', 'দেখাও', 'করো', 'দাও', 'এর', 'মধ্যে', 'টুল', 'টি', 'যে', 'লিস্ট', 'ট্রি', 'গুলো', 'গুলা', 'সম্পর্কে', 'খুঁজে', 'বের', 'করে', 'কোন', 'কোনো', 'সাথে', 'জড়িত', 'আছে', 'একটা', 'আগে', 'নেমে', 'নামে', 'দিয়ে', 'দিয়া', 'ফোল্ডার', 'ফাইল', 'ফোল্ডারগুলোর', 'ফাইলের'];
+
+    let words = command.toLowerCase().split(/[\s,?.!]+/);
+    words = words.filter(w => !stopWords.includes(w) && w.length > 2);
+
+    // ২. মূল ভেরিয়েবল এক্সট্র্যাকশন
+    let keyword = words.length > 0 ? words.sort((a,b) => b.length - a.length)[0] : '';
+
+    // Smart Dictionary (No hardcoded responses, just search mapping)
+    const dictionary = {
+        'ডাটাবেজ': 'prisma', 'ডাটাবেস': 'prisma', 'database': 'prisma',
+        'ভয়েস': 'command', 'voice': 'command', 'মাইক্রোফোন': 'command',
+        'ড্যাশবোর্ড': 'dashboard', 'লটারি': 'lottery', 'কানেকশন': 'package.json'
+    };
+    if (dictionary[keyword]) keyword = dictionary[keyword];
+
+    // ৩. ডায়নামিক এক্সিকিউশন (No if-else blocks)
+    if (!keyword || keyword === 'প্রজেক্ট' || keyword === 'project' || command.includes('সোর্স কোড')) {
         let changedFiles = [];
-        let logBook = '\n\n========================================\n';
-        logBook += ' 🕒 LIVE 20 ROLLING COMMIT TIME-SLOTS & AUDIT\n';
-        logBook += '========================================\n';
-
         try {
             const { execSync } = require('child_process');
-
-            // ১. লেটেস্ট কমিটের চেঞ্জ হওয়া ফাইল
-            const lastCommitFilesRaw = execSync('git show --name-only --format="" HEAD', { cwd: rootPath }).toString();
-            changedFiles = lastCommitFilesRaw.split('\n').map(f => f.trim()).filter(Boolean);
-
-            // ২. সময় অনুসারে শেষ ২০টি কমিটের ক্রমানুসারে হিস্ট্রি
-            const logRaw = execSync(
-                `git log -n 20 --pretty=format:"SPLIT_COMMIT|%h|%cd|%s" --date=format:'%d %b %Y, %I:%M:%S %p (IST)' --name-status`,
-                { cwd: rootPath }
-            ).toString();
-
-            const commitBlocks = logRaw.split('SPLIT_COMMIT|').filter(Boolean);
-
-            logBook += `\n📊 Showing Last ${commitBlocks.length} Commit Time-Slots (Rolling Window)\n\n`;
-
-            commitBlocks.forEach((block, index) => {
-                const lines = block.trim().split('\n');
-                const [hash, timestamp, ...msgArr] = lines[0].split('|');
-                const message = msgArr.join('|');
-                const files = lines.slice(1).filter(Boolean);
-
-                logBook += `========================================\n`;
-                logBook += `📅 Time-Slot [${index + 1}]: ${timestamp}\n`;
-                logBook += `💬 Commit (${hash}): ${message}\n`;
-                logBook += `----------------------------------------\n`;
-
-                if (files.length > 0) {
-                    files.forEach(f => {
-                        logBook += `   📝 ${f.trim()}\n`;
-                    });
-                } else {
-                    logBook += `   ℹ️ No files modified\n`;
-                }
-                logBook += `\n`;
-            });
-
-        } catch (e) {
-            logBook += '\n⚠️ Logbook tracking error: ' + e.message;
-        }
-
-        output += `--- LIVE SOURCE CODE DIRECTORY ---\n\n` + getDirectoryTree(rootPath, '', changedFiles) + logBook;
-    }
-    else if (command.includes('কানেকশন') || command.includes('ডিপেন্ডেন্সি')) {
-        output += `--- DEPENDENCY MAP ---\n\n`;
-        try {
-            const pkgPath = path.join(rootPath, 'package.json');
-            if(fs.existsSync(pkgPath)) {
-                const pkg = JSON.parse(fs.readFileSync(pkgPath));
-                output += JSON.stringify(pkg.dependencies, null, 2);
-            } else {
-                output += 'package.json পাওয়া যায়নি।\n';
-            }
-        } catch (e) {
-            output += `Error: ${e.message}\n`;
-        }
-    }
-    else {
-        output += `--- 🧠 ORBIS DYNAMIC DEPENDENCY TRACER ---\n\n`;
+            changedFiles = execSync('git show --name-only --format="" HEAD', { cwd: rootPath }).toString().split('\n').map(f => f.trim()).filter(Boolean);
+        } catch(e) {}
+        output += `🔍 পুরো প্রজেক্টের কোর ডিরেক্টরি স্ক্যান করা হচ্ছে...\n\n`;
+        output += getDirectoryTree(rootPath, '', changedFiles);
+    } else {
+        output += `🔍 '${keyword}' লজিকের জন্য লাইভ সোর্স কোড স্ক্যান করা হচ্ছে...\n`;
         
-        // ন্যাচারাল ল্যাঙ্গুয়েজ প্রসেসিং (NLP) স্টপ-ওয়ার্ড ফিল্টার
-        const stopWords = ['আমাকে', 'একটু', 'মানে', 'কোথায়', 'কি', 'কেন', 'কিভাবে', 'দেখাও', 'করো', 'দাও', 'এর', 'মধ্যে', 'টুল', 'টি', 'যে', 'লিস্ট', 'ট্রি', 'দাও', 'কী', 'কীভাবে'];
+        let foundFiles = [];
+        if (fs.existsSync(srcPath)) foundFiles = foundFiles.concat(searchCodeFiles(srcPath, keyword));
+        if (fs.existsSync(prismaPath)) foundFiles = foundFiles.concat(searchCodeFiles(prismaPath, keyword));
         
-        // কমান্ড থেকে অপ্রয়োজনীয় শব্দ বাদ দিয়ে মূল ভেরিয়েবল (Target Module) বের করা
-        const words = command.toLowerCase().split(/\s+/).filter(w => !stopWords.includes(w) && w.length > 2);
-        
-        // যদি নির্দিষ্ট কোনো শব্দ না পায়, তবে ডিফল্ট হিসেবে 'App' স্ক্যান করবে
-        let keyword = words.length > 0 ? words.sort((a,b) => b.length - a.length)[0] : 'App';
-        
-        // বাংলিশ বা ইউজার ইনপুট নরমালাইজেশন
-        if (keyword.includes('ড্যাশবোর্ড') || keyword.includes('dashboard')) keyword = 'Dashboard';
-        else if (keyword.includes('লটারি') || keyword.includes('lottery')) keyword = 'lottery';
-        else if (keyword.includes('ভয়েস') || keyword.includes('মাইক্রোফোন')) keyword = 'CommandBar';
-
-        output += `🔍 '${keyword}' মডিউলের ইম্পোর্ট/এক্সপোর্ট ম্যাপ স্ক্যান করা হচ্ছে...\n`;
-
-        const foundFiles = searchCodeFiles(srcPath, keyword);
         const uniqueFiles = [...new Set(foundFiles)];
 
         if (uniqueFiles.length > 0) {
             output += `✅ ${uniqueFiles.length} টি সম্পর্কিত ফাইল পাওয়া গেছে।\n`;
-            
-            // রেজাল্ট টার্মিনালে দেখানোর জন্য লুপ
-            uniqueFiles.slice(0, 3).forEach(f => {
+            uniqueFiles.slice(0, 4).forEach(f => {
                 output += analyzeFileLogic(f);
             });
-            
-            if (uniqueFiles.length > 3) {
-                output += `\n... আরও ${uniqueFiles.length - 3} টি ফাইল জড়িত আছে। বিস্তারিত দেখতে নির্দিষ্ট ফাইলের নাম লিখুন।`;
+            if (uniqueFiles.length > 4) {
+                output += `\n... আরও ${uniqueFiles.length - 4} টি ফাইল জড়িত আছে।`;
             }
         } else {
-            output += `❌ '${keyword}' সম্পর্কিত কোনো ফাইল বা ফোল্ডার সোর্স কোডে পাওয়া যায়নি।`;
+            const pkgPath = path.join(rootPath, 'package.json');
+            let foundInPkg = false;
+            if(fs.existsSync(pkgPath)) {
+                const pkg = JSON.parse(fs.readFileSync(pkgPath));
+                const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+                const matchedDeps = Object.keys(deps).filter(d => d.includes(keyword) || keyword.includes(d));
+                if (matchedDeps.length > 0) {
+                    output += `✅ সোর্স কোডে ফাইল পাওয়া যায়নি, তবে package.json-এ ${matchedDeps.length} টি ডিপেন্ডেন্সি পাওয়া গেছে:\n`;
+                    matchedDeps.forEach(d => output += `📦 ${d}: ${deps[d]}\n`);
+                    foundInPkg = true;
+                }
+            }
+            if (!foundInPkg) {
+                output += `❌ '${keyword}' সম্পর্কিত কোনো লজিক, ফাইল বা ডিপেন্ডেন্সি সিস্টেমে পাওয়া যায়নি।`;
+            }
         }
     }
 
