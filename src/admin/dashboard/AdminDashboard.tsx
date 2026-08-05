@@ -20,7 +20,7 @@ const getLogContent = (cardName: string | null) => {
 export function AdminDashboard() {
   const [activeCard, setActiveCard] = useState<string | null>(null);
   const [activeSubCard, setActiveSubCard] = useState<string | null>(null);
-  const [sysStats, setSysStats] = useState({ load: '...', ramUsedPercent: '...', uptime: '...', cpuCores: 0, arch: '...', platform: '...', status: 'Connecting...' });
+  const [sysStats, setSysStats] = useState({ load: '0', load5m: '0', load15m: '0', ramUsedPercent: '0', totalMem: '0', usedMem: '0', freeMem: '0', uptime: '0', processUptime: '0', cpuCores: 0, cpuModel: '...', arch: '...', platform: '...', release: '...', hostname: '...', heapUsed: '0', status: 'Connecting...' });
   const [copiedText, setCopiedText] = useState(false);
 
   const [showOutput, setShowOutput] = useState(false);
@@ -81,7 +81,46 @@ export function AdminDashboard() {
       window.history.pushState({ modal: true }, '');
       const handlePop = () => { setActiveSubCard(null); setActiveCard(null); };
       window.addEventListener('popstate', handlePop);
-      return () => window.removeEventListener('popstate', handlePop);
+      
+  const getRealTelemetry = (target: string | null) => {
+    if (!target) return 'Awaiting module selection...';
+    const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' });
+    let header = `[RAW HARDWARE TELEMETRY] - ${timestamp} (IST)\nTarget Node: ${target}\nStatus: LIVE DATA STREAM\n------------------------------------------------\n`;
+
+    switch (target) {
+      case 'System Phase':
+      case 'Overview':
+      case 'SYSTEM UPTIME':
+        return header + `> OS Platform: ${sysStats.platform} (${sysStats.release})\n> Server Hostname: ${sysStats.hostname}\n> OS Uptime: ${sysStats.uptime}\n> Node Process Uptime: ${sysStats.processUptime} Seconds\n> Status: ${sysStats.status}`;
+
+      case 'Architecture':
+      case 'CPU ARCH':
+        return header + `> Architecture: ${sysStats.arch}\n> CPU Model: ${sysStats.cpuModel}\n> Total Cores: ${sysStats.cpuCores} Logical Threads\n> Node.js Heap Allocated: ${sysStats.heapUsed} MB`;
+
+      case 'Microservices':
+      case 'RAM USAGE':
+        return header + `> Total RAM: ${sysStats.totalMem} GB\n> Used RAM: ${sysStats.usedMem} GB (${sysStats.ramUsedPercent}%)\n> Free RAM: ${sysStats.freeMem} GB\n> Memory Status: ${parseFloat(sysStats.ramUsedPercent) > 85 ? 'WARNING: HIGH LOAD' : 'OPTIMAL'}`;
+
+      case 'Master Node':
+      case 'OS PLATFORM':
+      case 'Health':
+        return header + `> Kernel / Release: ${sysStats.release}\n> System Type: ${sysStats.platform}\n> Process Arch: ${sysStats.arch}\n> Hardware Sync: COMPLETE`;
+
+      case 'API Gateway':
+      case 'SERVER STATUS':
+      case 'Engine':
+        return header + `> Backend API: ${sysStats.status}\n> Process Active Memory: ${sysStats.heapUsed} MB\n> Server OS Uptime: ${sysStats.uptime}`;
+
+      case 'Avg Load':
+      case 'CPU LOAD':
+        return header + `> CPU Load Average (1 min): ${sysStats.load}\n> CPU Load Average (5 min): ${sysStats.load5m}\n> CPU Load Average (15 min): ${sysStats.load15m}\n> Core Distribution: ${sysStats.cpuCores > 0 ? (parseFloat(sysStats.load) / sysStats.cpuCores * 100).toFixed(1) : 0}% per core`;
+
+      default:
+        return header + `> Requesting raw data for ${target}...\n> Metrics Snapshot: \n` + JSON.stringify(sysStats, null, 2);
+    }
+  };
+
+  return () => window.removeEventListener('popstate', handlePop);
     }
   }, [activeSubCard, activeCard]);
 
@@ -367,7 +406,7 @@ export function AdminDashboard() {
                         <button
                           type="button"
                           onClick={() => {
-                            navigator.clipboard.writeText(activeSubCard === 'Source Tree' ? liveTree : getLogContent(activeSubCard));
+                            navigator.clipboard.writeText(activeSubCard === 'Source Tree' ? liveTree : getRealTelemetry(activeSubCard));
                             setCopiedText(true);
                             setTimeout(() => setCopiedText(false), 2000);
                           }}
@@ -378,7 +417,7 @@ export function AdminDashboard() {
                       </div>
                       <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
                         <pre className="font-mono text-[12px] text-emerald-400 whitespace-pre-wrap leading-relaxed select-text">
-{activeSubCard === 'Source Tree' ? liveTree : getLogContent(activeSubCard).replace(/CPU: 12% \\| RAM: 45%/g, `CPU: ${sysStats.load}% | RAM: ${sysStats.ramUsedPercent}%`).replace(/Current Server Load: 12\\.4%/g, `Current Server Load: ${sysStats.load}%`).replace(/Phase 04 active/g, `System Uptime: ${sysStats.uptime}`).replace(/14 active services/g, `${sysStats.cpuCores} CPU Cores Active on ${sysStats.platform}`)}
+{activeSubCard === 'Source Tree' ? liveTree : getRealTelemetry(activeSubCard).replace(/CPU: 12% \\| RAM: 45%/g, `CPU: ${sysStats.load}% | RAM: ${sysStats.ramUsedPercent}%`).replace(/Current Server Load: 12\\.4%/g, `Current Server Load: ${sysStats.load}%`).replace(/Phase 04 active/g, `System Uptime: ${sysStats.uptime}`).replace(/14 active services/g, `${sysStats.cpuCores} CPU Cores Active on ${sysStats.platform}`)}
 </pre>
                       </div>
                     </div>

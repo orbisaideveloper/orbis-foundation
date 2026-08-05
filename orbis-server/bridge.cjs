@@ -92,25 +92,38 @@ function analyzeFileLogic(filePath) {
 
 app.get('/api/system-stats', (req, res) => {
     const os = require('os');
-    const totalMem = os.totalmem() / (1024 * 1024 * 1024);
-    const freeMem = os.freemem() / (1024 * 1024 * 1024);
-    const usedMem = totalMem - freeMem;
+    const totalMem = (os.totalmem() / (1024 * 1024 * 1024)).toFixed(2);
+    const freeMem = (os.freemem() / (1024 * 1024 * 1024)).toFixed(2);
+    const usedMem = (totalMem - freeMem).toFixed(2);
     const loadAvg = os.loadavg();
     
-    // Uptime ক্যালকুলেশন
     const uptimeSeconds = os.uptime();
     const hours = Math.floor(uptimeSeconds / 3600);
     const minutes = Math.floor((uptimeSeconds % 3600) / 60);
 
+    let cpuModel = 'Unknown Processor';
+    try { cpuModel = os.cpus()[0].model; } catch(e) {}
+
     res.json({
         cpuCores: os.cpus().length,
+        cpuModel: cpuModel,
         arch: os.arch(),
         platform: os.platform().toUpperCase(),
+        release: os.release(),
+        hostname: os.hostname(),
         load: loadAvg[0].toFixed(2),
+        load5m: loadAvg[1].toFixed(2),
+        load15m: loadAvg[2].toFixed(2),
+        totalMem: totalMem,
+        freeMem: freeMem,
+        usedMem: usedMem,
         ramUsedPercent: ((usedMem / totalMem) * 100).toFixed(1),
         uptime: `${hours}h ${minutes}m`,
+        processUptime: process.uptime().toFixed(0),
+        heapUsed: (process.memoryUsage().heapUsed / (1024 * 1024)).toFixed(2),
         status: 'ONLINE'
     });
+});
 });
 
 app.post('/api/orbis-command', (req, res) => {
