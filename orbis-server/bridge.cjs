@@ -7,7 +7,7 @@ const path = require('path');
 // --- 🤖 OLLAMA AI INTEGRATION (Brain) ---
 async function askOllama(prompt) {
     try {
-        const response = await fetch("https://spokesman-waters-experience-greene.trycloudflare.com/api/generate", {
+        const response = await fetch("https://cpepz-2409-40e1-1137-2305-e84f-56c5-d072-3c92.run.pinggy-free.link/api/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
