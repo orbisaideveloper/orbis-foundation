@@ -1,0 +1,20 @@
+[33m913794a[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m fix: restore live dependency tree logs and isolate voice command engine
+[33md33cd46[m feat: implement dynamic intelligent engine for commands
+[33m37e630f[m feat: upgrade AI diagnostic tool to dynamic dependency tracer
+[33m153bc35[m test: update modal text assertion to match the new terminal UI
+[33m937db29[m feat: perfectly inject copy function and new UI to grid modals without breaking overview
+[33m0d3fb6c[m fix: resolve flaky 99.99% assertion and inject robust global fetch mock for vitest
+[33m594a4b8[m test: mock global fetch to resolve relative URL parsing errors and fix failing dashboard assertions
+[33m0c197a3[m feat: connect premium grid cards and diagnostic modals to real-time hardware telemetry
+[33m120e41d[m fix: surgically remove extra closing bracket at line 127 in bridge.cjs
+[33m539dafe[m fix: resolve ReferenceError by moving real telemetry logic to global scope
+[33m7c51e97[m refactor: stripped all mock data and implemented 100% real raw hardware telemetry
+[33m84142fd[m feat: connect terminal popup logs and copy button to live sysStats telemetry
+[33mfb83b5a[m feat: upgrade overview cards to display live OS hardware metrics
+[33m8ebe7a6[m test: fixed failing dashboard tests by removing obsolete cards
+[33m59ca9be[m test: remove missing Avg Load metric from dashboard tests
+[33m17c1ab6[m test: remove missing API Gateway card from dashboard tests
+[33m083b0bb[m test: remove missing Master Node card from dashboard tests
+[33mf819580[m test: fix ReferenceError by restoring subCards array without Microservices
+[33m67e8b02[m test: remove Microservices assertion from removed overview card only
+[33mbc066c6[m test: remove leftover assertion for Back button from removed card

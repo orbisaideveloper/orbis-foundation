@@ -3,6 +3,26 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 
+
+// --- 🤖 OLLAMA AI INTEGRATION (Brain) ---
+async function askOllama(prompt) {
+    try {
+        const response = await fetch("https://spokesman-waters-experience-greene.trycloudflare.com/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                model: "tinyllama:latest",
+                prompt: prompt,
+                stream: false
+            })
+        });
+        const data = await response.json();
+        return data.response;
+    } catch (err) {
+        return "⚠️ AI Server Error: " + err.message + " (Ollama কি চালু আছে?)";
+    }
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -120,7 +140,17 @@ app.get('/api/system-stats', (req, res) => {
     });
 });
 
-app.post('/api/orbis-command', (req, res) => {
+app.post('/api/orbis-command', async (req, res) => {
+    let rawCommand = req.body.command || "";
+    // অদৃশ্য স্পেস বা ক্যারেক্টার ইগনোর করে AI: চেক করা (মাস্টার রাউটার)
+    if (rawCommand.replace(/[^a-zA-Z:]/g, "").toLowerCase().startsWith("ai:")) {
+        let cleanCommand = rawCommand.replace(/^.*?ai:\s*/i, "").trim();
+        let aiResponse = await askOllama(cleanCommand);
+        return res.json({ 
+            result: "🧠 [BaaS AI Engine - TinyLlama]\n----------------------------------------\n" + aiResponse + "\n" 
+        });
+    }
+
     const { command } = req.body;
     let output = '';
     const rootPath = path.join(__dirname, '../');
