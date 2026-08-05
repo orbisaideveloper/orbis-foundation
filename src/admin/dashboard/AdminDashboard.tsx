@@ -378,7 +378,7 @@ export function AdminDashboard() {
                       </div>
                       <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
                         <pre className="font-mono text-[12px] text-emerald-400 whitespace-pre-wrap leading-relaxed select-text">
-{activeSubCard === 'Source Tree' ? liveTree : getLogContent(activeSubCard)}
+{activeSubCard === 'Source Tree' ? liveTree : getLogContent(activeSubCard).replace(/CPU: 12% \\| RAM: 45%/g, `CPU: ${sysStats.load}% | RAM: ${sysStats.ramUsedPercent}%`).replace(/Current Server Load: 12\\.4%/g, `Current Server Load: ${sysStats.load}%`).replace(/Phase 04 active/g, `System Uptime: ${sysStats.uptime}`).replace(/14 active services/g, `${sysStats.cpuCores} CPU Cores Active on ${sysStats.platform}`)}
 </pre>
                       </div>
                     </div>
