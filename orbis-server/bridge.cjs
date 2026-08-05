@@ -295,3 +295,5 @@ app.get(/\/.*/, (req, res) => {
 app.listen(PORT, () => {
     console.log(`Orbis Server running on port ${PORT}`);
 });
+
+// Multi-model co-existence active: TinyLlama & Qwen 2.5 Bridge Routing
