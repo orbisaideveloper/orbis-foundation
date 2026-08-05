@@ -1,3 +1,4 @@
+const { getDiagnostics, addSystemLog } = require('./telemetry-module.cjs');
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -33,6 +34,10 @@ app.get('/api/metrics', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
+
+// System Diagnostic Route (Auto Injected)
+app.get('/api/diagnostics', (req, res) => { res.json(getDiagnostics()); });
+
 app.listen(PORT, () => {
   console.log(`\n🚀 Backend API Server is ready for Render!`);
 });
