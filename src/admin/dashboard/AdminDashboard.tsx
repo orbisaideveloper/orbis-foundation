@@ -466,15 +466,30 @@ export function AdminDashboard() {
                   </button>                </div>
               )}</>
               ) : (
-                <div className="bg-black/90 rounded-xl p-4 shadow-inner">
-                  <p className="text-green-400 font-mono text-[13px] leading-relaxed">
-                    [SYSTEM] Streaming secure logs for {activeCard}...<br/>
-                    [STATUS] Connection established.<br/><br/>
-                    <span className="text-teal-300 block mt-2 whitespace-pre-wrap">
+                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col h-full">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2 capitalize">
+                      <span className="text-xl">📡</span> Live Stream: {activeCard?.replace('_', ' ')}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rawData = generateRawTelemetry(activeCard === 'health' ? 'Health' : activeCard === 'engine' ? 'Engine' : activeCard === 'core' ? 'Architecture' : activeCard === 'runtime' ? 'Microservices' : activeCard === 'release' ? 'Master Node' : activeCard, sysStats);
+                        navigator.clipboard.writeText(rawData);
+                        setCopiedText(true);
+                        setTimeout(() => setCopiedText(false), 2000);
+                      }}
+                      className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
+                    >
+                      {copiedText ? '✓ Copied' : '⧉ Copy Data'}
+                    </button>
+                  </div>
+                  <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
+                    <pre className="font-mono text-[12px] text-teal-300 whitespace-pre-wrap leading-relaxed">
+                      {`[SYSTEM] Accessing secure node: ${activeCard}...\n[STATUS] Connection established.\n\n`}
                       {generateRawTelemetry(activeCard === 'health' ? 'Health' : activeCard === 'engine' ? 'Engine' : activeCard === 'core' ? 'Architecture' : activeCard === 'runtime' ? 'Microservices' : activeCard === 'release' ? 'Master Node' : activeCard, sysStats)}
-                    </span>
-                    <span className="animate-pulse">_</span>
-                  </p>
+                    </pre>
+                  </div>
                 </div>
               )}
             </div>
