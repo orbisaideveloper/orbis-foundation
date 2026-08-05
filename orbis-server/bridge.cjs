@@ -58,32 +58,29 @@ function analyzeFileLogic(filePath) {
     try {
         const content = fs.readFileSync(filePath, 'utf8');
         let report = `\n📄 ফাইল: ${path.basename(filePath)}\n`;
-
+        
+        // ডাইনামিক ইম্পোর্ট এবং এক্সপোর্ট ফাইন্ডার
         const imports = content.match(/import.*from.*/g) || [];
-        report += `🔗 ফাইলের ডিপেন্ডেন্সি:\n${imports.length > 0 ? imports.join('\n') : 'কোনো ইম্পোর্ট নেই'}\n\n`;
+        const exports = content.match(/export\s+(const|let|var|function|class|default|{).*/g) || [];
 
-        report += `🛠️ ডায়াগনস্টিক রিপোর্ট:\n`;
+        report += `🔗 ইমপোর্টস (Imports):\n${imports.length > 0 ? imports.map(i => '  ' + i).join('\n') : '  কোনো ইম্পোর্ট নেই'}\n\n`;
+        report += `📤 এক্সপোর্টস (Exports):\n${exports.length > 0 ? exports.map(e => '  ' + e).join('\n') : '  কোনো এক্সপোর্ট নেই'}\n`;
+
         let issueFound = false;
+        report += `\n🛠️ ডায়াগনস্টিক রিপোর্ট:\n`;
 
-        if (content.includes('SpeechRecognition')) {
-            report += `- [VOICE] SpeechRecognition API ব্যবহার করা হয়েছে। সার্ভারে HTTPS না থাকলে ব্রাউজার মাইক্রোফোন ব্লক করে দেয়।\n`;
-            issueFound = true;
-        }
         if (content.includes('alert(')) {
-            report += `- [UI] alert() ফাংশন কোডের ফ্লো ব্লক করে দেয়।\n`;
+            report += `- [WARNING] alert() ফাংশন কোডের ফ্লো ব্লক করে দেয়।\n`;
             issueFound = true;
         }
         if (content.match(/catch\s*\(/)) {
             report += `- [LOGIC] try-catch এরর হ্যান্ডলিং আছে।\n`;
             issueFound = true;
         }
-        if (filePath.endsWith('.tsx') && !content.includes('useState')) {
-            report += `- [STATE] এটি একটি স্ট্যাটিক কম্পোনেন্ট, কোনো লোকাল স্টেট নেই।\n`;
-        }
         if (!issueFound) {
             report += `- কোনো বেসিক লজিক্যাল ত্রুটি চোখে পড়েনি।\n`;
         }
-        return report;
+        return report + `\n----------------------------------------\n`;
     } catch (e) {
         return `\n[ERROR] স্ক্যান করতে সমস্যা: ${e.message}\n`;
     }
@@ -195,34 +192,42 @@ app.post('/api/orbis-command', (req, res) => {
             output += `Error: ${e.message}\n`;
         }
     }
-    else if (command.includes('কেন') || command.includes('কাজ') || command.includes('ফাইল') || command.includes('জড়িত') || command.includes('প্রবলেম') || command.includes('অসুবিধা') || command.includes('কিভাবে')) {
-        output += `--- 🧠 ORBIS CODE DIAGNOSIC ---\n\n`;
-        let keyword = '';
-        const cmdLower = command.toLowerCase();
+    else {
+        output += `--- 🧠 ORBIS DYNAMIC DEPENDENCY TRACER ---\n\n`;
+        
+        // ন্যাচারাল ল্যাঙ্গুয়েজ প্রসেসিং (NLP) স্টপ-ওয়ার্ড ফিল্টার
+        const stopWords = ['আমাকে', 'একটু', 'মানে', 'কোথায়', 'কি', 'কেন', 'কিভাবে', 'দেখাও', 'করো', 'দাও', 'এর', 'মধ্যে', 'টুল', 'টি', 'যে', 'লিস্ট', 'ট্রি', 'দাও', 'কী', 'কীভাবে'];
+        
+        // কমান্ড থেকে অপ্রয়োজনীয় শব্দ বাদ দিয়ে মূল ভেরিয়েবল (Target Module) বের করা
+        const words = command.toLowerCase().split(/\s+/).filter(w => !stopWords.includes(w) && w.length > 2);
+        
+        // যদি নির্দিষ্ট কোনো শব্দ না পায়, তবে ডিফল্ট হিসেবে 'App' স্ক্যান করবে
+        let keyword = words.length > 0 ? words.sort((a,b) => b.length - a.length)[0] : 'App';
+        
+        // বাংলিশ বা ইউজার ইনপুট নরমালাইজেশন
+        if (keyword.includes('ড্যাশবোর্ড') || keyword.includes('dashboard')) keyword = 'Dashboard';
+        else if (keyword.includes('লটারি') || keyword.includes('lottery')) keyword = 'lottery';
+        else if (keyword.includes('ভয়েস') || keyword.includes('মাইক্রোফোন')) keyword = 'CommandBar';
 
-        if (cmdLower.includes('ভয়েস') || cmdLower.includes('কমান্ড বার')) keyword = 'CommandBar';
-        else if (cmdLower.includes('ড্যাশবোর্ড') || cmdLower.includes('মডেল')) keyword = 'Dashboard';
-        else keyword = command.split(' ').find(w => w.length > 3) || 'App';
-
-        output += `🔍 '${keyword}' মডিউলের জন্য সোর্স কোড স্ক্যান করা হচ্ছে...\n`;
+        output += `🔍 '${keyword}' মডিউলের ইম্পোর্ট/এক্সপোর্ট ম্যাপ স্ক্যান করা হচ্ছে...\n`;
 
         const foundFiles = searchCodeFiles(srcPath, keyword);
         const uniqueFiles = [...new Set(foundFiles)];
 
         if (uniqueFiles.length > 0) {
             output += `✅ ${uniqueFiles.length} টি সম্পর্কিত ফাইল পাওয়া গেছে।\n`;
-            uniqueFiles.slice(0, 2).forEach(f => {
+            
+            // রেজাল্ট টার্মিনালে দেখানোর জন্য লুপ
+            uniqueFiles.slice(0, 3).forEach(f => {
                 output += analyzeFileLogic(f);
             });
-            if (uniqueFiles.length > 2) {
-                output += `\n... আরও ${uniqueFiles.length - 2} টি ফাইল জড়িত আছে।`;
+            
+            if (uniqueFiles.length > 3) {
+                output += `\n... আরও ${uniqueFiles.length - 3} টি ফাইল জড়িত আছে। বিস্তারিত দেখতে নির্দিষ্ট ফাইলের নাম লিখুন।`;
             }
         } else {
-            output += `❌ '${keyword}' সম্পর্কিত কোনো ফাইল বা লজিক পাওয়া যায়নি।`;
+            output += `❌ '${keyword}' সম্পর্কিত কোনো ফাইল বা ফোল্ডার সোর্স কোডে পাওয়া যায়নি।`;
         }
-    }
-    else {
-        output += `Command Received: "${command}"\nTry asking: "সোর্স ট্রি দেখাও" or "ডিপেন্ডেন্সি দেখাও"`;
     }
 
     res.json({ result: output });
