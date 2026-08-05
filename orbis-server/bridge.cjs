@@ -3,8 +3,10 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 
-// --- 🤖 OLLAMA AI INTEGRATION (Brain) ---
-async function askOllama(prompt) {
+const PORT = process.env.PORT || 3000;
+
+// --- 🤖 OLLAMA AI INTEGRATION (Brain with Streaming) ---
+async function handleOllamaStream(prompt, res) {
     const tunnelUrl = process.env.OLLAMA_URL || "https://range-lives-asking-ant.trycloudflare.com";
     try {
         const response = await fetch(`${tunnelUrl}/api/generate`, {
@@ -13,14 +15,44 @@ async function askOllama(prompt) {
             body: JSON.stringify({
                 model: "tinyllama:latest",
                 prompt: prompt,
-                stream: false
+                stream: true
             })
         });
-        if (!response.ok) throw new Error(`Server status ${response.status}`);
-        const data = await response.json();
-        return data.response;
+
+        if (!response.ok) {
+            return res.status(response.status).json({ result: `⚠️ AI Server Error: Status ${response.status}` });
+        }
+
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Transfer-Encoding', 'chunked');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const text = decoder.decode(value, { stream: true });
+            const lines = text.split('\n').filter(Boolean);
+            for (const line of lines) {
+                try {
+                    const parsed = JSON.parse(line);
+                    if (parsed.response) {
+                        res.write(parsed.response);
+                    }
+                } catch (e) {
+                    res.write(text);
+                }
+            }
+        }
+        res.end();
     } catch (err) {
-        return "⚠️ AI Server Error: " + err.message + " (Ollama বা টানেল কি চালু আছে?)";
+        console.error("AI Error:", err);
+        if (!res.headersSent) {
+            return res.json({ result: "⚠️ AI Server Error: " + err.message + " (Ollama বা টানেল কি চালু আছে?)" });
+        }
+        res.write("\n⚠️ AI Connection Interrupted.");
+        res.end();
     }
 }
 
@@ -141,21 +173,16 @@ app.get('/api/system-stats', (req, res) => {
 
 app.post('/api/orbis-command', async (req, res) => {
     let rawCommand = req.body.command || "";
-    if (rawCommand.replace(/[^a-zA-Z:]/g, "").toLowerCase().startsWith("ai:")) {
-        let cleanCommand = rawCommand.replace(/^.*?ai:\s*/i, "").trim();
-        let aiResponse = await askOllama(cleanCommand);
-        return res.json({
-            result: "🧠 [BaaS AI Engine - TinyLlama]\n----------------------------------------\n" + aiResponse + "\n"
-        });
-    }
+    let cleanCommand = rawCommand.replace(/^.*?ai:\s*/i, "").trim();
 
-    const { command } = req.body;
-    let output = '';
+    const isTreeCommand = cleanCommand.includes('ট্রি') || cleanCommand.includes('ফোল্ডার') || cleanCommand.includes('tree') || cleanCommand.includes('সোর্স কোড');
+    const isDepCommand = cleanCommand.includes('কানেকশন') || cleanCommand.includes('ডিপেন্ডেন্সি');
+
     const rootPath = path.join(__dirname, '../');
     const srcPath = path.join(rootPath, 'src');
     const prismaPath = path.join(rootPath, 'prisma');
 
-    if (command.includes('ট্রি') || command.includes('ফোল্ডার') || command.includes('tree') || command.includes('সোর্স কোড')) {
+    if (isTreeCommand) {
         let changedFiles = [];
         let logBook = '\n\n========================================\n 🕒 LIVE 20 ROLLING COMMIT TIME-SLOTS & AUDIT\n========================================\n';
         try {
@@ -177,11 +204,11 @@ app.post('/api/orbis-command', async (req, res) => {
         } catch (e) {
             logBook += '\n⚠️ Logbook tracking error: ' + e.message;
         }
-        output += `--- LIVE SOURCE CODE DIRECTORY ---\n\n` + getDirectoryTree(rootPath, '', changedFiles) + logBook;
+        let output = `--- LIVE SOURCE CODE DIRECTORY ---\n\n` + getDirectoryTree(rootPath, '', changedFiles) + logBook;
         return res.json({ result: output });
-    }
-    else if (command.includes('কানেকশন') || command.includes('ডিপেন্ডেন্সি')) {
-        output += `--- DEPENDENCY MAP ---\n\n`;
+
+    } else if (isDepCommand) {
+        let output = `--- DEPENDENCY MAP ---\n\n`;
         try {
             const pkgPath = path.join(rootPath, 'package.json');
             if(fs.existsSync(pkgPath)) output += JSON.stringify(JSON.parse(fs.readFileSync(pkgPath)).dependencies, null, 2);
@@ -190,13 +217,9 @@ app.post('/api/orbis-command', async (req, res) => {
             output += `Error: ${e.message}\n`;
         }
         return res.json({ result: output });
-    }
-    else {
-        const ts = require('typescript');
-        const isStrictParser = command.includes('PARSER TEST') || command.includes('Return ONLY:');
-        if (!isStrictParser) {
-            output += `🗣️ আপনার প্রশ্ন: "${command}"\n\n+-------------------------------------------------------------------------+\n| 🧠 ORBIS AST ইঞ্জিন: স্মার্ট ডিপেন্ডেন্সি স্ক্যানার                       |\n+-------------------------------------------------------------------------+\n\n`;
-        }
+
+    } else {
+        // টার্গেট ফাইল বা AST চেক করা
         function getAllValidFiles(dir, fileList = []) {
             if (!fs.existsSync(dir)) return fileList;
             const items = fs.readdirSync(dir);
@@ -205,31 +228,42 @@ app.post('/api/orbis-command', async (req, res) => {
                 const fullPath = path.join(dir, item);
                 if (fs.statSync(fullPath).isDirectory()) getAllValidFiles(fullPath, fileList);
                 else if (item.match(/\.(tsx|ts|js|jsx)$/)) {
-                    if (item.includes('.test.') && command.includes('Ignore *.test.tsx')) continue;
-                    else if (item.includes('.test.') && !command.includes('.test.')) continue;
+                    if (item.includes('.test.') && cleanCommand.includes('Ignore *.test.tsx')) continue;
+                    else if (item.includes('.test.') && !cleanCommand.includes('.test.')) continue;
                     fileList.push(fullPath);
                 }
             }
             return fileList;
         }
+
         const allSourceFiles = getAllValidFiles(srcPath);
         if (fs.existsSync(prismaPath)) getAllValidFiles(prismaPath, allSourceFiles);
-        let targetFilePath = null, targetFileName = null;
-        const targetMatch = command.match(/Target file:\s*([a-zA-Z0-9_.-]+)/i) || command.match(/([a-zA-Z0-9_.-]+\.tsx?)/i);
+
+        const targetMatch = cleanCommand.match(/Target file:\s*([a-zA-Z0-9_.-]+)/i) || cleanCommand.match(/([a-zA-Z0-9_.-]+\.tsx?)/i);
         let searchWord = targetMatch ? targetMatch[1].trim() : null;
+
         if (!searchWord) {
-            const words = command.split(/[\s,?.!"']+/);
+            const words = cleanCommand.split(/[\s,?.!"']+/);
             for (let word of words) {
                 if (word.length >= 3 && allSourceFiles.some(f => path.basename(f).toLowerCase() === word.toLowerCase() || path.basename(f).replace(/\.[^/.]+$/, "").toLowerCase() === word.toLowerCase())) {
                     searchWord = word; break;
                 }
             }
         }
+
+        let targetFilePath = null;
         if (searchWord) {
             targetFilePath = allSourceFiles.find(f => path.basename(f).toLowerCase() === searchWord.toLowerCase() || path.basename(f).replace(/\.[^/.]+$/, "").toLowerCase() === searchWord.toLowerCase());
-            if (targetFilePath) targetFileName = path.basename(targetFilePath);
         }
-        if (!targetFilePath) return res.json({ result: isStrictParser ? "ERROR: Target file not found." : output + "❌ টার্গেট ফাইল পাওয়া যায়নি" });
+
+        // যদি বিশেষ কোনো কোড ফাইল স্ক্যান করতে না বলা হয়ে থাকে, তবে এটি সাধারণ প্রশ্ন এবং সরাসরি Ollama এআই-তে যাবে
+        if (!targetFilePath) {
+            return handleOllamaStream(cleanCommand, res);
+        }
+
+        // AST Parsing
+        const ts = require('typescript');
+        const targetFileName = path.basename(targetFilePath);
         const content = fs.readFileSync(targetFilePath, 'utf8');
         const sourceFile = ts.createSourceFile(targetFileName, content, ts.ScriptTarget.Latest, true);
         const astImports = [];
@@ -242,17 +276,11 @@ app.post('/api/orbis-command', async (req, res) => {
                 });
             }
         });
-        if (isStrictParser) {
-            if (command.includes('first local file imported')) {
-                const firstLocal = astImports.find(i => i.isLocal);
-                if (firstLocal) output = `Target File: ${targetFileName}\nImported File: ${firstLocal.module}\nImport Statement: ${firstLocal.statement}`;
-                else output = "No local imports found.";
-            } else output = "STRICT MODE: Query understood, but specific task handler not matched.";
-        } else {
-            output += ` 📄 টার্গেট ফাইল:           ${targetFilePath.replace(rootPath, '')}\n\n 🔗 ইমপোর্টস (AST):\n`;
-            astImports.forEach(imp => { output += `      - ${imp.isLocal ? 'লোকাল' : 'প্যাকেজ'}: ${imp.module}\n`; });
-            output += `\n+-------------------------------------------------------------------------+\n| [ স্ট্যাটাস ] ✅ AST পার্সিং সম্পন্ন (Ready for AI Integration)           |\n+-------------------------------------------------------------------------+\n`;
-        }
+
+        let output = `🗣️ আপনার প্রশ্ন: "${cleanCommand}"\n\n+-------------------------------------------------------------------------+\n| 🧠 ORBIS AST ইঞ্জিন: স্মার্ট ডিপেন্ডেন্সি স্ক্যানার                       |\n+-------------------------------------------------------------------------+\n\n`;
+        output += ` 📄 টার্গেট ফাইল:           ${targetFilePath.replace(rootPath, '')}\n\n 🔗 ইমপোর্টস (AST):\n`;
+        astImports.forEach(imp => { output += `      - ${imp.isLocal ? 'লোকাল' : 'প্যাকেজ'}: ${imp.module}\n`; });
+        output += `\n+-------------------------------------------------------------------------+\n| [ স্ট্যাটাস ] ✅ AST পার্সিং সম্পন্ন (Ready for AI Integration)           |\n+-------------------------------------------------------------------------+\n`;
         return res.json({ result: output });
     }
 });
@@ -264,5 +292,6 @@ app.get(/\/.*/, (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`ORBIS Server running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`Orbis Server running on port ${PORT}`);
+});
