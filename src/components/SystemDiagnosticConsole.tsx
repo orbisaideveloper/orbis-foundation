@@ -4,6 +4,7 @@ export default function SystemDiagnosticConsole() {
     const [isOpen, setIsOpen] = useState(false);
     const [telemetry, setTelemetry] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
     const fetchTelemetry = async () => {
         try {
@@ -12,15 +13,22 @@ export default function SystemDiagnosticConsole() {
                 const data = await res.json();
                 setTelemetry(data);
                 setLoading(false);
+                setErrorMsg(null);
+            } else {
+                setLoading(false);
+                setErrorMsg(`API Error: ${res.status} (ব্যাকএন্ড রাউটটি হয়তো এখনো Render-এ আপডেট হয়নি)`);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Telemetry fetch error", e);
+            setLoading(false);
+            setErrorMsg("Network Error: ব্যাকএন্ডের সাথে কানেকশন করা যাচ্ছে না অথবা JSON পার্সিং এরর।");
         }
     };
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
         if (isOpen) {
+            setLoading(true);
             fetchTelemetry();
             interval = setInterval(fetchTelemetry, 3000);
         }
@@ -29,7 +37,6 @@ export default function SystemDiagnosticConsole() {
 
     return (
         <>
-            {/* ড্যাশবোর্ড ট্রিগার কার্ড */}
             <div 
                 onClick={() => setIsOpen(true)}
                 className="bg-gradient-to-br from-slate-900 to-slate-800 border border-sky-500/30 rounded-2xl p-5 mb-4 cursor-pointer shadow-lg hover:shadow-sky-500/20 transition-all"
@@ -50,7 +57,6 @@ export default function SystemDiagnosticConsole() {
                 </div>
             </div>
 
-            {/* ফুল স্ক্রিন ৮-কার্ড মডাল */}
             {isOpen && (
                 <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 overflow-y-auto p-6 font-sans">
                     <div className="max-w-6xl mx-auto pb-20">
@@ -63,10 +69,15 @@ export default function SystemDiagnosticConsole() {
 
                         {loading ? (
                             <div className="text-sky-400 text-center py-10">ফেচিং লাইভ ডাটা...</div>
+                        ) : errorMsg ? (
+                            <div className="text-red-400 text-center py-10 font-mono bg-red-900/20 border border-red-500/30 rounded-xl">
+                                <h3 className="text-lg font-bold">⚠️ ডাটা লোড হতে সমস্যা হচ্ছে!</h3>
+                                <p className="mt-2">{errorMsg}</p>
+                                <p className="text-xs text-slate-400 mt-4">Render সার্ভার ডিপ্লয় হতে হয়তো একটু সময় নিচ্ছে। ২-৩ মিনিট পর আবার চেষ্টা করুন।</p>
+                            </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
                                 
-                                {/* 1. Bridge Status */}
                                 <div className="bg-slate-800/60 border border-white/10 p-5 rounded-xl">
                                     <h3 className="text-sky-400 text-sm font-bold mb-3 uppercase tracking-wider">[▼] 1. Bridge Status</h3>
                                     <div className="text-slate-300 font-mono text-sm leading-relaxed">
@@ -79,7 +90,6 @@ export default function SystemDiagnosticConsole() {
                                     </div>
                                 </div>
 
-                                {/* 2. AI Providers */}
                                 <div className="bg-slate-800/60 border border-white/10 p-5 rounded-xl">
                                     <h3 className="text-sky-400 text-sm font-bold mb-3 uppercase tracking-wider">[▼] 2. AI Providers Monitor</h3>
                                     <div className="overflow-x-auto">
@@ -101,7 +111,6 @@ export default function SystemDiagnosticConsole() {
                                     </div>
                                 </div>
 
-                                {/* 3. Request Pipeline */}
                                 <div className="bg-slate-800/60 border border-white/10 p-5 rounded-xl">
                                     <h3 className="text-sky-400 text-sm font-bold mb-3 uppercase tracking-wider">[▼] 3. Request Pipeline Flow</h3>
                                     <div className="text-slate-300 font-mono text-sm flex flex-col gap-2">
@@ -113,7 +122,6 @@ export default function SystemDiagnosticConsole() {
                                     </div>
                                 </div>
 
-                                {/* 4. Live Request Log */}
                                 <div className="bg-slate-800/60 border border-white/10 p-5 rounded-xl">
                                     <h3 className="text-sky-400 text-sm font-bold mb-3 uppercase tracking-wider">[▼] 4. Live Request Log</h3>
                                     <div className="h-32 overflow-y-auto bg-slate-900 p-2 rounded border border-white/5 font-mono text-xs text-slate-400">
@@ -125,7 +133,6 @@ export default function SystemDiagnosticConsole() {
                                     </div>
                                 </div>
 
-                                {/* 5. Master Console (Full Width) */}
                                 <div className="bg-slate-950 border border-sky-500/40 p-5 rounded-xl md:col-span-2 shadow-[0_0_15px_rgba(56,189,248,0.1)]">
                                     <h3 className="text-sky-400 text-sm font-bold mb-3 uppercase tracking-wider flex justify-between">
                                         <span>[▼] 5. Master Runtime Console</span>
@@ -140,7 +147,6 @@ export default function SystemDiagnosticConsole() {
                                     </div>
                                 </div>
 
-                                {/* 6. Connection Diagnostics */}
                                 <div className="bg-slate-800/60 border border-white/10 p-5 rounded-xl">
                                     <h3 className="text-sky-400 text-sm font-bold mb-3 uppercase tracking-wider">[▼] 6. Diagnostics</h3>
                                     <div className="text-slate-300 font-mono text-sm leading-relaxed">
@@ -151,7 +157,6 @@ export default function SystemDiagnosticConsole() {
                                     </div>
                                 </div>
 
-                                {/* 7. Error Inspector */}
                                 <div className="bg-slate-800/60 border border-red-500/20 p-5 rounded-xl">
                                     <h3 className="text-red-400 text-sm font-bold mb-3 uppercase tracking-wider">[▼] 7. Error Inspector</h3>
                                     <div className="text-red-300/80 font-mono text-sm leading-relaxed">
@@ -161,7 +166,6 @@ export default function SystemDiagnosticConsole() {
                                     </div>
                                 </div>
 
-                                {/* 8. Dependency Inspector */}
                                 <div className="bg-slate-800/60 border border-white/10 p-5 rounded-xl md:col-span-2">
                                     <h3 className="text-sky-400 text-sm font-bold mb-3 uppercase tracking-wider">[▼] 8. Dependency Inspector</h3>
                                     <div className="flex gap-4 mt-2">
