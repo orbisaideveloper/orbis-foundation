@@ -10,11 +10,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Prisma-এর রিকোয়ারমেন্ট অনুযায়ী ডাটাবেস অ্যাডাপ্টার সেটআপ
 const connectionString = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
+
+// 🟢 নতুন রাউট: Bridge থেকে আসা রিয়েল লগ রিসিভ করার জন্য
+app.post('/api/internal/log', (req, res) => {
+    const { level, source, message } = req.body;
+    if (message) addSystemLog(level, source, message);
+    res.sendStatus(200);
+});
 
 app.get('/api/metrics', async (req, res) => {
     try {
@@ -34,7 +40,6 @@ app.get('/api/metrics', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 
-// 🟢 System Diagnostic Route (Fixed & Clean)
 app.get('/api/diagnostics', (req, res) => {
     res.json(getDiagnostics());
 });

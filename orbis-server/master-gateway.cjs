@@ -2,60 +2,70 @@ const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
 
-// Render-এর মেইন পোর্ট
 const PORT = process.env.PORT || 10000; 
-const BRIDGE_PORT = 3002; // Bridge-এর জন্য ইন্টারনাল পোর্ট
-const SERVER_PORT = 3001; // Server-এর জন্য ইন্টারনাল পোর্ট
+const BRIDGE_PORT = 3002;
+const SERVER_PORT = 3001;
 
 console.log("🚀 Initializing ORBIS Master Gateway...");
 
-// ১. Bridge.cjs রান করানো (Background Process)
+// Server-এ লগ ফরওয়ার্ড করার ফাংশন
+function forwardLogToServer(level, data) {
+    const msg = data.toString().trim();
+    if (!msg) return;
+    const req = http.request({
+        hostname: '127.0.0.1', port: SERVER_PORT, path: '/api/internal/log',
+        method: 'POST', headers: { 'Content-Type': 'application/json' }
+    });
+    req.on('error', () => {}); // Server রেডি না থাকলে ক্র্যাশ করবে না
+    req.write(JSON.stringify({ level, source: 'BRIDGE', message: msg }));
+    req.end();
+}
+
+// ১. Bridge.cjs রান করানো (Output Capture মোডে)
 const bridgeProcess = spawn('node', [path.join(__dirname, 'bridge.cjs')], { 
     env: { ...process.env, PORT: BRIDGE_PORT }, 
-    stdio: 'inherit' 
+    stdio: ['inherit', 'pipe', 'pipe'] // <-- ম্যাজিকটা এখানে! 
 });
 
-// ২. Server.cjs রান করানো (Background Process)
+// Bridge-এর আউটপুট ধরে Server-এ পাঠানো
+bridgeProcess.stdout.on('data', (data) => {
+    process.stdout.write(data);
+    forwardLogToServer('INFO', data);
+});
+bridgeProcess.stderr.on('data', (data) => {
+    process.stderr.write(data);
+    forwardLogToServer('ERROR', data);
+});
+
+// ২. Server.cjs রান করানো
 const serverProcess = spawn('node', [path.join(__dirname, 'server.cjs')], { 
     env: { ...process.env, PORT: SERVER_PORT }, 
     stdio: 'inherit' 
 });
 
-// ৩. Master "Door" (Gateway) তৈরি করা
+// ৩. Master "Door" (Gateway) 
 const gateway = http.createServer((req, res) => {
-    // ডায়াগনস্টিক বা মেট্রিক্স রিকোয়েস্ট হলে server.cjs-এ যাবে, নাহলে bridge.cjs-এ
     const isTelemetry = req.url.startsWith('/api/diagnostics') || req.url.startsWith('/api/metrics');
     const targetPort = isTelemetry ? SERVER_PORT : BRIDGE_PORT;
 
     const proxyReq = http.request({
-        hostname: '127.0.0.1',
-        port: targetPort,
-        path: req.url,
-        method: req.method,
-        headers: req.headers
+        hostname: '127.0.0.1', port: targetPort, path: req.url, method: req.method, headers: req.headers
     }, (proxyRes) => {
         res.writeHead(proxyRes.statusCode, proxyRes.headers);
         proxyRes.pipe(res, { end: true });
     });
 
     req.pipe(proxyReq, { end: true });
-
     proxyReq.on('error', (err) => {
         res.writeHead(502);
         res.end('ORBIS Gateway Error: ' + err.message);
     });
 });
 
-// WebSocket সাপোর্ট (যাতে Bridge-এর কোনো রিয়েল-টাইম কাজ ব্রেক না করে)
 gateway.on('upgrade', (req, socket, head) => {
     const proxyReq = http.request({
-        hostname: '127.0.0.1',
-        port: BRIDGE_PORT,
-        path: req.url,
-        method: req.method,
-        headers: req.headers
+        hostname: '127.0.0.1', port: BRIDGE_PORT, path: req.url, method: req.method, headers: req.headers
     });
-    
     proxyReq.on('upgrade', (proxyRes, proxySocket) => {
         socket.write(`HTTP/${proxyRes.httpVersion} 101 Switching Protocols\r\n`);
         for (let i = 0; i < proxyRes.rawHeaders.length; i += 2) {
@@ -65,7 +75,6 @@ gateway.on('upgrade', (req, socket, head) => {
         proxySocket.pipe(socket);
         socket.pipe(proxySocket);
     });
-    
     req.pipe(proxyReq);
     proxyReq.on('error', () => socket.end());
 });
