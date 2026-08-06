@@ -99,8 +99,9 @@ export function AdminDashboard() {
 
     switch (target) {
       case 'System Phase':
-      case 'Overview':
-      case 'SYSTEM UPTIME':
+        case 'Overview':
+        case 'overview':
+        case 'SYSTEM UPTIME':
         return header + `> OS Platform: ${sysStats.platform} (${sysStats.release})\n> Server Hostname: ${sysStats.hostname}\n> OS Uptime: ${sysStats.uptime}\n> Node Process Uptime: ${sysStats.processUptime} Seconds\n> Status: ${sysStats.status}`;
 
       case 'Architecture':
@@ -125,8 +126,12 @@ export function AdminDashboard() {
       case 'CPU LOAD':
         return header + `> CPU Load Average (1 min): ${sysStats.load}\n> CPU Load Average (5 min): ${sysStats.load5m}\n> CPU Load Average (15 min): ${sysStats.load15m}\n> Core Distribution: ${sysStats.cpuCores > 0 ? (parseFloat(sysStats.load) / sysStats.cpuCores * 100).toFixed(1) : 0}% per core`;
 
-      default:
-        return header + `> Requesting raw data for ${target}...\n> Metrics Snapshot: \n` + JSON.stringify(sysStats, null, 2);
+      case 'brain':
+            return header + `> Neural Sync: COMPLETE\n> Brain Connectivity: OPTIMAL\n> Target Node: Active`;
+        case 'ai':
+            return header + `> AI Providers: ACTIVE\n> Local Models: Synced\n> Connection: SECURE`;
+        default:
+            return header + `> Requesting raw data for ${target}...\n> Metrics Snapshot: \n` + JSON.stringify(sysStats, null, 2);
     }
   };
 

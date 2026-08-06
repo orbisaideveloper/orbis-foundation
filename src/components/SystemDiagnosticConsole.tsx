@@ -46,8 +46,21 @@ export default function SystemDiagnosticConsole() {
 
     // Format raw data for copying
     const getRawData = (moduleName: string) => {
+        if (!telemetry) return 'No data available';
         const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' (IST)';
         const header = `[RAW TELEMETRY] - ${time}\nTarget Module: ${moduleName}\nStatus: LIVE DATA STREAM\n--------------------------------\n`;
+
+        if (moduleName === 'Master Console') {
+            return header + (telemetry.logs?.map((l:any) => `> [${l.timestamp}] [${l.source}] [${l.level}] ${l.message}`).join('\n') || '> No logs available.');
+        } else if (moduleName === 'Bridge Status') {
+            return header + `> Bridge Node: ${telemetry.bridge?.bridgeStatus}\n> Server API: ${telemetry.bridge?.serverStatus}\n> Uptime: ${telemetry.bridge?.uptime}\n> Platform: ${telemetry.bridge?.platform}`;
+        } else if (moduleName === 'Git Activity') {
+            return header + `> Latest Commit: ${telemetry.gitStatus}`;
+        } else if (moduleName === 'Hardware Metrics') {
+            return header + `> Server Load: ${telemetry.hardware?.cpu}\n> RAM Usage: ${telemetry.hardware?.ram}\n> Architecture: ${telemetry.hardware?.arch}`;
+        } else if (moduleName === 'AI Providers') {
+            return header + (telemetry.providers?.map((p:any) => `> ${p.name} - ${p.status} (${p.type})`).join('\n') || '> No providers found.');
+        }
         return header + JSON.stringify(telemetry, null, 2);
     };
 
