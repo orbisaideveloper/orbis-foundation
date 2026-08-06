@@ -81,7 +81,7 @@ export default function SystemDiagnosticConsole() {
                             <h2 className="text-[16px] font-bold text-slate-800 flex items-center gap-2">
                                 <span className="text-xl">📊</span> {activeCard ? `${activeCard} Log` : 'Overview Monitor'}
                             </h2>
-                            <button onClick={() => { setIsOpen(false); setActiveCard(null); }} className="bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold text-[12px] hover:bg-slate-200 transition-colors">
+                            <button type="button" onClick={() => { setIsOpen(false); setActiveCard(null); }} className="bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold text-[12px] hover:bg-slate-200 transition-colors">
                                 Close
                             </button>
                         </div>
@@ -98,32 +98,32 @@ export default function SystemDiagnosticConsole() {
                             ) : activeCard === null ? (
                                 /* LAYER 2: GRID VIEW (Light Theme) */
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                    <button onClick={() => setActiveCard('Bridge Status')} className="text-left bg-white border border-blue-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                                    <button type="button" onClick={() => setActiveCard('Bridge Status')} className="text-left bg-white border border-blue-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                                         <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-wide">Bridge Node</h4>
                                         <p className="text-lg font-black text-slate-800 mt-0.5">Online</p>
                                         <p className="text-[10px] text-slate-400 mt-1">{telemetry?.bridge?.uptime}</p>
                                     </button>
                                     
-                                    <button onClick={() => setActiveCard('Git Activity')} className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                                    <button type="button" onClick={() => setActiveCard('Git Activity')} className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                                         <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">Last Commit</h4>
                                         <p className="text-sm font-black text-slate-800 mt-1 line-clamp-1">{telemetry?.gitStatus}</p>
                                     </button>
 
-                                    <button onClick={() => setActiveCard('Hardware Metrics')} className="text-left bg-white border border-green-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                                    <button type="button" onClick={() => setActiveCard('Hardware Metrics')} className="text-left bg-white border border-green-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                                         <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Server Load</h4>
                                         <p className="text-lg font-black text-slate-800 mt-0.5">{telemetry?.hardware?.cpu}</p>
                                         <p className="text-[10px] text-slate-400 mt-1">RAM: {telemetry?.hardware?.ram}</p>
                                     </button>
 
-                                    <button onClick={() => setActiveCard('AI Providers')} className="text-left bg-white border border-purple-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+                                    <button type="button" onClick={() => setActiveCard('AI Providers')} className="text-left bg-white border border-purple-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
                                         <h4 className="text-[10px] font-bold text-purple-600 uppercase tracking-wide">Local Models</h4>
                                         <p className="text-lg font-black text-slate-800 mt-0.5">Active</p>
                                     </button>
 
-                                    <button onClick={() => setActiveCard('Master Console')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95 md:col-span-2">
+                                    <button type="button" onClick={() => setActiveCard('Master Console')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95 md:col-span-2">
                                         <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">Runtime Console <span className="bg-red-100 text-red-600 px-1.5 rounded animate-pulse">LIVE</span></h4>
                                         <div className="mt-2 h-16 overflow-hidden text-[10px] font-mono text-slate-600 border-l-2 border-slate-300 pl-2">
-                                            {telemetry?.logs?.slice(0,3).map((l:any, i:number) => <div key={i}>{l.message}</div>)}
+                                            {telemetry?.logs?.slice(0,3).map((l:any, i:number) => <div key={`diag-log-${i}`}>{l.message}</div>)}
                                         </div>
                                     </button>
                                 </div>
@@ -131,10 +131,10 @@ export default function SystemDiagnosticConsole() {
                                 /* LAYER 3: TERMINAL & COPY VIEW */
                                 <div className="flex flex-col h-full animate-in fade-in zoom-in duration-200">
                                     <div className="flex justify-between items-center mb-3">
-                                        <button onClick={() => setActiveCard(null)} className="text-[13px] text-slate-600 font-bold hover:text-slate-900 flex items-center gap-1.5 bg-slate-200/60 px-3 py-1.5 rounded-lg transition-colors active:scale-95">
+                                        <button type="button" onClick={() => setActiveCard(null)} className="text-[13px] text-slate-600 font-bold hover:text-slate-900 flex items-center gap-1.5 bg-slate-200/60 px-3 py-1.5 rounded-lg transition-colors active:scale-95">
                                             ← Back
                                         </button>
-                                        <button 
+                                        <button type="button" 
                                             onClick={() => { 
                                                 navigator.clipboard.writeText(getRawData(activeCard)); 
                                                 setCopiedText(true); 
