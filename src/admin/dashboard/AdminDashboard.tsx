@@ -150,8 +150,7 @@ export function AdminDashboard() {
   // FIXED: Extracted nested ternary to reduce Cognitive Complexity
   const renderPremiumModalContent = () => {
     if (activeCard === 'overview') {
-      if (activeSubCard) {
-        return (
+      return (
           <div 
             className="flex items-center gap-2.5 cursor-pointer hover:opacity-90 transition-all flex-1 justify-center pr-6" 
             onClick={() => window.dispatchEvent(new CustomEvent('open-source-map', { detail: 'main_dashboard' }))}
