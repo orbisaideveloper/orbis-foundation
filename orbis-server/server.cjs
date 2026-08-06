@@ -1,4 +1,4 @@
-const { getDiagnostics, addSystemLog } = require('./telemetry-module.cjs');
+const { getDiagnostics, addSystemLog, setDbClient } = require('./telemetry-module.cjs');
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -25,6 +25,9 @@ const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
+// 🟢 DB কানেকশন টেলিমেট্রি মডিউলে পাঠানো হচ্ছে
+setDbClient(prisma);
+
 app.post('/api/internal/log', (req, res) => {
     const { level, source, message } = req.body;
     if (message) addSystemLog(level, source, message);
@@ -49,8 +52,26 @@ app.get('/api/metrics', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 
-app.get('/api/diagnostics', (req, res) => {
-    res.json(getDiagnostics());
+app.get('/api/diagnostics', async (req, res) => {
+    try {
+        const diag = getDiagnostics();
+        // সুপারবেস থেকে শেষ ১০০ লগ টানা হচ্ছে
+        const dbLogs = await prisma.foundationSystemLog.findMany({
+            take: 100,
+            orderBy: { createdAt: 'desc' }
+        });
+        if (dbLogs && dbLogs.length > 0) {
+            diag.logs = dbLogs.map(l => ({
+                timestamp: l.timestamp,
+                level: l.level,
+                source: l.source,
+                message: l.message
+            }));
+        }
+        res.json(diag);
+    } catch (error) {
+        res.json(getDiagnostics()); // DB এরর দিলে র‍্যামের ব্যাকআপ লগ পাঠাবে
+    }
 });
 
 app.listen(PORT, () => {

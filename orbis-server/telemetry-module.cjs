@@ -3,6 +3,11 @@ const { execSync } = require('child_process');
 
 // 🟢 লগ লিমিট বাড়িয়ে ১০০ করা হলো
 const systemLogs = [];
+let dbClient = null;
+
+function setDbClient(client) {
+    dbClient = client;
+}
 
 function addSystemLog(level, source, message) {
     const timestamp = new Date().toLocaleTimeString('en-US', { hour12: true, timeZone: 'Asia/Kolkata' });
@@ -11,6 +16,12 @@ function addSystemLog(level, source, message) {
     // ১০০ টার বেশি লগ জমলে শেষেরটা মুছবে
     if (systemLogs.length > 100) {
         systemLogs.pop();
+    }
+
+    if (dbClient) {
+        dbClient.foundationSystemLog.create({
+            data: { level, source, message: String(message), timestamp }
+        }).catch(() => {}); // DB ফেল করলেও যেন সার্ভার ক্র্যাশ না করে
     }
 }
 
@@ -70,4 +81,4 @@ function getDiagnostics() {
     };
 }
 
-module.exports = { getDiagnostics, addSystemLog };
+module.exports = { setDbClient,  getDiagnostics, addSystemLog };

@@ -22,3 +22,12 @@ model FoundationAdminMetric {
   status     String   @default("ONLINE")
   recordedAt DateTime @default(now())
 }
+
+model FoundationSystemLog {
+  id        String   @id @default(uuid())
+  level     String
+  source    String
+  message   String
+  timestamp String
+  createdAt DateTime @default(now())
+}
