@@ -10,7 +10,7 @@ function setDbClient(client) {
     dbClient = client;
 }
 
-function addSystemLog(level, source, message) {
+async function addSystemLog(level, source, message) {
     const timestamp = new Date().toLocaleTimeString('en-US', { hour12: true, timeZone: 'Asia/Kolkata' });
     systemLogs.unshift({ timestamp, level, source, message: String(message) });
     
@@ -20,9 +20,20 @@ function addSystemLog(level, source, message) {
     }
 
     if (dbClient) {
-        dbClient.foundationSystemLog.create({
-            data: { id: crypto.randomUUID(), level: String(level || 'INFO'), source: String(source || 'SYSTEM'), message: String(message || 'Empty Log'), timestamp: String(timestamp), createdAt: new Date() }
-        }).catch((err) => { originalError.call(console, "[DB_SAVE_ERROR]", err.stack || err.message); });
+        try {
+            await dbClient.foundationSystemLog.create({
+                data: { 
+                    id: crypto.randomUUID(), 
+                    level: String(level || 'INFO'), 
+                    source: String(source || 'SYSTEM'), 
+                    message: String(message || 'Empty Log'), 
+                    timestamp: String(timestamp), 
+                    createdAt: new Date() 
+                }
+            });
+        } catch (err) {
+            originalError.call(console, "\n❌ [DB_SAVE_ERROR] Supabase Insert Failed:", err.stack || err.message);
+        }
     }
 }
 
@@ -32,7 +43,7 @@ const originalError = console.error;
 
 console.log = function (...args) {
     addSystemLog('INFO', 'SYSTEM', args.join(' '));
-    originalLog.apply(console, args); 
+    originalLog.apply(console, args);
 };
 
 console.error = function (...args) {
@@ -52,7 +63,6 @@ function getDiagnostics() {
     const totalRam = os.totalmem() / (1024 ** 3);
     const freeRam = os.freemem() / (1024 ** 3);
     const usedRam = totalRam - freeRam;
-    
     const cpus = os.cpus();
     const load = cpus.reduce((acc, cpu) => {
         const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
@@ -78,8 +88,8 @@ function getDiagnostics() {
             ram: `${usedRam.toFixed(2)}GB / ${totalRam.toFixed(2)}GB`,
             arch: os.arch()
         },
-        logs: systemLogs 
+        logs: systemLogs
     };
 }
 
-module.exports = { setDbClient,  getDiagnostics, addSystemLog };
+module.exports = { setDbClient, getDiagnostics, addSystemLog };

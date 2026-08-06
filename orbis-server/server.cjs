@@ -11,9 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 // 🟢 ডিপ ট্র্যাকিং সেন্সর (নাড়ি নক্ষত্র বের করার জন্য)
-// যখনই কেউ কোনো রিকোয়েস্ট করবে, এটা সাথে সাথে লগে রেকর্ড করবে
 app.use((req, res, next) => {
-    // ডায়াগনস্টিক/হার্টবিটের রিকোয়েস্টগুলো লগ থেকে বাদ দিচ্ছি, নাহলে লগ ভরে যাবে
     if (!req.url.includes('/api/diagnostics') && !req.url.includes('/api/internal/log')) {
         console.log(`[NETWORK] ${req.method} Request incoming for route: ${req.url}`);
     }
@@ -25,12 +23,21 @@ const pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
-// 🟢 DB কানেকশন টেলিমেট্রি মডিউলে পাঠানো হচ্ছে
-setDbClient(prisma);
+// 🟢 ফিক্স: ট্রাফিক রিসিভ করার আগেই ডেটাবেস কানেকশন ইনিশিয়ালাইজ করে নেওয়া
+prisma.$connect()
+    .then(() => {
+        console.log("[DB] Prisma Adapter successfully connected to Supabase!");
+        setDbClient(prisma);
+    })
+    .catch((err) => {
+        console.error("[DB_ERROR] Failed to connect Prisma to Supabase:", err.message);
+    });
 
-app.post('/api/internal/log', (req, res) => {
+app.post('/api/internal/log', async (req, res) => {
     const { level, source, message } = req.body;
-    if (message) addSystemLog(level, source, message);
+    if (message) {
+        await addSystemLog(level, source, message);
+    }
     res.sendStatus(200);
 });
 
@@ -55,7 +62,6 @@ const PORT = process.env.PORT || 3001;
 app.get('/api/diagnostics', async (req, res) => {
     try {
         const diag = getDiagnostics();
-        // সুপারবেস থেকে শেষ ১০০ লগ টানা হচ্ছে
         const dbLogs = await prisma.foundationSystemLog.findMany({
             take: 100,
             orderBy: { createdAt: 'desc' }
@@ -70,7 +76,7 @@ app.get('/api/diagnostics', async (req, res) => {
         }
         res.json(diag);
     } catch (error) {
-        res.json(getDiagnostics()); // DB এরর দিলে র‍্যামের ব্যাকআপ লগ পাঠাবে
+        res.json(getDiagnostics());
     }
 });
 
