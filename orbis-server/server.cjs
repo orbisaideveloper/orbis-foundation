@@ -7,6 +7,7 @@ const { PrismaPg } = require('@prisma/adapter-pg');
 const { PrismaClient } = require('@prisma/client');
 
 const app = express();
+app.use('/api/system', require('./source-api.cjs'));
 app.use(cors());
 app.use(express.json());
 
