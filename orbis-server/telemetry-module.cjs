@@ -1,43 +1,35 @@
 const os = require('os');
 const { execSync } = require('child_process');
 
-// 🟢 রিয়েল-টাইম লগ রাখার লাইভ অ্যারে
+// 🟢 লগ লিমিট বাড়িয়ে ১০০ করা হলো
 const systemLogs = [];
 
 function addSystemLog(level, source, message) {
     const timestamp = new Date().toLocaleTimeString('en-US', { hour12: true, timeZone: 'Asia/Kolkata' });
-    // নতুন লগ অ্যারের শুরুতে যোগ হবে (Latest First)
     systemLogs.unshift({ timestamp, level, source, message: String(message) });
     
-    // ২০ টার বেশি লগ জমলে শেষেরটা মুছে ফেলবে (যাতে র‍্যাম বেশি না খায়)
-    if (systemLogs.length > 20) {
+    // ১০০ টার বেশি লগ জমলে শেষেরটা মুছবে
+    if (systemLogs.length > 100) {
         systemLogs.pop();
     }
 }
 
-// 🔴 আসল ম্যাজিক: Node.js-এর ডিফল্ট console.log হ্যাক (Override) করা!
+// 🔴 আসল ম্যাজিক: Node.js-এর ডিফল্ট console.log হ্যাক
 const originalLog = console.log;
 const originalError = console.error;
 
 console.log = function (...args) {
-    addSystemLog('INFO', 'SERVER', args.join(' '));
-    originalLog.apply(console, args); // টার্মিনালেও প্রিন্ট করবে
+    addSystemLog('INFO', 'SYSTEM', args.join(' '));
+    originalLog.apply(console, args); 
 };
 
 console.error = function (...args) {
-    addSystemLog('ERROR', 'SERVER', args.join(' '));
+    addSystemLog('ERROR', 'SYSTEM', args.join(' '));
     originalError.apply(console, args);
 };
 
-// প্রথম স্টার্টআপ লগ
-console.log("Telemetry System Hooked and Listening for live events...");
-
-// টেস্ট করার জন্য প্রতি ১০ সেকেন্ডে একটি লাইভ 'হার্টবিট' লগ জেনারেট করবে
-setInterval(() => {
-    const load = os.loadavg()[0].toFixed(2);
-    const freeRam = (os.freemem() / 1024 / 1024 / 1024).toFixed(2);
-    console.log(`[System Heartbeat] CPU Load: ${load} | Free RAM: ${freeRam} GB`);
-}, 10000);
+// স্টার্টআপ মেসেজ
+console.log("[INIT] Orbis Foundation Deep Telemetry Activated. Tracking core events...");
 
 function getDiagnostics() {
     let gitStatus = "Unknown";
@@ -74,7 +66,7 @@ function getDiagnostics() {
             ram: `${usedRam.toFixed(2)}GB / ${totalRam.toFixed(2)}GB`,
             arch: os.arch()
         },
-        logs: systemLogs // 🟢 ডামি ডাটার বদলে এখন আসল লাইভ লগ যাবে!
+        logs: systemLogs 
     };
 }
 
