@@ -17,6 +17,16 @@ const getLogContent = (cardName: string | null) => {
   return `[SYSTEM LOG] - ${time}\nTarget: ${cardName}\nStatus: ACTIVE / SECURE\n\nFetching real-time encrypted telemetry...\n${details[cardName] || '> Systems normal.'}\n\nData stream is ready for copying.`;
 };
 
+const LiveStatusText = () => {
+    const [status, setStatus] = React.useState('আপনার সিস্টেমের প্রতিটি মডিউল সফলভাবে সিঙ্ক হয়েছে। ORBIS Foundation-এর কোর ইঞ্জিন এখন অপটিমাল পারফরম্যান্সে চলছে।');
+    React.useEffect(() => {
+        fetch('/api/diagnostics').then(r=>r.json()).then(d => {
+            if(d?.gitStatus && d.gitStatus !== 'Unknown') setStatus(`[ লাইভ ] ${d.gitStatus} | Bridge: ${d.bridge.bridgeStatus}`);
+        }).catch(e=>{});
+    }, []);
+    return <p className="text-[12px] text-slate-600 leading-relaxed font-bold mt-1 bg-green-100/50 p-1.5 rounded-md border border-green-200 inline-block">{status}</p>;
+};
+
 export function AdminDashboard() {
   const [activeCard, setActiveCard] = useState<string | null>(null);
   const [activeSubCard, setActiveSubCard] = useState<string | null>(null);
@@ -212,14 +222,12 @@ export function AdminDashboard() {
 
       {/* WELCOME CARD */}
       <div className="px-5 mt-5 mb-2">
-        <div className="p-4 rounded-[20px] bg-gradient-to-br from-green-50 to-emerald-50/50 border border-green-100/60 shadow-sm relative overflow-hidden">
+        <div onClick={() => window.dispatchEvent(new CustomEvent('open-telemetry-modal'))} className="cursor-pointer hover:shadow-md hover:scale-[1.01] transition-all p-4 rounded-[20px] bg-gradient-to-br from-green-50 to-emerald-50/50 border border-green-100/60 shadow-sm relative overflow-hidden">
           <div className="flex items-start gap-3 relative z-10">
             <span className="text-xl mt-0.5">☀️</span>
             <div>
               <h2 className="text-[15px] font-bold text-slate-800 mb-1">সিস্টেম লাইভ এবং প্রস্তুত</h2>
-              <p className="text-[13px] text-slate-600 leading-relaxed font-medium">
-                আপনার সিস্টেমের প্রতিটি মডিউল সফলভাবে সিঙ্ক হয়েছে। ORBIS Foundation-এর কোর ইঞ্জিন এখন অপটিমাল পারফরম্যান্সে চলছে।
-              </p>
+                                    <LiveStatusText />
             </div>
           </div>
         </div>
