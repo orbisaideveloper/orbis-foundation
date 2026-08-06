@@ -1,6 +1,7 @@
 name: "ORBIS Foundation CI Pipeline"
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -13,6 +14,7 @@ jobs:
   build-and-audit:
     name: Build, Test & Sonar Scan
     runs-on: ubuntu-latest
+  workflow_dispatch:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -23,6 +25,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+  workflow_dispatch:
           cache: 'npm'
           
       - name: Install Dependencies
