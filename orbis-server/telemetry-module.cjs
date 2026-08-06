@@ -23,12 +23,10 @@ async function addSystemLog(level, source, message) {
         try {
             await dbClient.foundationSystemLog.create({
                 data: { 
-                    id: crypto.randomUUID(), 
                     level: String(level || 'INFO'), 
                     source: String(source || 'SYSTEM'), 
                     message: String(message || 'Empty Log'), 
                     timestamp: String(timestamp), 
-                    createdAt: new Date() 
                 }
             });
         } catch (err) {
