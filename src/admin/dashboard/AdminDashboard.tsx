@@ -150,20 +150,139 @@ export function AdminDashboard() {
   // FIXED: Extracted nested ternary to reduce Cognitive Complexity
   const renderPremiumModalContent = () => {
     if (activeCard === 'overview') {
-      return (
-          <div 
-            className="flex items-center gap-2.5 cursor-pointer hover:opacity-90 transition-all flex-1 justify-center pr-6" 
-            onClick={() => window.dispatchEvent(new CustomEvent('open-source-map', { detail: 'main_dashboard' }))}
-          >
-            <div className="relative w-8 h-8 flex items-center justify-center bg-slate-50 rounded-full border border-slate-200/80 shadow-sm shrink-0">
-              <img src="/orbis-logo.png" alt="Orbis" className="absolute inset-0 w-full h-full object-contain z-10 p-1" onError={(e) => { e.currentTarget.style.display='none'; }} />
-              <span className="text-lg relative z-0">🧠</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-[13px] font-extrabold text-slate-800 tracking-tight whitespace-nowrap">Orbis Foundation Admin</span>
-              <span className="text-[9px] font-black text-teal-700 uppercase tracking-[0.25em] bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200/60 shadow-2xs mt-0.5">Dashboard</span>
+      if (activeSubCard) {
+        return (
+          <div className="flex flex-col h-full animate-in fade-in zoom-in duration-200">
+            <button type="button" onClick={() => setActiveSubCard(null)} className="mb-3 text-[13px] text-slate-600 font-bold hover:text-slate-900 flex items-center gap-1.5 w-fit bg-slate-200/60 px-3 py-1.5 rounded-lg transition-colors active:scale-95">
+              ← Back
+            </button>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                  {activeSubCard} Data Log
+                  <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse border border-emerald-200">LIVE</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeSubCard === 'Source Tree' ? liveTree : generateRawTelemetry(activeSubCard, sysStats));
+                    setCopiedText(true);
+                    setTimeout(() => setCopiedText(false), 2000);
+                  }}
+                  className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
+                >
+                  {copiedText ? '✓ Copied' : '⧉ Copy'}
+                </button>
+              </div>
+              <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
+                <pre className="font-mono text-[12px] text-emerald-400 whitespace-pre-wrap leading-relaxed select-text">
+                  {activeSubCard === 'Source Tree' ? liveTree : generateRawTelemetry(activeSubCard, sysStats).replace(/CPU: 12% \| RAM: 45%/g, `CPU: ${sysStats.load}% | RAM: ${sysStats.ramUsedPercent}%`).replace(/Current Server Load: 12\.4%/g, `Current Server Load: ${sysStats.load}%`).replace(/Phase 04 active/g, `System Uptime: ${sysStats.uptime}`).replace(/14 active services/g, `${sysStats.cpuCores} CPU Cores Active on ${sysStats.platform}`)}
+                </pre>
+              </div>
             </div>
           </div>
+        );
+      }
+      
+      return (
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" onClick={() => setActiveSubCard('System Phase')} className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">System Phase</h4>
+            <p className="text-lg font-black text-slate-800 mt-0.5">Phase {data.phase}</p>
+          </button>
+          <button type="button" onClick={() => setActiveSubCard('Architecture')} className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">Architecture</h4>
+            <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.cpuCores} Cores ({sysStats.arch})</p>
+          </button>
+          <button type="button" onClick={() => setActiveSubCard('Microservices')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Microservices</h4>
+            <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.ramUsedPercent}%</p>
+          </button>
+          <button type="button" onClick={() => setActiveSubCard('Master Node')} className="text-left bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Master Node</h4>
+            <p className="text-lg font-black text-green-700 mt-0.5">{sysStats.platform}</p>
+          </button>
+          <button type="button" onClick={() => setActiveSubCard('API Gateway')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">API Gateway</h4>
+            <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.status}</p>
+          </button>
+          <button type="button" onClick={() => setActiveSubCard('Avg Load')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Avg Load</h4>
+            <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.load}%</p>
+          </button>
+        </div>
+      );
+    }
+
+    // Default view for other cards
+    const targetName = getTargetName(activeCard);
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col h-full">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2 capitalize">
+            <span className="text-xl">📡</span> Live Stream: {activeCard?.replace('_', ' ')}
+          </h3>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(generateRawTelemetry(targetName, sysStats));
+              setCopiedText(true);
+              setTimeout(() => setCopiedText(false), 2000);
+            }}
+            className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
+          >
+            {copiedText ? '✓ Copied' : '⧉ Copy Data'}
+          </button>
+        </div>
+        <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
+          <pre className="font-mono text-[12px] text-teal-300 whitespace-pre-wrap leading-relaxed">
+            {`[SYSTEM] Accessing secure node: ${activeCard}...\n[STATUS] Connection established.\n\n`}
+            {generateRawTelemetry(targetName, sysStats)}
+          </pre>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="w-full min-h-screen bg-[#F8FAFC] flex flex-col relative pb-6 font-sans">
+      {/* SIDEBAR OVERLAY & MENU */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm" />
+            <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', bounce: 0, duration: 0.3 }} className="fixed inset-y-0 left-0 w-64 bg-white shadow-2xl z-50 flex flex-col">
+              <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2"><span>🧠</span> Menu</h2>
+                <button type="button" onClick={() => setIsSidebarOpen(false)} className="bg-slate-200 text-slate-600 h-8 w-8 rounded-full font-bold flex items-center justify-center hover:bg-slate-300">✕</button>
+              </div>
+              <div className="p-4 flex flex-col gap-2">
+                <button type="button" className="text-left px-4 py-3 rounded-xl bg-green-50 text-green-700 font-semibold border border-green-100">📊 Dashboard</button>
+                <button type="button" className="text-left px-4 py-3 rounded-xl text-slate-600 font-medium hover:bg-slate-50">⚙️ System Settings</button>
+                <button type="button" onClick={() => { setIsSidebarOpen(false); setViewMode('diagnostic'); setShowOutput(true); }} className="text-left px-4 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 flex items-center gap-3"><span className="text-lg">💻</span> ডায়াগনস্টিক টার্মিনাল</button>
+                <button type="button" onClick={() => { setIsSidebarOpen(false); setViewMode('tree'); setShowOutput(true); }} className="text-left px-4 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 flex items-center gap-3"><span className="text-lg">🗂️</span> লাইভ ডিপেন্ডেন্সি ট্রি</button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* HEADER */}
+      <header className="flex items-center justify-between px-5 py-4 bg-white sticky top-0 z-10 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => setIsSidebarOpen(true)} className="text-slate-500 hover:text-slate-700 p-1">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
+          <h1 
+            className="text-[16px] font-bold text-slate-800 flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all" 
+            onClick={() => window.dispatchEvent(new CustomEvent('open-source-map', { detail: 'main_dashboard' }))}
+          >
+            <div className="relative w-6 h-6 flex items-center justify-center">
+              <img src="/orbis-logo.png" alt="Orbis" className="absolute inset-0 w-full h-full object-contain z-10" onError={(e) => { e.currentTarget.style.display='none'; }} />
+              <span className="text-xl relative z-0">🧠</span>
+            </div>
+            <span>Orbis Foundation Admin Dashboard</span>
+          </h1>
         </div>
         <div className="flex items-center gap-2 bg-green-50/80 px-2.5 py-1.5 rounded-full border border-green-100">
           <span className="relative flex h-2.5 w-2.5">
