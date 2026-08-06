@@ -1,12 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Heart, Activity, Terminal, AlertTriangle, X, Copy } from 'lucide-react';
 
 export default function SystemLogManager() {
   const [isOpen, setIsOpen] = useState(false);
   
-  // পরবর্তীতে এই স্টেটগুলো গ্লোবাল বা ডাটাবেস থেকে আসবে
+  // ডাইনামিক স্টেটস
   const [hasCriticalError, setHasCriticalError] = useState(false);
   const [hasActionError, setHasActionError] = useState(false);
+
+  // রিয়েল-টাইম লাইভ সিঙ্ক লজিক
+  useEffect(() => {
+    const fetchLogStatus = async () => {
+      try {
+        // আপাতত একটি এপিআই রাউট দেওয়া হলো, ব্যাকএন্ডের আসল রাউট অনুযায়ী এটি পরিবর্তন করতে পারবেন
+        const res = await fetch('/api/logs-status'); 
+        if (res.ok) {
+          const data = await res.json();
+          // API থেকে true/false আসলে স্টেট আপডেট হবে
+          setHasCriticalError(data.hasCriticalError || false);
+          setHasActionError(data.hasActionError || false);
+        }
+      } catch (error) {
+        console.error("Failed to fetch log status:", error);
+      }
+    };
+
+    fetchLogStatus(); // প্রথমবার লোড হওয়ার সাথে সাথেই কল হবে
+    const interval = setInterval(fetchLogStatus, 5000); // প্রতি ৫ সেকেন্ডে লাইভ আপডেট
+
+    return () => clearInterval(interval); // পারফরম্যান্স ঠিক রাখতে ক্লিনআপ ফাংশন
+  }, []);
 
   // কালার লজিক (যেকোনো একটা এরর থাকলেই মেইন কার্ড লাল)
   const isSystemError = hasCriticalError || hasActionError;
@@ -16,20 +39,20 @@ export default function SystemLogManager() {
   return (
     <>
       {/* 1. Main Dashboard Card (System Logs) */}
-      <div 
+      <div
         onClick={() => setIsOpen(true)}
-        className={`p-4 rounded-2xl border backdrop-blur-md cursor-pointer transition-all ${mainBg}`}
+        className={`p-4 rounded-2xl border backdrop-blur-md cursor-pointer transition-all duration-300 ${mainBg}`}
       >
         <div className="flex items-center gap-3 mb-2">
           <Heart className={mainText} size={20} />
-          <h3 className={`font-semibold ${mainText}`}>
+          <h3 className={`font-semibold transition-colors duration-300 ${mainText}`}>
             {isSystemError ? 'System Alert' : 'System Logs'}
           </h3>
         </div>
-        <p className={`text-xl font-bold ${mainText}`}>
+        <p className={`text-xl font-bold transition-colors duration-300 ${mainText}`}>
           {isSystemError ? 'Errors Found' : 'Optimal'}
         </p>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-xs text-slate-400 mt-1 transition-colors duration-300">
           {isSystemError ? 'Tap to view details' : 'All systems secured'}
         </p>
       </div>
@@ -59,7 +82,7 @@ export default function SystemLogManager() {
             {/* Modal Content - The 3 Inner Cards */}
             <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
               
-              {/* Card A: Hardware Node (Old Health Card Logic) */}
+              {/* Card A: Hardware Node */}
               <div className="p-4 rounded-xl border border-slate-700 bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer">
                 <div className="flex items-center gap-2 mb-2">
                   <Activity size={18} className="text-blue-400" />
@@ -69,19 +92,19 @@ export default function SystemLogManager() {
               </div>
 
               {/* Card B: Action Logs */}
-              <div className={`p-4 rounded-xl border transition-colors cursor-pointer ${hasActionError ? 'bg-red-900/20 border-red-500/50' : 'border-slate-700 bg-slate-800/50 hover:bg-slate-800'}`}>
+              <div className={`p-4 rounded-xl border transition-colors cursor-pointer duration-300 ${hasActionError ? 'bg-red-900/20 border-red-500/50' : 'border-slate-700 bg-slate-800/50 hover:bg-slate-800'}`}>
                 <div className="flex items-center gap-2 mb-2">
-                  <Terminal size={18} className={hasActionError ? 'text-red-400' : 'text-slate-300'} />
-                  <h4 className={`font-semibold ${hasActionError ? 'text-red-400' : 'text-slate-200'}`}>Action Logs</h4>
+                  <Terminal size={18} className={`transition-colors duration-300 ${hasActionError ? 'text-red-400' : 'text-slate-300'}`} />
+                  <h4 className={`font-semibold transition-colors duration-300 ${hasActionError ? 'text-red-400' : 'text-slate-200'}`}>Action Logs</h4>
                 </div>
                 <p className="text-xs text-slate-400">User activity & events</p>
               </div>
 
               {/* Card C: Critical Errors */}
-              <div className={`p-4 rounded-xl border transition-colors cursor-pointer ${hasCriticalError ? 'bg-red-900/20 border-red-500/50' : 'border-slate-700 bg-slate-800/50 hover:bg-slate-800'}`}>
+              <div className={`p-4 rounded-xl border transition-colors cursor-pointer duration-300 ${hasCriticalError ? 'bg-red-900/20 border-red-500/50' : 'border-slate-700 bg-slate-800/50 hover:bg-slate-800'}`}>
                 <div className="flex items-center gap-2 mb-2">
-                  <AlertTriangle size={18} className={hasCriticalError ? 'text-red-400' : 'text-slate-300'} />
-                  <h4 className={`font-semibold ${hasCriticalError ? 'text-red-400' : 'text-slate-200'}`}>Critical Errors</h4>
+                  <AlertTriangle size={18} className={`transition-colors duration-300 ${hasCriticalError ? 'text-red-400' : 'text-slate-300'}`} />
+                  <h4 className={`font-semibold transition-colors duration-300 ${hasCriticalError ? 'text-red-400' : 'text-slate-200'}`}>Critical Errors</h4>
                 </div>
                 <p className="text-xs text-slate-400">System crashes & APIs</p>
               </div>
