@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CommandBar from '../../components/CommandCenter/CommandBar';
+import SystemLogManager from '../system-logs/SystemLogManager';
 
 const getLogContent = (cardName: string | null) => {
   if (!cardName) return '';
@@ -402,16 +403,7 @@ export function AdminDashboard() {
           </div>
         </motion.div>
 
-        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('health')} className="cursor-pointer bg-gradient-to-br from-white to-green-50/30 border border-green-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-green-100/50 p-1.5 rounded-lg"><span className="text-sm">💚</span></div>
-            <h3 className="text-[12px] font-bold text-green-700">Health</h3>
-          </div>
-          <div>
-            <p className="text-xl font-black text-green-800">{data.health}</p>
-            <p className="text-[11px] font-semibold text-green-600/70 mt-0.5">DB: {data.db}</p>
-          </div>
-        </motion.div>
+        <SystemLogManager />
 
         <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('brain')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
