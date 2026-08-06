@@ -21,7 +21,7 @@ function addSystemLog(level, source, message) {
     if (dbClient) {
         dbClient.foundationSystemLog.create({
             data: { level, source, message: String(message), timestamp }
-        }).catch(() => {}); // DB ফেল করলেও যেন সার্ভার ক্র্যাশ না করে
+        }).catch((err) => { originalError.call(console, "[DB_SAVE_ERROR]", err.message); });
     }
 }
 

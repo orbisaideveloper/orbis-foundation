@@ -55,7 +55,7 @@ const gateway = http.createServer((req, res) => {
         proxyRes.pipe(res, { end: true });
     });
 
-    req.pipe(proxyReq, { end: true });
+    if (req.method === "GET" || req.method === "HEAD") { proxyReq.end(); } else { req.pipe(proxyReq, { end: true }); }
     proxyReq.on('error', (err) => {
         res.writeHead(502);
         res.end('ORBIS Gateway Error: ' + err.message);
