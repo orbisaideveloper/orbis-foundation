@@ -1,0 +1,15 @@
+{
+  "system_cards": {
+    "main_dashboard": {
+      "card_name": "Orbis Foundation Admin Dashboard",
+      "status": "active",
+      "connected_files": [
+        "src/admin/dashboard/AdminDashboard.tsx",
+        "src/admin/registry/system-map.json",
+        "orbis-server/server.cjs"
+      ],
+      "last_updated": "Today",
+      "active_errors": 0
+    }
+  }
+}

@@ -273,8 +273,15 @@ export function AdminDashboard() {
           <button type="button" onClick={() => setIsSidebarOpen(true)} className="text-slate-500 hover:text-slate-700 p-1">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
-          <h1 className="text-[17px] font-bold text-slate-800 flex items-center gap-2">
-            <span className="text-xl">🧠</span> ORBIS Center
+          <h1 
+            className="text-[16px] font-bold text-slate-800 flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all" 
+            onClick={() => window.dispatchEvent(new CustomEvent('open-source-map', { detail: 'main_dashboard' }))}
+          >
+            <div className="relative w-6 h-6 flex items-center justify-center">
+              <img src="/orbis-logo.png" alt="Orbis" className="absolute inset-0 w-full h-full object-contain z-10" onError={(e) => { e.currentTarget.style.display='none'; }} />
+              <span className="text-xl relative z-0">🧠</span>
+            </div>
+            <span>Orbis Foundation Admin Dashboard</span>
           </h1>
         </div>
         <div className="flex items-center gap-2 bg-green-50/80 px-2.5 py-1.5 rounded-full border border-green-100">
