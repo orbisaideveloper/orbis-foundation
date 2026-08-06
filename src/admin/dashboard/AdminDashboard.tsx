@@ -273,19 +273,19 @@ export function AdminDashboard() {
           <button type="button" onClick={() => setIsSidebarOpen(true)} className="text-slate-500 hover:text-slate-700 p-1">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
-          <h1 
-            className="flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition-all" 
+          <div 
+            className="flex items-center gap-3 cursor-pointer hover:opacity-90 transition-all flex-1 justify-center pr-8" 
             onClick={() => window.dispatchEvent(new CustomEvent('open-source-map', { detail: 'main_dashboard' }))}
           >
-            <div className="relative w-7 h-7 flex items-center justify-center bg-slate-50 rounded-full border border-slate-100 shadow-sm">
-              <img src="/orbis-logo.png" alt="Orbis" className="absolute inset-0 w-full h-full object-contain z-10 p-0.5" onError={(e) => { e.currentTarget.style.display='none'; }} />
+            <div className="relative w-8 h-8 flex items-center justify-center bg-slate-50 rounded-full border border-slate-200/80 shadow-sm shrink-0">
+              <img src="/orbis-logo.png" alt="Orbis" className="absolute inset-0 w-full h-full object-contain z-10 p-1" onError={(e) => { e.currentTarget.style.display='none'; }} />
               <span className="text-lg relative z-0">🧠</span>
             </div>
-            <div className="flex flex-col">
-              <span className="text-[15px] font-bold text-slate-800 leading-none mb-0.5">Orbis Foundation Admin</span>
-              <span className="text-[10px] font-bold text-teal-600 uppercase tracking-widest text-center bg-teal-50 rounded-full w-max px-2 py-0.5 border border-teal-100/50">Dashboard</span>
+            <div className="flex flex-col items-center">
+              <span className="text-[14px] font-extrabold text-slate-800 tracking-tight leading-tight">Orbis Foundation Admin</span>
+              <span className="text-[9px] font-black text-teal-700 uppercase tracking-[0.2em] bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200/60 shadow-2xs mt-0.5">Dashboard</span>
             </div>
-          </h1>
+          </div>
         </div>
         <div className="flex items-center gap-2 bg-green-50/80 px-2.5 py-1.5 rounded-full border border-green-100">
           <span className="relative flex h-2.5 w-2.5">
