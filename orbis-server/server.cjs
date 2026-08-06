@@ -17,31 +17,28 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 app.get('/api/metrics', async (req, res) => {
-  try {
-    const latestMetric = await prisma.foundationAdminMetric.findFirst({
-      orderBy: { recordedAt: 'desc' }
-    });
-
-    if (latestMetric) {
-      res.json(latestMetric);
-    } else {
-      res.json({ ramUsageMb: 0, cpuLoad: 0, status: 'NO_DATA_YET' });
+    try {
+        const latestMetric = await prisma.foundationAdminMetric.findFirst({
+            orderBy: { recordedAt: 'desc' }
+        });
+        if (latestMetric) {
+            res.json(latestMetric);
+        } else {
+            res.json({ ramUsageMb: 0, cpuLoad: 0, status: 'NO_DATA_YET' });
+        }
+    } catch (error) {
+        console.error('❌ Error fetching metrics:', error);
+        res.status(500).json({ error: 'Database connection failed' });
     }
-  } catch (error) {
-    console.error('❌ Error fetching metrics:', error);
-    res.status(500).json({ error: 'Database connection failed' });
-  }
 });
 
 const PORT = process.env.PORT || 3001;
 
-
- });
-
+// 🟢 System Diagnostic Route (Fixed & Clean)
 app.get('/api/diagnostics', (req, res) => {
     res.json(getDiagnostics());
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Backend API Server is ready for Render!`);
+    console.log(`\n🚀 Backend API Server is ready for Render!`);
 });
