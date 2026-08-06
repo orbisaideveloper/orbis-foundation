@@ -91,49 +91,6 @@ export function AdminDashboard() {
       window.history.pushState({ modal: true }, '');
       const handlePop = () => { setActiveSubCard(null); setActiveCard(null); };
       window.addEventListener('popstate', handlePop);
-      
-  const getRealTelemetry = (target: string | null) => {
-    if (!target) return 'Awaiting module selection...';
-    const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' });
-    let header = `[RAW HARDWARE TELEMETRY] - ${timestamp} (IST)\nTarget Node: ${target}\nStatus: LIVE DATA STREAM\n------------------------------------------------\n`;
-
-    switch (target) {
-      case 'System Phase':
-        case 'Overview':
-        case 'overview':
-        case 'SYSTEM UPTIME':
-        return header + `> OS Platform: ${sysStats.platform} (${sysStats.release})\n> Server Hostname: ${sysStats.hostname}\n> OS Uptime: ${sysStats.uptime}\n> Node Process Uptime: ${sysStats.processUptime} Seconds\n> Status: ${sysStats.status}`;
-
-      case 'Architecture':
-      case 'CPU ARCH':
-        return header + `> Architecture: ${sysStats.arch}\n> CPU Model: ${sysStats.cpuModel}\n> Total Cores: ${sysStats.cpuCores} Logical Threads\n> Node.js Heap Allocated: ${sysStats.heapUsed} MB`;
-
-      case 'Microservices':
-      case 'RAM USAGE':
-        return header + `> Total RAM: ${sysStats.totalMem} GB\n> Used RAM: ${sysStats.usedMem} GB (${sysStats.ramUsedPercent}%)\n> Free RAM: ${sysStats.freeMem} GB\n> Memory Status: ${parseFloat(sysStats.ramUsedPercent) > 85 ? 'WARNING: HIGH LOAD' : 'OPTIMAL'}`;
-
-      case 'Master Node':
-      case 'OS PLATFORM':
-      case 'Health':
-        return header + `> Kernel / Release: ${sysStats.release}\n> System Type: ${sysStats.platform}\n> Process Arch: ${sysStats.arch}\n> Hardware Sync: COMPLETE`;
-
-      case 'API Gateway':
-      case 'SERVER STATUS':
-      case 'Engine':
-        return header + `> Backend API: ${sysStats.status}\n> Process Active Memory: ${sysStats.heapUsed} MB\n> Server OS Uptime: ${sysStats.uptime}`;
-
-      case 'Avg Load':
-      case 'CPU LOAD':
-        return header + `> CPU Load Average (1 min): ${sysStats.load}\n> CPU Load Average (5 min): ${sysStats.load5m}\n> CPU Load Average (15 min): ${sysStats.load15m}\n> Core Distribution: ${sysStats.cpuCores > 0 ? (parseFloat(sysStats.load) / sysStats.cpuCores * 100).toFixed(1) : 0}% per core`;
-
-      case 'brain':
-            return header + `> Neural Sync: COMPLETE\n> Brain Connectivity: OPTIMAL\n> Target Node: Active`;
-        case 'ai':
-            return header + `> AI Providers: ACTIVE\n> Local Models: Synced\n> Connection: SECURE`;
-        default:
-            return header + `> Requesting raw data for ${target}...\n> Metrics Snapshot: \n` + JSON.stringify(sysStats, null, 2);
-    }
-  };
 
   return () => window.removeEventListener('popstate', handlePop);
     }
@@ -158,7 +115,7 @@ export function AdminDashboard() {
           setData({
             engine: stats.status, 
             uptime: stats.uptime, 
-            health: parseFloat(stats.ramUsedPercent) < 85 ? 'Optimal' : 'Warning', 
+            health: Number.parseFloat(stats.ramUsedPercent) < 85 ? 'Optimal' : 'Warning', 
             db: 'Secured',
             ai: 'Active', 
             latency: stats.load + 'ms', 
@@ -169,7 +126,7 @@ export function AdminDashboard() {
             release: stats.release.substring(0, 15), 
             releaseType: stats.platform,
             core: stats.cpuCores + ' Cores', 
-            coreStatus: parseFloat(stats.load) < 5 ? 'All nominal' : 'High Load'
+            coreStatus: Number.parseFloat(stats.load) < 5 ? 'All nominal' : 'High Load'
           });
           setSysStats(stats); // পপআপের জন্যও রিয়েল ডেটা সিঙ্ক করা হলো
         } catch (err) {
@@ -227,7 +184,7 @@ export function AdminDashboard() {
 
       {/* WELCOME CARD */}
       <div className="px-5 mt-5 mb-2">
-        <div onClick={() => window.dispatchEvent(new CustomEvent('open-telemetry-modal'))} className="cursor-pointer hover:shadow-md hover:scale-[1.01] transition-all p-4 rounded-[20px] bg-gradient-to-br from-green-50 to-emerald-50/50 border border-green-100/60 shadow-sm relative overflow-hidden">
+        <div  role="button" tabIndex={0} onKeyDown={(e) => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.dispatchEvent(new CustomEvent('open-telemetry-modal')); } }} onClick={() => window.dispatchEvent(new CustomEvent('open-telemetry-modal'))} className="cursor-pointer hover:shadow-md hover:scale-[1.01] transition-all p-4 rounded-[20px] bg-gradient-to-br from-green-50 to-emerald-50/50 border border-green-100/60 shadow-sm relative overflow-hidden">
           <div className="flex items-start gap-3 relative z-10">
             <span className="text-xl mt-0.5">☀️</span>
             <div>
@@ -487,7 +444,7 @@ export function AdminDashboard() {
                     <button
                       type="button"
                       onClick={() => {
-                        const rawData = generateRawTelemetry(activeCard === 'health' ? 'Health' : activeCard === 'engine' ? 'Engine' : activeCard === 'core' ? 'Architecture' : activeCard === 'runtime' ? 'Microservices' : activeCard === 'release' ? 'Master Node' : activeCard, sysStats);
+                        const rawData = generateRawTelemetry(({'health': 'Health', 'engine': 'Engine', 'core': 'Architecture', 'runtime': 'Microservices', 'release': 'Master Node'}[activeCard || ''] || activeCard), sysStats);
                         navigator.clipboard.writeText(rawData);
                         setCopiedText(true);
                         setTimeout(() => setCopiedText(false), 2000);
@@ -500,7 +457,7 @@ export function AdminDashboard() {
                   <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
                     <pre className="font-mono text-[12px] text-teal-300 whitespace-pre-wrap leading-relaxed">
                       {`[SYSTEM] Accessing secure node: ${activeCard}...\n[STATUS] Connection established.\n\n`}
-                      {generateRawTelemetry(activeCard === 'health' ? 'Health' : activeCard === 'engine' ? 'Engine' : activeCard === 'core' ? 'Architecture' : activeCard === 'runtime' ? 'Microservices' : activeCard === 'release' ? 'Master Node' : activeCard, sysStats)}
+                      {generateRawTelemetry(({'health': 'Health', 'engine': 'Engine', 'core': 'Architecture', 'runtime': 'Microservices', 'release': 'Master Node'}[activeCard || ''] || activeCard), sysStats)}
                     </pre>
                   </div>
                 </div>
@@ -532,7 +489,7 @@ export const generateRawTelemetry = (target: string | null, sysStats: any) => {
 
         case 'Microservices':
         case 'RAM USAGE':
-            return header + `> Total RAM: ${sysStats.totalMem} GB\n> Used RAM: ${sysStats.usedMem} GB (${sysStats.ramUsedPercent}%)\n> Free RAM: ${sysStats.freeMem} GB\n> Memory Status: ${parseFloat(sysStats.ramUsedPercent) > 85 ? 'WARNING: HIGH LOAD' : 'OPTIMAL'}`;
+            return header + `> Total RAM: ${sysStats.totalMem} GB\n> Used RAM: ${sysStats.usedMem} GB (${sysStats.ramUsedPercent}%)\n> Free RAM: ${sysStats.freeMem} GB\n> Memory Status: ${Number.parseFloat(sysStats.ramUsedPercent) > 85 ? 'WARNING: HIGH LOAD' : 'OPTIMAL'}`;
 
         case 'Master Node':
         case 'OS PLATFORM':
@@ -546,7 +503,7 @@ export const generateRawTelemetry = (target: string | null, sysStats: any) => {
 
         case 'Avg Load':
         case 'CPU LOAD':
-            return header + `> CPU Load Average (1 min): ${sysStats.load}\n> CPU Load Average (5 min): ${sysStats.load5m}\n> CPU Load Average (15 min): ${sysStats.load15m}\n> Core Distribution: ${sysStats.cpuCores > 0 ? (parseFloat(sysStats.load) / sysStats.cpuCores * 100).toFixed(1) : 0}% per core`;
+            return header + `> CPU Load Average (1 min): ${sysStats.load}\n> CPU Load Average (5 min): ${sysStats.load5m}\n> CPU Load Average (15 min): ${sysStats.load15m}\n> Core Distribution: ${sysStats.cpuCores > 0 ? (Number.parseFloat(sysStats.load) / sysStats.cpuCores * 100).toFixed(1) : 0}% per core`;
 
         default:
             return header + `> Requesting raw data for ${target}...\n> Metrics Snapshot: \n` + JSON.stringify(sysStats, null, 2);
