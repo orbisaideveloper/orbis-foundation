@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const os = require('os');
 const { execSync } = require('child_process');
 
@@ -20,8 +21,8 @@ function addSystemLog(level, source, message) {
 
     if (dbClient) {
         dbClient.foundationSystemLog.create({
-            data: { level, source, message: String(message), timestamp }
-        }).catch((err) => { originalError.call(console, "[DB_SAVE_ERROR]", err.message); });
+            data: { id: crypto.randomUUID(), level: String(level || 'INFO'), source: String(source || 'SYSTEM'), message: String(message || 'Empty Log'), timestamp: String(timestamp), createdAt: new Date() }
+        }).catch((err) => { originalError.call(console, "[DB_SAVE_ERROR]", err.stack || err.message); });
     }
 }
 
