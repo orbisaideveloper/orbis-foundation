@@ -37,6 +37,7 @@ export function AdminDashboard() {
   const [viewMode, setViewMode] = useState('diagnostic');
   const [outputData, setOutputData] = useState('');
   const [liveTree, setLiveTree] = useState('অপেক্ষা করুন, রেন্ডার সার্ভার থেকে লাইভ ট্রি আনা হচ্ছে...');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const executeOrbisCommand = async (command: string) => {
     setViewMode('diagnostic');
@@ -70,7 +71,6 @@ export function AdminDashboard() {
     }
   };
 
-  
   useEffect(() => {
     if (activeCard === 'overview') {
       fetch('/api/system-stats')
@@ -91,12 +91,10 @@ export function AdminDashboard() {
       window.history.pushState({ modal: true }, '');
       const handlePop = () => { setActiveSubCard(null); setActiveCard(null); };
       window.addEventListener('popstate', handlePop);
-
-  return () => window.removeEventListener('popstate', handlePop);
+      return () => window.removeEventListener('popstate', handlePop);
     }
   }, [activeSubCard, activeCard]);
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [data, setData] = useState({
     engine: 'Loading...', uptime: '---', health: 'Checking...', db: 'N/A',
     ai: 'Scanning...', latency: '---', sync: '---', phase: '03',
@@ -113,22 +111,22 @@ export function AdminDashboard() {
           const res = await fetch('/api/system-stats');
           const stats = await res.json();
           setData({
-            engine: stats.status, 
-            uptime: stats.uptime, 
+            engine: stats.status,
+            uptime: stats.uptime,
             health: Number.parseFloat(stats.ramUsedPercent) < 85 ? 'Optimal' : 'Warning',
             db: 'Secured',
-            ai: 'Active', 
-            latency: stats.load + 'ms', 
-            sync: 'Synced', 
+            ai: 'Active',
+            latency: stats.load + 'ms',
+            sync: 'Synced',
             phase: '04',
-            runtime: 'Node.js', 
+            runtime: 'Node.js',
             runtimeVer: stats.arch,
-            release: stats.release.substring(0, 15), 
+            release: stats.release.substring(0, 15),
             releaseType: stats.platform,
-            core: stats.cpuCores + ' Cores', 
+            core: stats.cpuCores + ' Cores',
             coreStatus: Number.parseFloat(stats.load) < 5 ? 'All nominal' : 'High Load'
           });
-          setSysStats(stats); // পপআপের জন্যও রিয়েল ডেটা সিঙ্ক করা হলো
+          setSysStats(stats);
         } catch (err) {
           console.error(err);
         }
@@ -139,9 +137,115 @@ export function AdminDashboard() {
     return () => { isMounted = false; clearInterval(interval); };
   }, []);
 
+  // Helper to map card name for telemetry (reduces complexity in JSX)
+  const getTargetName = (card: string | null) => {
+    if (!card) return '';
+    const map: Record<string, string> = {
+      'health': 'Health', 'engine': 'Engine', 'core': 'Architecture',
+      'runtime': 'Microservices', 'release': 'Master Node'
+    };
+    return map[card] || card;
+  };
+
+  // FIXED: Extracted nested ternary to reduce Cognitive Complexity
+  const renderPremiumModalContent = () => {
+    if (activeCard === 'overview') {
+      if (activeSubCard) {
+        return (
+          <div className="flex flex-col h-full animate-in fade-in zoom-in duration-200">
+            <button type="button" onClick={() => setActiveSubCard(null)} className="mb-3 text-[13px] text-slate-600 font-bold hover:text-slate-900 flex items-center gap-1.5 w-fit bg-slate-200/60 px-3 py-1.5 rounded-lg transition-colors active:scale-95">
+              ← Back
+            </button>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                  {activeSubCard} Data Log
+                  <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse border border-emerald-200">LIVE</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeSubCard === 'Source Tree' ? liveTree : generateRawTelemetry(activeSubCard, sysStats));
+                    setCopiedText(true);
+                    setTimeout(() => setCopiedText(false), 2000);
+                  }}
+                  className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
+                >
+                  {copiedText ? '✓ Copied' : '⧉ Copy'}
+                </button>
+              </div>
+              <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
+                <pre className="font-mono text-[12px] text-emerald-400 whitespace-pre-wrap leading-relaxed select-text">
+                  {activeSubCard === 'Source Tree' ? liveTree : generateRawTelemetry(activeSubCard, sysStats).replace(/CPU: 12% \| RAM: 45%/g, `CPU: ${sysStats.load}% | RAM: ${sysStats.ramUsedPercent}%`).replace(/Current Server Load: 12\.4%/g, `Current Server Load: ${sysStats.load}%`).replace(/Phase 04 active/g, `System Uptime: ${sysStats.uptime}`).replace(/14 active services/g, `${sysStats.cpuCores} CPU Cores Active on ${sysStats.platform}`)}
+                </pre>
+              </div>
+            </div>
+          </div>
+        );
+      }
+      
+      return (
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" onClick={() => setActiveSubCard('System Phase')} className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">System Phase</h4>
+            <p className="text-lg font-black text-slate-800 mt-0.5">Phase {data.phase}</p>
+          </button>
+          <button type="button" onClick={() => setActiveSubCard('Architecture')} className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">Architecture</h4>
+            <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.cpuCores} Cores ({sysStats.arch})</p>
+          </button>
+          <button type="button" onClick={() => setActiveSubCard('Microservices')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Microservices</h4>
+            <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.ramUsedPercent}%</p>
+          </button>
+          <button type="button" onClick={() => setActiveSubCard('Master Node')} className="text-left bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Master Node</h4>
+            <p className="text-lg font-black text-green-700 mt-0.5">{sysStats.platform}</p>
+          </button>
+          <button type="button" onClick={() => setActiveSubCard('API Gateway')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">API Gateway</h4>
+            <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.status}</p>
+          </button>
+          <button type="button" onClick={() => setActiveSubCard('Avg Load')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
+            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Avg Load</h4>
+            <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.load}%</p>
+          </button>
+        </div>
+      );
+    }
+
+    // Default view for other cards
+    const targetName = getTargetName(activeCard);
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col h-full">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2 capitalize">
+            <span className="text-xl">📡</span> Live Stream: {activeCard?.replace('_', ' ')}
+          </h3>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(generateRawTelemetry(targetName, sysStats));
+              setCopiedText(true);
+              setTimeout(() => setCopiedText(false), 2000);
+            }}
+            className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
+          >
+            {copiedText ? '✓ Copied' : '⧉ Copy Data'}
+          </button>
+        </div>
+        <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
+          <pre className="font-mono text-[12px] text-teal-300 whitespace-pre-wrap leading-relaxed">
+            {`[SYSTEM] Accessing secure node: ${activeCard}...\n[STATUS] Connection established.\n\n`}
+            {generateRawTelemetry(targetName, sysStats)}
+          </pre>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="w-full min-h-screen bg-[#F8FAFC] flex flex-col relative pb-6 font-sans">
-
       {/* SIDEBAR OVERLAY & MENU */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -182,17 +286,21 @@ export function AdminDashboard() {
         </div>
       </header>
 
-      {/* WELCOME CARD */}
+      {/* WELCOME CARD - FIXED Accessibility Issue (Converted to native button) */}
       <div className="px-5 mt-5 mb-2">
-        <div tabIndex={0} onKeyDown={(e) => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.dispatchEvent(new CustomEvent('open-telemetry-modal')); } }} onClick={() => window.dispatchEvent(new CustomEvent('open-telemetry-modal'))} className="cursor-pointer hover:shadow-md hover:scale-[1.01] transition-all p-4 rounded-[20px] bg-gradient-to-br from-green-50 to-emerald-50/50 border border-green-100/60 shadow-sm relative overflow-hidden">
+        <button 
+          type="button" 
+          onClick={() => window.dispatchEvent(new CustomEvent('open-telemetry-modal'))} 
+          className="w-full text-left cursor-pointer hover:shadow-md hover:scale-[1.01] transition-all p-4 rounded-[20px] bg-gradient-to-br from-green-50 to-emerald-50/50 border border-green-100/60 shadow-sm relative overflow-hidden"
+        >
           <div className="flex items-start gap-3 relative z-10">
             <span className="text-xl mt-0.5">☀️</span>
             <div>
               <h2 className="text-[15px] font-bold text-slate-800 mb-1">সিস্টেম লাইভ এবং প্রস্তুত</h2>
-                                    <LiveStatusText />
+              <LiveStatusText />
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
       <div className="px-5 mt-4 mb-3 flex justify-between items-center">
@@ -265,8 +373,6 @@ export function AdminDashboard() {
 
       {/* 8 PREMIUM GRID CARDS */}
       <div className="px-5 grid grid-cols-2 gap-3.5">
-
-        {/* 1. System Overview */}
         <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('overview')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-orange-50 p-1.5 rounded-lg"><span className="text-sm">🏛️</span></div>
@@ -278,7 +384,6 @@ export function AdminDashboard() {
           </div>
         </motion.div>
 
-        {/* 2. Engine Monitor */}
         <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('engine')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-blue-50 p-1.5 rounded-lg"><span className="text-sm">⚙️</span></div>
@@ -290,7 +395,6 @@ export function AdminDashboard() {
           </div>
         </motion.div>
 
-        {/* 3. System Health */}
         <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('health')} className="cursor-pointer bg-gradient-to-br from-white to-green-50/30 border border-green-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-green-100/50 p-1.5 rounded-lg"><span className="text-sm">💚</span></div>
@@ -302,7 +406,6 @@ export function AdminDashboard() {
           </div>
         </motion.div>
 
-        {/* 4. Brain Monitor */}
         <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('brain')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-rose-50 p-1.5 rounded-lg"><span className="text-sm">🧠</span></div>
@@ -314,7 +417,6 @@ export function AdminDashboard() {
           </div>
         </motion.div>
 
-        {/* 5. AI Providers */}
         <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('ai')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-purple-50 p-1.5 rounded-lg"><span className="text-sm">🤖</span></div>
@@ -326,7 +428,6 @@ export function AdminDashboard() {
           </div>
         </motion.div>
 
-        {/* 6. Runtime Env */}
         <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('runtime')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-yellow-50 p-1.5 rounded-lg"><span className="text-sm">⚡</span></div>
@@ -338,7 +439,6 @@ export function AdminDashboard() {
           </div>
         </motion.div>
 
-        {/* 7. Release Manager */}
         <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('release')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-indigo-50 p-1.5 rounded-lg"><span className="text-sm">🚀</span></div>
@@ -350,7 +450,6 @@ export function AdminDashboard() {
           </div>
         </motion.div>
 
-        {/* 8. Core Modules */}
         <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('core')} className="cursor-pointer bg-gradient-to-br from-orange-50/50 to-green-50/30 border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-amber-100/50 p-1.5 rounded-lg"><span className="text-sm">📦</span></div>
@@ -361,7 +460,6 @@ export function AdminDashboard() {
             <p className="text-[11px] font-semibold text-green-600/80 mt-0.5">{data.coreStatus}</p>
           </div>
         </motion.div>
-
       </div>
 
       {/* PREMIUM MODAL */}
@@ -377,91 +475,7 @@ export function AdminDashboard() {
               </button>
             </div>
             <div className="flex-1 p-5 overflow-y-auto bg-slate-50">
-              {activeCard === 'overview' ? (
-                <>{activeSubCard ? (
-                  <div className="flex flex-col h-full animate-in fade-in zoom-in duration-200">
-                    <button type="button" onClick={() => setActiveSubCard(null)} className="mb-3 text-[13px] text-slate-600 font-bold hover:text-slate-900 flex items-center gap-1.5 w-fit bg-slate-200/60 px-3 py-1.5 rounded-lg transition-colors active:scale-95">
-                      ← Back
-                    </button>
-                    <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col">
-                      <div className="flex justify-between items-center mb-3">
-                        <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                          {activeSubCard} Data Log
-                          <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse border border-emerald-200">LIVE</span>
-                        </h3>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(activeSubCard === 'Source Tree' ? liveTree : generateRawTelemetry(activeSubCard, sysStats));
-                            setCopiedText(true);
-                            setTimeout(() => setCopiedText(false), 2000);
-                          }}
-                          className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
-                        >
-                          {copiedText ? '✓ Copied' : '⧉ Copy'}
-                        </button>
-                      </div>
-                      <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
-                        <pre className="font-mono text-[12px] text-emerald-400 whitespace-pre-wrap leading-relaxed select-text">
-{activeSubCard === 'Source Tree' ? liveTree : generateRawTelemetry(activeSubCard, sysStats).replace(/CPU: 12% \\| RAM: 45%/g, `CPU: ${sysStats.load}% | RAM: ${sysStats.ramUsedPercent}%`).replace(/Current Server Load: 12\\.4%/g, `Current Server Load: ${sysStats.load}%`).replace(/Phase 04 active/g, `System Uptime: ${sysStats.uptime}`).replace(/14 active services/g, `${sysStats.cpuCores} CPU Cores Active on ${sysStats.platform}`)}
-</pre>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                  <button type="button" onClick={() => setActiveSubCard('System Phase')} className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
-                    <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">System Phase</h4>
-                    <p className="text-lg font-black text-slate-800 mt-0.5">Phase {data.phase}</p>
-                  </button>
-                  <button type="button" onClick={() => setActiveSubCard('Architecture')} className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
-                    <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">Architecture</h4>
-                    <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.cpuCores} Cores ({sysStats.arch})</p>
-                  </button>
-                  <button type="button" onClick={() => setActiveSubCard('Microservices')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
-                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Microservices</h4>
-                    <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.ramUsedPercent}%</p>
-                  </button>
-                  <button type="button" onClick={() => setActiveSubCard('Master Node')} className="text-left bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
-                    <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Master Node</h4>
-                    <p className="text-lg font-black text-green-700 mt-0.5">{sysStats.platform}</p>
-                  </button>
-                  <button type="button" onClick={() => setActiveSubCard('API Gateway')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
-                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">API Gateway</h4>
-                    <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.status}</p>
-                  </button>
-                  <button type="button" onClick={() => setActiveSubCard('Avg Load')} className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95">
-                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Avg Load</h4>
-                    <p className="text-lg font-black text-slate-800 mt-0.5">{sysStats.load}%</p>
-                  </button>                </div>
-              )}</>
-              ) : (
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col h-full">
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2 capitalize">
-                      <span className="text-xl">📡</span> Live Stream: {activeCard?.replace('_', ' ')}
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const rawData = generateRawTelemetry(({'health': 'Health', 'engine': 'Engine', 'core': 'Architecture', 'runtime': 'Microservices', 'release': 'Master Node'}[activeCard || ''] || activeCard), sysStats);
-                        navigator.clipboard.writeText(rawData);
-                        setCopiedText(true);
-                        setTimeout(() => setCopiedText(false), 2000);
-                      }}
-                      className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
-                    >
-                      {copiedText ? '✓ Copied' : '⧉ Copy Data'}
-                    </button>
-                  </div>
-                  <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
-                    <pre className="font-mono text-[12px] text-teal-300 whitespace-pre-wrap leading-relaxed">
-                      {`[SYSTEM] Accessing secure node: ${activeCard}...\n[STATUS] Connection established.\n\n`}
-                      {generateRawTelemetry(({'health': 'Health', 'engine': 'Engine', 'core': 'Architecture', 'runtime': 'Microservices', 'release': 'Master Node'}[activeCard || ''] || activeCard), sysStats)}
-                    </pre>
-                  </div>
-                </div>
-              )}
+              {renderPremiumModalContent()}
             </div>
           </motion.div>
         )}
