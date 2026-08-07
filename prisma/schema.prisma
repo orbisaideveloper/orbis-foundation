@@ -31,3 +31,11 @@ model FoundationSystemLog {
   timestamp String
   createdAt DateTime @default(now())
 }
+
+model FoundationSourceCodeHistory {
+  id          String   @id @default(uuid())
+  filePath    String // ফাইলের সম্পূর্ণ পাথ (যেমন: src/admin/SystemLogManager.tsx)
+  content     String // ফাইলের ভেতরের সম্পূর্ণ কোড
+  versionHash String? // ভার্সন ট্র্যাকিংয়ের জন্য (ঐচ্ছিক)
+  updatedAt   DateTime @default(now()) // আপডেট হওয়ার সময়
+}
