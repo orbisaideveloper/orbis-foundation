@@ -42,7 +42,7 @@ describe('AdminDashboard Full Coverage Tests', () => {
 
   it('renders all main 8 grid cards and updates live data', async () => {
     const { unmount } = render(<AdminDashboard />);
-    expect(screen.getByText((content, element) => element?.textContent?.includes('ORBIS Center') || false)).toBeInTheDocument();
+    expect(screen.getByText((content, element) => element?.textContent?.includes('Orbis Foundation') || false)).toBeInTheDocument();
     expect(screen.getAllByText(/Overview/i)[0]).toBeInTheDocument();
     expect(screen.getByText(/Runtime/i)).toBeInTheDocument();
 
