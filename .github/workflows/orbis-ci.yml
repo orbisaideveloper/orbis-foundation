@@ -1,4 +1,4 @@
-name: "ORBIS Foundation CI Pipeline"
+Name: "ORBIS Foundation CI Pipeline"
 
 on:
   workflow_dispatch:
@@ -27,16 +27,27 @@ jobs:
           cache: 'npm'
           
       - name: Install Dependencies
-        # --legacy-peer-deps ব্যবহার করা হলো যাতে প্যাকেজ কনফ্লিক্টে পাইপলাইন ব্রেক না করে
         run: npm install --legacy-peer-deps
         
       - name: Run Tests and Generate Coverage
-        # আপনার build.yml এর রিকোয়ারমেন্ট অনুযায়ী কভারেজ রান করানো হলো
         run: npm run coverage
         
       - name: SonarCloud Scan
-        # Docker এরর এড়াতে @master এবং ক্লাউড অ্যাকশন ব্যবহার করা হলো
         uses: SonarSource/sonarcloud-github-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Sync Commit Snapshot to Time Machine Module
+        if: always()
+        continue-on-error: true
+        run: |
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }})
+          for FILE in $CHANGED_FILES; do
+            if [ -f "$FILE" ]; then
+              CONTENT=$(jq -Rs . < "$FILE")
+              curl -X POST "https://orbis-foundation.onrender.com/api/system/time-machine/sync" \
+                -H "Content-Type: application/json" \
+                -d "{\"filePath\": \"$FILE\", \"commitId\": \"${{ github.sha }}\", \"content\": $CONTENT}"
+            fi
+          done

@@ -9,17 +9,16 @@ export default function TimeMachineCard() {
     const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
-        // 🚀 ফিক্সড: /api/source থেকে /api/system করা হলো
         fetch('/api/system/time-machine/history')
             .then(res => res.json())
             .then(data => {
-                if (data.success) {
+                if (data.success && Array.isArray(data.history)) {
                     setHistory(data.history);
                 }
                 setLoading(false);
             })
             .catch(err => {
-                console.error("Time Machine Error:", err);
+                console.error("Time Machine Module Fetch Error:", err);
                 setLoading(false);
             });
     }, []);
@@ -27,19 +26,18 @@ export default function TimeMachineCard() {
     const handleSelectVersion = (item: any) => {
         setSelectedVersion(item);
         setLoading(true);
-        // 🚀 ফিক্সড: /api/source থেকে /api/system করা হলো
         fetch(`/api/system/time-machine/version?commitId=${item.commitId}&filePath=${encodeURIComponent(item.filePath)}`)
             .then(res => res.json())
             .then(data => {
-                if (data.success) {
+                if (data.success && data.data?.content) {
                     setCodeContent(data.data.content);
                 } else {
-                    setCodeContent('// Error loading code content');
+                    setCodeContent('// Version content not found');
                 }
                 setLoading(false);
             })
-            .catch(err => {
-                setCodeContent('// Failed to fetch version');
+            .catch(() => {
+                setCodeContent('// Failed to fetch version content');
                 setLoading(false);
             });
     };
@@ -51,7 +49,7 @@ export default function TimeMachineCard() {
     };
 
     const filteredHistory = history.filter(item => 
-        item.filePath.toLowerCase().includes(searchTerm.toLowerCase())
+        (item?.filePath || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
@@ -64,14 +62,14 @@ export default function TimeMachineCard() {
                                 ⏳ Source Time Machine
                             </h2>
                             <p className="text-[11px] text-slate-400 mt-1">
-                                Track and recover stable code revisions.
+                                Isolated module: Track and recover commit snapshots.
                             </p>
                         </div>
                         <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
                             <input 
                                 type="text" 
-                                placeholder="Search by file name or path..." 
+                                placeholder="Search by file path..." 
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full pl-9 p-2 outline-none"
@@ -82,7 +80,7 @@ export default function TimeMachineCard() {
                     {loading ? (
                         <div className="text-center py-8 text-slate-400 animate-pulse flex-1">Loading time machine logs...</div>
                     ) : filteredHistory.length === 0 ? (
-                        <div className="text-center py-8 text-slate-500 flex-1">No matching logs found. Modify files to generate history.</div>
+                        <div className="text-center py-8 text-slate-500 flex-1">No logs found yet. Push code changes to trigger history.</div>
                     ) : (
                         <div className="space-y-2 overflow-y-auto pr-2 custom-scrollbar flex-1 max-h-[50vh]">
                             {filteredHistory.map((item, index) => (
@@ -95,13 +93,13 @@ export default function TimeMachineCard() {
                                         <div className="text-[11px] font-mono text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-500/20 truncate">
                                             {item.filePath}
                                         </div>
-                                        <p className="text-[10px] text-slate-400 mt-1.5">
-                                            Commit: {item.commitId.slice(0, 8)}
+                                        <p className="text-[10px] text-slate-400 mt-1.5 font-mono">
+                                            Commit: {item.commitId ? item.commitId.slice(0, 8) : 'N/A'}
                                         </p>
                                     </div>
                                     <div className="text-right min-w-[90px]">
                                         <span className="text-[10px] text-slate-400 block mb-1">
-                                            {new Date(item.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' })}
+                                            {item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' }) : ''}
                                         </span>
                                         <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-1 rounded group-hover:bg-yellow-500 group-hover:text-black transition-colors block text-center">
                                             View Code
@@ -119,7 +117,7 @@ export default function TimeMachineCard() {
                             onClick={() => setSelectedVersion(null)}
                             className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition w-fit"
                         >
-                            ← Back to List
+                            ← Back to Timeline
                         </button>
                         <div className="text-[11px] font-mono text-yellow-400 truncate max-w-[200px]">
                             📂 {selectedVersion.filePath}
