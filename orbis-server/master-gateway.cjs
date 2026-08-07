@@ -85,4 +85,3 @@ gateway.listen(PORT, () => {
     console.log(`===========================================\n`);
 });
 
-app.use('/api/system', require('./source-api.cjs'));
