@@ -45,7 +45,7 @@ const serverProcess = spawn('node', [path.join(__dirname, 'server.cjs')], {
 
 // ৩. Master "Door" (Gateway) 
 const gateway = http.createServer((req, res) => {
-    const isTelemetry = req.url.startsWith('/api/diagnostics') || req.url.startsWith('/api/metrics');
+    const isTelemetry = req.url.startsWith('/api/diagnostics') || req.url.startsWith('/api/metrics') || req.url.startsWith('/api/system');
     const targetPort = isTelemetry ? SERVER_PORT : BRIDGE_PORT;
 
     const proxyReq = http.request({
