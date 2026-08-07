@@ -9,7 +9,6 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// ডাটাবেস টেবিলে status কলাম না থাকলে অটো যুক্ত করার নিরাপদ চেক
 async function ensureSchema() {
     try {
         await pool.query(`
@@ -17,9 +16,7 @@ async function ensureSchema() {
             ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'SUCCESS',
             ADD COLUMN IF NOT EXISTS "errorMessage" TEXT DEFAULT '';
         `);
-    } catch (e) {
-        // টেবিল চেক ইগনোর করা হলো
-    }
+    } catch (e) {}
 }
 ensureSchema();
 
@@ -66,18 +63,37 @@ router.post('/sync', async (req, res) => {
 
 router.get('/history', async (req, res) => {
     try {
-        const queryStr = 'SELECT "commitId", "filePath", "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 150';
+        const queryStr = 'SELECT "commitId", "filePath", "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 300';
         const { rows } = await pool.query(queryStr);
-        res.json({ success: true, history: rows || [] });
+        
+        // Grouping records safely on backend
+        const commitMap = {};
+        (rows || []).forEach(row => {
+            const cid = row.commitId || 'legacy-commit';
+            if (!commitMap[cid]) {
+                commitMap[cid] = {
+                    commitId: cid,
+                    createdAt: row.createdAt,
+                    status: row.status || 'SUCCESS',
+                    errorMessage: row.errorMessage || '',
+                    files: []
+                };
+            }
+            if (!commitMap[cid].files.some(f => f.filePath === row.filePath)) {
+                commitMap[cid].files.push({
+                    filePath: row.filePath,
+                    createdAt: row.createdAt
+                });
+            }
+            if (row.status === 'FAILED') {
+                commitMap[cid].status = 'FAILED';
+                if (row.errorMessage) commitMap[cid].errorMessage = row.errorMessage;
+            }
+        });
+
+        res.json({ success: true, history: Object.values(commitMap) });
     } catch (error) {
-        // Fallback for safe query if column missing
-        try {
-            const fallbackStr = 'SELECT "commitId", "filePath", "createdAt" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 150';
-            const { rows } = await pool.query(fallbackStr);
-            res.json({ success: true, history: rows || [] });
-        } catch (err) {
-            res.status(500).json({ success: false, message: err.message });
-        }
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
@@ -89,7 +105,7 @@ router.get('/version', async (req, res) => {
         }
 
         const { rows } = await pool.query(
-            'SELECT content, "createdAt" FROM "FoundationTimeMachine" WHERE "commitId" = $1 AND "filePath" = $2 LIMIT 1',
+            'SELECT content, "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" WHERE "commitId" = $1 AND "filePath" = $2 LIMIT 1',
             [commitId, filePath]
         );
         
