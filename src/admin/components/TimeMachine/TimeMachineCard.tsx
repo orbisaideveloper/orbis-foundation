@@ -18,7 +18,7 @@ export default function TimeMachineCard() {
                 setLoading(false);
             })
             .catch(err => {
-                console.error("Time Machine Module Fetch Error:", err);
+                console.error("Time Machine Fetch Error:", err);
                 setLoading(false);
             });
     }, []);
@@ -63,7 +63,7 @@ export default function TimeMachineCard() {
                                 ⏳ Source Time Machine
                             </h2>
                             <p className="text-[12px] text-slate-400 mt-1">
-                                Stable commit snapshots & live history tracker.
+                                Live commit snapshots and CI history tracker.
                             </p>
                         </div>
                         <div className="relative">

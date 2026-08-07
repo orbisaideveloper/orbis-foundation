@@ -68,7 +68,7 @@ router.get('/version', async (req, res) => {
         }
 
         const { rows } = await pool.query(
-            'SELECT content, "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" WHERE "commitId" = $1 AND "filePath" = $2',
+            'SELECT content, "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" WHERE "commitId" = $1 AND "filePath" = $2 LIMIT 1',
             [commitId, filePath]
         );
         
