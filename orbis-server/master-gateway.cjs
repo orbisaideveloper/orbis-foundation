@@ -84,3 +84,5 @@ gateway.listen(PORT, () => {
     console.log(`🚪 ORBIS MASTER GATEWAY LIVE ON PORT ${PORT}`);
     console.log(`===========================================\n`);
 });
+
+app.use('/api/system', require('./source-api.cjs'));
