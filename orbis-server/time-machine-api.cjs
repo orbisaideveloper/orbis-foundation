@@ -9,6 +9,20 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
+// ডাটাবেস টেবিলে status কলাম না থাকলে অটো যুক্ত করার নিরাপদ চেক
+async function ensureSchema() {
+    try {
+        await pool.query(`
+            ALTER TABLE "FoundationTimeMachine" 
+            ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'SUCCESS',
+            ADD COLUMN IF NOT EXISTS "errorMessage" TEXT DEFAULT '';
+        `);
+    } catch (e) {
+        // টেবিল চেক ইগনোর করা হলো
+    }
+}
+ensureSchema();
+
 async function saveToTimeMachine(filePath, content, commitId, status, errorMessage) {
     try {
         const id = crypto.randomUUID();
@@ -56,7 +70,14 @@ router.get('/history', async (req, res) => {
         const { rows } = await pool.query(queryStr);
         res.json({ success: true, history: rows || [] });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        // Fallback for safe query if column missing
+        try {
+            const fallbackStr = 'SELECT "commitId", "filePath", "createdAt" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 150';
+            const { rows } = await pool.query(fallbackStr);
+            res.json({ success: true, history: rows || [] });
+        } catch (err) {
+            res.status(500).json({ success: false, message: err.message });
+        }
     }
 });
 
@@ -68,7 +89,7 @@ router.get('/version', async (req, res) => {
         }
 
         const { rows } = await pool.query(
-            'SELECT content, "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" WHERE "commitId" = $1 AND "filePath" = $2 LIMIT 1',
+            'SELECT content, "createdAt" FROM "FoundationTimeMachine" WHERE "commitId" = $1 AND "filePath" = $2 LIMIT 1',
             [commitId, filePath]
         );
         
