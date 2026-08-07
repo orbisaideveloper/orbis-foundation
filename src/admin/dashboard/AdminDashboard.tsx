@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CommandBar from '../../components/CommandCenter/CommandBar';
 import SystemLogManager from '../system-logs/SystemLogManager';
-import TimeMachineCard from '../components/TimeMachine/TimeMachineCard';
 
 const getLogContent = (cardName: string | null) => {
   if (!cardName) return '';
@@ -149,10 +148,6 @@ export function AdminDashboard() {
   };
 
   const renderPremiumModalContent = () => {
-    if (activeCard === 'time_machine') {
-      return <TimeMachineCard />;
-    }
-
     if (activeCard === 'overview') {
       if (activeSubCard) {
         return (
@@ -455,18 +450,6 @@ export function AdminDashboard() {
             <p className="text-[11px] font-semibold text-green-600/80 mt-0.5">{data.coreStatus}</p>
           </div>
         </motion.div>
-        
-        {/* 🔥 নতুন Time Machine কার্ডটি যুক্ত করা হলো (একদম পুরনো স্টাইল বজায় রেখে) */}
-        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('time_machine')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-yellow-50 p-1.5 rounded-lg"><span className="text-sm">⏳</span></div>
-            <h3 className="text-[12px] font-bold text-slate-600">Time Machine</h3>
-          </div>
-          <div>
-            <p className="text-xl font-black text-slate-800">History</p>
-            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">Code Revisions</p>
-          </div>
-        </motion.div>
       </div>
 
       <AnimatePresence>
@@ -474,7 +457,7 @@ export function AdminDashboard() {
           <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed inset-0 bg-white z-50 flex flex-col">
             <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center shadow-sm">
               <h2 className="text-[16px] font-bold text-slate-800 capitalize flex items-center gap-2">
-                <span className="text-xl">{activeCard === 'time_machine' ? '⏳' : '📊'}</span> {activeCard.replace('_', ' ')}
+                <span className="text-xl">📊</span> {activeCard.replace('_', ' ')} Monitor
               </h2>
               <button type="button" onClick={() => { setActiveCard(null); setActiveSubCard(null); }} className="bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold text-[12px] hover:bg-slate-200 transition-colors">
                 Close
