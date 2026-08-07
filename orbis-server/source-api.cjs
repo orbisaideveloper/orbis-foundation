@@ -1,24 +1,28 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto'); // ফাইলের কোড হ্যাশ করার জন্য
-const { PrismaClient } = require('@prisma/client'); // ডাটাবেসের সাথে কানেকশনের জন্য
+const crypto = require('crypto');
+const { Pool } = require('pg'); 
 
 const router = express.Router();
-const prisma = new PrismaClient();
+
+// প্রিজমার বদলে সরাসরি PG Pool ব্যবহার করা হচ্ছে
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
 
 // ফাইলের কোড থেকে ডিজিটাল ফিঙ্গারপ্রিন্ট (Hash) তৈরির ফাংশন
 function getHash(content) {
     return crypto.createHash('md5').update(content, 'utf8').digest('hex');
 }
 
-// ফোল্ডার ট্রি স্ক্যান করার ফাংশন (Smart DB Logic সহ)
+// ফোল্ডার ট্রি স্ক্যান করার ফাংশন 
 function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
     const result = [];
     try {
         const items = fs.readdirSync(dirPath, { withFileTypes: true });
         for (const item of items) {
-            // অপ্রয়োজনীয় ফোল্ডারগুলো স্কিপ করা
             if (['node_modules', '.git', '.agents', '.claude', '.windsurf', 'dist', 'build'].includes(item.name)) continue;
             
             const fullPath = path.join(dirPath, item.name);
@@ -41,7 +45,7 @@ function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
 
                 if (dbRecord) {
                     if (dbRecord.versionHash === hash) {
-                        // কোড চেঞ্জ হয়নি! সার্ভারের নতুন টাইমের বদলে ডাটাবেসের অরিজিনাল টাইম বসানো হলো
+                        // কোড চেঞ্জ হয়নি! ডাটাবেসের অরিজিনাল টাইম বসানো হলো
                         fileMtime = new Date(dbRecord.updatedAt).getTime();
                     } else {
                         // কোড চেঞ্জ হয়েছে! ডাটাবেস আপডেট করার জন্য লাইনে দাঁড় করানো হলো
@@ -49,7 +53,7 @@ function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
                         updatesToPerform.push({ filePath: relativePath, content: content, versionHash: hash, isNew: false, id: dbRecord.id });
                     }
                 } else {
-                    // একদম নতুন ফাইল! ডাটাবেসে ঢোকানোর জন্য লাইনে দাঁড় করানো হলো
+                    // একদম নতুন ফাইল!
                     fileMtime = Date.now();
                     updatesToPerform.push({ filePath: relativePath, content: content, versionHash: hash, isNew: true });
                 }
@@ -66,18 +70,16 @@ function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
     return result;
 }
 
-// 1. পুরো ফোল্ডার স্ট্রাকচার পাঠানোর API (With DB Sync)
+// 1. পুরো ফোল্ডার স্ট্রাকচার পাঠানোর API 
 router.get('/tree', async (req, res) => {
     try {
         const rootPath = path.join(__dirname, '..');
         
-        // ১. ডাটাবেস থেকে পুরোনো ফাইলের হিস্ট্রি নিয়ে আসা
-        const dbRecords = await prisma.foundationSourceCodeHistory.findMany({
-            select: { id: true, filePath: true, versionHash: true, updatedAt: true }
-        });
+        // ১. PG দিয়ে ডাটাবেস থেকে পুরোনো ফাইলের হিস্ট্রি নিয়ে আসা
+        const { rows } = await pool.query('SELECT id, "filePath", "versionHash", "updatedAt" FROM "FoundationSourceCodeHistory"');
 
         const dbMap = {};
-        for (const record of dbRecords) {
+        for (const record of rows) {
             dbMap[record.filePath] = record;
         }
 
@@ -86,20 +88,21 @@ router.get('/tree', async (req, res) => {
         // ২. ফোল্ডার ট্রি জেনারেট করা
         const tree = getDirTreeSync(rootPath, dbMap, updatesToPerform);
 
-        // ৩. ব্যাকগ্রাউন্ডে ডাটাবেস আপডেট করা (ফ্রন্টএন্ডকে না দাঁড় করিয়ে)
+        // ৩. ব্যাকগ্রাউন্ডে ডাটাবেস আপডেট করা (Raw SQL দিয়ে)
         if (updatesToPerform.length > 0) {
             setTimeout(async () => {
                 for (const update of updatesToPerform) {
                     try {
                         if (update.isNew) {
-                            await prisma.foundationSourceCodeHistory.create({
-                                data: { filePath: update.filePath, content: update.content, versionHash: update.versionHash }
-                            });
+                            await pool.query(
+                                'INSERT INTO "FoundationSourceCodeHistory" (id, "filePath", "content", "versionHash") VALUES ($1, $2, $3, $4)',
+                                [crypto.randomUUID(), update.filePath, update.content, update.versionHash]
+                            );
                         } else {
-                            await prisma.foundationSourceCodeHistory.update({
-                                where: { id: update.id },
-                                data: { content: update.content, versionHash: update.versionHash, updatedAt: new Date() }
-                            });
+                            await pool.query(
+                                'UPDATE "FoundationSourceCodeHistory" SET content = $1, "versionHash" = $2, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $3',
+                                [update.content, update.versionHash, update.id]
+                            );
                         }
                     } catch (e) {
                         console.error(`DB Sync Error for ${update.filePath}:`, e.message);
@@ -142,10 +145,9 @@ router.get('/status', (req, res) => {
             const crashData = JSON.parse(fs.readFileSync(crashReportPath, 'utf8'));
             return res.json({ success: true, hasError: true, file: crashData.file, errorLine: crashData.line });
         }
-        // কোনো এরর ফাইল না থাকলে ১০০% ক্লিন স্ট্যাটাস
         res.json({ success: true, hasError: false, file: null, errorLine: null });
     } catch (error) {
-        res.json({ success: true, hasError: false }); // ফেইল করলেও ফ্রন্টএন্ড ক্র্যাশ করবে না
+        res.json({ success: true, hasError: false });
     }
 });
 
