@@ -4,12 +4,12 @@ const path = require('path');
 const crypto = require('crypto');
 const { Pool } = require('pg');
 
-// আমাদের স্বাধীন টাইম মেশিন লিগো ব্লক ইমপোর্ট করা হলো
+// টাইম মেশিন রাউট ও সেভ ফাংশন ইমপোর্ট
 const { router: timeMachineRouter, saveToTimeMachine } = require('./time-machine-api.cjs');
 
 const router = express.Router();
 
-// টাইম মেশিনের স্বাধীন রাউট কানেক্ট করা হলো (যেমন: /api/source/time-machine/history)
+// রাউট মাউন্ট করা হলো যাতে /api/system/time-machine কাজ করে
 router.use('/time-machine', timeMachineRouter);
 
 const pool = new Pool({
@@ -100,7 +100,7 @@ router.get('/tree', async (req, res) => {
                             );
                         }
 
-                        // 🚀 নতুন কোড চেঞ্জ হলেই সাথে সাথে টাইম মেশিনেও সেভ হবে!
+                        // 🔥 মোমেন্ট অব ট্রুথ: কোড চেঞ্জ হলেই সরাসরি টাইম মেশিনের টেবিলে ইনসার্ট হবে!
                         await saveToTimeMachine(update.filePath, update.content);
 
                     } catch (e) {
