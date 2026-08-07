@@ -25,6 +25,6 @@ if (typeof global !== 'undefined') {
 describe('App Component', () => {
   it('renders the application correctly', async () => {
     render(<App />);
-    expect(await screen.findByText(/Orbis Foundation/i)).toBeInTheDocument();
+    expect((await screen.findAllByText(/Orbis Foundation/i))[0]).toBeInTheDocument();
   });
 });

@@ -25,6 +25,6 @@ if (typeof global !== 'undefined') {
 describe('AdminViews Component', () => {
   it('renders Dashboard seamlessly without old clutter', () => {
     render(<AdminViews />);
-    expect(screen.getByText((content, element) => element?.textContent?.includes("Orbis Foundation") || false)).toBeInTheDocument();
+    expect((screen.getAllByText((content, element) => element?.textContent?.includes("Orbis Foundation") || false))[0]).toBeInTheDocument();
   });
 });
