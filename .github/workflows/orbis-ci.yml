@@ -53,12 +53,13 @@ jobs:
             ERR_MSG="Pipeline step failed. Check GitHub Actions logs."
           fi
 
-          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }})
+          COMMIT_HASH="${{ github.sha }}"
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r $COMMIT_HASH)
           for FILE in $CHANGED_FILES; do
             if [ -f "$FILE" ]; then
               CONTENT=$(jq -Rs . < "$FILE")
               curl -X POST "https://orbis-foundation.onrender.com/api/system/time-machine/sync" \
                 -H "Content-Type: application/json" \
-                -d "{\"filePath\": \"$FILE\", \"commitId\": \"${{ github.sha }}\", \"status\": \"$STATUS\", \"errorMessage\": \"$ERR_MSG\", \"content\": $CONTENT}"
+                -d "{\"filePath\": \"$FILE\", \"commitId\": \"$COMMIT_HASH\", \"status\": \"$STATUS\", \"errorMessage\": \"$ERR_MSG\", \"content\": $CONTENT}"
             fi
           done

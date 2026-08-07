@@ -9,14 +9,16 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-async function saveToTimeMachine(filePath, content, commitId) {
+async function saveToTimeMachine(filePath, content, commitId, status, errorMessage) {
     try {
         const id = crypto.randomUUID();
         const cid = commitId || crypto.randomUUID();
+        const buildStatus = status || 'SUCCESS';
+        const buildErr = errorMessage || '';
         
         await pool.query(
-            'INSERT INTO "FoundationTimeMachine" (id, "commitId", "filePath", "content") VALUES ($1, $2, $3, $4)',
-            [id, cid, filePath, content]
+            'INSERT INTO "FoundationTimeMachine" (id, "commitId", "filePath", "content", "status", "errorMessage") VALUES ($1, $2, $3, $4, $5, $6)',
+            [id, cid, filePath, content, buildStatus, buildErr]
         );
 
         await pool.query(`
@@ -36,12 +38,12 @@ async function saveToTimeMachine(filePath, content, commitId) {
 
 router.post('/sync', async (req, res) => {
     try {
-        const { filePath, content, commitId } = req.body;
+        const { filePath, content, commitId, status, errorMessage } = req.body;
         if (!filePath || !content) {
-            return res.status(400).json({ success: false, message: 'filePath and content are required' });
+            return res.status(400).json({ success: false, message: 'filePath and content required' });
         }
 
-        await saveToTimeMachine(filePath, content, commitId);
+        await saveToTimeMachine(filePath, content, commitId, status, errorMessage);
         res.json({ success: true, message: 'TimeMachine record synced successfully' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -50,17 +52,28 @@ router.post('/sync', async (req, res) => {
 
 router.get('/history', async (req, res) => {
     try {
-        const filePath = req.query.path;
-        let queryStr = 'SELECT "commitId", "filePath", "createdAt" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 150';
-        let queryParams = [];
+        const queryStr = 'SELECT "commitId", "filePath", "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 200';
+        const { rows } = await pool.query(queryStr);
+        
+        const grouped = {};
+        rows.forEach(row => {
+            const cid = row.commitId || 'unknown';
+            if (!grouped[cid]) {
+                grouped[cid] = {
+                    commitId: cid,
+                    createdAt: row.createdAt,
+                    status: row.status || 'SUCCESS',
+                    errorMessage: row.errorMessage || '',
+                    files: []
+                };
+            }
+            grouped[cid].files.push({
+                filePath: row.filePath,
+                createdAt: row.createdAt
+            });
+        });
 
-        if (filePath) {
-            queryStr = 'SELECT "commitId", "filePath", "createdAt" FROM "FoundationTimeMachine" WHERE "filePath" = $1 ORDER BY "createdAt" DESC LIMIT 100';
-            queryParams.push(filePath);
-        }
-
-        const { rows } = await pool.query(queryStr, queryParams);
-        res.json({ success: true, history: rows });
+        res.json({ success: true, history: Object.values(grouped) });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -74,7 +87,7 @@ router.get('/version', async (req, res) => {
         }
 
         const { rows } = await pool.query(
-            'SELECT content, "createdAt" FROM "FoundationTimeMachine" WHERE "commitId" = $1 AND "filePath" = $2',
+            'SELECT content, "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" WHERE "commitId" = $1 AND "filePath" = $2',
             [commitId, filePath]
         );
         
