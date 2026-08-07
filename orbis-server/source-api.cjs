@@ -2,22 +2,25 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { Pool } = require('pg'); 
+const { Pool } = require('pg');
+
+// আমাদের স্বাধীন টাইম মেশিন লিগো ব্লক ইমপোর্ট করা হলো
+const { router: timeMachineRouter, saveToTimeMachine } = require('./time-machine-api.cjs');
 
 const router = express.Router();
 
-// প্রিজমার বদলে সরাসরি PG Pool ব্যবহার করা হচ্ছে
+// টাইম মেশিনের স্বাধীন রাউট কানেক্ট করা হলো (যেমন: /api/source/time-machine/history)
+router.use('/time-machine', timeMachineRouter);
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
 });
 
-// ফাইলের কোড থেকে ডিজিটাল ফিঙ্গারপ্রিন্ট (Hash) তৈরির ফাংশন
 function getHash(content) {
     return crypto.createHash('md5').update(content, 'utf8').digest('hex');
 }
 
-// ফোল্ডার ট্রি স্ক্যান করার ফাংশন 
 function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
     const result = [];
     try {
@@ -45,15 +48,12 @@ function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
 
                 if (dbRecord) {
                     if (dbRecord.versionHash === hash) {
-                        // কোড চেঞ্জ হয়নি! ডাটাবেসের অরিজিনাল টাইম বসানো হলো
                         fileMtime = new Date(dbRecord.updatedAt).getTime();
                     } else {
-                        // কোড চেঞ্জ হয়েছে! ডাটাবেস আপডেট করার জন্য লাইনে দাঁড় করানো হলো
                         fileMtime = Date.now();
                         updatesToPerform.push({ filePath: relativePath, content: content, versionHash: hash, isNew: false, id: dbRecord.id });
                     }
                 } else {
-                    // একদম নতুন ফাইল!
                     fileMtime = Date.now();
                     updatesToPerform.push({ filePath: relativePath, content: content, versionHash: hash, isNew: true });
                 }
@@ -70,12 +70,10 @@ function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
     return result;
 }
 
-// 1. পুরো ফোল্ডার স্ট্রাকচার পাঠানোর API 
 router.get('/tree', async (req, res) => {
     try {
         const rootPath = path.join(__dirname, '..');
         
-        // ১. PG দিয়ে ডাটাবেস থেকে পুরোনো ফাইলের হিস্ট্রি নিয়ে আসা
         const { rows } = await pool.query('SELECT id, "filePath", "versionHash", "updatedAt" FROM "FoundationSourceCodeHistory"');
 
         const dbMap = {};
@@ -84,11 +82,8 @@ router.get('/tree', async (req, res) => {
         }
 
         const updatesToPerform = [];
-        
-        // ২. ফোল্ডার ট্রি জেনারেট করা
         const tree = getDirTreeSync(rootPath, dbMap, updatesToPerform);
 
-        // ৩. ব্যাকগ্রাউন্ডে ডাটাবেস আপডেট করা (Raw SQL দিয়ে)
         if (updatesToPerform.length > 0) {
             setTimeout(async () => {
                 for (const update of updatesToPerform) {
@@ -104,6 +99,10 @@ router.get('/tree', async (req, res) => {
                                 [update.content, update.versionHash, update.id]
                             );
                         }
+
+                        // 🚀 নতুন কোড চেঞ্জ হলেই সাথে সাথে টাইম মেশিনেও সেভ হবে!
+                        await saveToTimeMachine(update.filePath, update.content);
+
                     } catch (e) {
                         console.error(`DB Sync Error for ${update.filePath}:`, e.message);
                     }
@@ -117,7 +116,6 @@ router.get('/tree', async (req, res) => {
     }
 });
 
-// 2. নির্দিষ্ট ফাইলের সোর্স কোড পাঠানোর API
 router.get('/file', (req, res) => {
     try {
         const requestedPath = req.query.path;
@@ -137,7 +135,6 @@ router.get('/file', (req, res) => {
     }
 });
 
-// 3. রিয়েল এরর স্ট্যাটাস পাঠানোর API
 router.get('/status', (req, res) => {
     try {
         const crashReportPath = path.join(__dirname, '..', 'crash-report.json');
