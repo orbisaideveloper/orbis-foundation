@@ -1,10 +1,19 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const router = express.Router();
+const crypto = require('crypto'); // ফাইলের কোড হ্যাশ করার জন্য
+const { PrismaClient } = require('@prisma/client'); // ডাটাবেসের সাথে কানেকশনের জন্য
 
-// ফোল্ডার ট্রি স্ক্যান করার ফাংশন (Modified Time বা mtime সহ)
-function getDirTree(dirPath) {
+const router = express.Router();
+const prisma = new PrismaClient();
+
+// ফাইলের কোড থেকে ডিজিটাল ফিঙ্গারপ্রিন্ট (Hash) তৈরির ফাংশন
+function getHash(content) {
+    return crypto.createHash('md5').update(content, 'utf8').digest('hex');
+}
+
+// ফোল্ডার ট্রি স্ক্যান করার ফাংশন (Smart DB Logic সহ)
+function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
     const result = [];
     try {
         const items = fs.readdirSync(dirPath, { withFileTypes: true });
@@ -13,11 +22,11 @@ function getDirTree(dirPath) {
             if (['node_modules', '.git', '.agents', '.claude', '.windsurf', 'dist', 'build'].includes(item.name)) continue;
             
             const fullPath = path.join(dirPath, item.name);
-            const relativePath = path.relative(path.join(__dirname, '..'), fullPath);
+            const relativePath = path.relative(path.join(__dirname, '..'), fullPath).replace(/\\/g, '/');
             const stats = fs.statSync(fullPath);
             
             if (item.isDirectory()) {
-                const children = getDirTree(fullPath);
+                const children = getDirTreeSync(fullPath, dbMap, updatesToPerform);
                 if (children.length > 0) {
                     result.push({ 
                         name: item.name, type: 'directory', path: relativePath, 
@@ -25,9 +34,29 @@ function getDirTree(dirPath) {
                     });
                 }
             } else {
+                const content = fs.readFileSync(fullPath, 'utf8');
+                const hash = getHash(content);
+                let fileMtime = stats.mtimeMs;
+                const dbRecord = dbMap[relativePath];
+
+                if (dbRecord) {
+                    if (dbRecord.versionHash === hash) {
+                        // কোড চেঞ্জ হয়নি! সার্ভারের নতুন টাইমের বদলে ডাটাবেসের অরিজিনাল টাইম বসানো হলো
+                        fileMtime = new Date(dbRecord.updatedAt).getTime();
+                    } else {
+                        // কোড চেঞ্জ হয়েছে! ডাটাবেস আপডেট করার জন্য লাইনে দাঁড় করানো হলো
+                        fileMtime = Date.now();
+                        updatesToPerform.push({ filePath: relativePath, content: content, versionHash: hash, isNew: false, id: dbRecord.id });
+                    }
+                } else {
+                    // একদম নতুন ফাইল! ডাটাবেসে ঢোকানোর জন্য লাইনে দাঁড় করানো হলো
+                    fileMtime = Date.now();
+                    updatesToPerform.push({ filePath: relativePath, content: content, versionHash: hash, isNew: true });
+                }
+
                 result.push({ 
                     name: item.name, type: 'file', path: relativePath, 
-                    mtime: stats.mtimeMs 
+                    mtime: fileMtime 
                 });
             }
         }
@@ -37,11 +66,48 @@ function getDirTree(dirPath) {
     return result;
 }
 
-// 1. পুরো ফোল্ডার স্ট্রাকচার পাঠানোর API
-router.get('/tree', (req, res) => {
+// 1. পুরো ফোল্ডার স্ট্রাকচার পাঠানোর API (With DB Sync)
+router.get('/tree', async (req, res) => {
     try {
         const rootPath = path.join(__dirname, '..');
-        const tree = getDirTree(rootPath);
+        
+        // ১. ডাটাবেস থেকে পুরোনো ফাইলের হিস্ট্রি নিয়ে আসা
+        const dbRecords = await prisma.foundationSourceCodeHistory.findMany({
+            select: { id: true, filePath: true, versionHash: true, updatedAt: true }
+        });
+
+        const dbMap = {};
+        for (const record of dbRecords) {
+            dbMap[record.filePath] = record;
+        }
+
+        const updatesToPerform = [];
+        
+        // ২. ফোল্ডার ট্রি জেনারেট করা
+        const tree = getDirTreeSync(rootPath, dbMap, updatesToPerform);
+
+        // ৩. ব্যাকগ্রাউন্ডে ডাটাবেস আপডেট করা (ফ্রন্টএন্ডকে না দাঁড় করিয়ে)
+        if (updatesToPerform.length > 0) {
+            setTimeout(async () => {
+                for (const update of updatesToPerform) {
+                    try {
+                        if (update.isNew) {
+                            await prisma.foundationSourceCodeHistory.create({
+                                data: { filePath: update.filePath, content: update.content, versionHash: update.versionHash }
+                            });
+                        } else {
+                            await prisma.foundationSourceCodeHistory.update({
+                                where: { id: update.id },
+                                data: { content: update.content, versionHash: update.versionHash, updatedAt: new Date() }
+                            });
+                        }
+                    } catch (e) {
+                        console.error(`DB Sync Error for ${update.filePath}:`, e.message);
+                    }
+                }
+            }, 100);
+        }
+
         res.json({ success: true, tree });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
