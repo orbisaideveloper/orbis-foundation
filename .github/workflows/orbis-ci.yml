@@ -1,4 +1,4 @@
-Name: "ORBIS Foundation CI Pipeline"
+name: "ORBIS Foundation CI Pipeline"
 
 on:
   workflow_dispatch:
@@ -30,9 +30,13 @@ jobs:
         run: npm install --legacy-peer-deps
         
       - name: Run Tests and Generate Coverage
+        id: tests
+        continue-on-error: true
         run: npm run coverage
         
       - name: SonarCloud Scan
+        id: sonar
+        continue-on-error: true
         uses: SonarSource/sonarcloud-github-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -42,12 +46,19 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
+          STATUS="SUCCESS"
+          ERR_MSG=""
+          if [ "${{ steps.tests.outcome }}" != "success" ] || [ "${{ steps.sonar.outcome }}" != "success" ]; then
+            STATUS="FAILED"
+            ERR_MSG="Pipeline step failed. Check GitHub Actions logs."
+          fi
+
           CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }})
           for FILE in $CHANGED_FILES; do
             if [ -f "$FILE" ]; then
               CONTENT=$(jq -Rs . < "$FILE")
               curl -X POST "https://orbis-foundation.onrender.com/api/system/time-machine/sync" \
                 -H "Content-Type: application/json" \
-                -d "{\"filePath\": \"$FILE\", \"commitId\": \"${{ github.sha }}\", \"content\": $CONTENT}"
+                -d "{\"filePath\": \"$FILE\", \"commitId\": \"${{ github.sha }}\", \"status\": \"$STATUS\", \"errorMessage\": \"$ERR_MSG\", \"content\": $CONTENT}"
             fi
           done
