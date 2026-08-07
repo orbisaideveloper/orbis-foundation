@@ -9,19 +9,39 @@ export default function SystemLogManager() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>('// Loading source code from server...');
   const [isCopied, setIsCopied] = useState(false);
+  const [latestUpdateTime, setLatestUpdateTime] = useState<number>(0);
+  const [isTreeCopied, setIsTreeCopied] = useState(false);
+  const [isLoadingTree, setIsLoadingTree] = useState(false);
   const [errorStatus, setErrorStatus] = useState({ hasError: false, file: '', line: 0 });
 
   // রিয়েল-টাইমে সার্ভার থেকে ফোল্ডার ট্রি ফেচ করা
   useEffect(() => {
     if (isOpen) {
+      setIsLoadingTree(true);
+      fetch('/api/system/status')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.hasError) setErrorStatus(data);
+          else setErrorStatus({ hasError: false, file: null, errorLine: null } as any);
+        }).catch(() => {});
+
       fetch('/api/system/tree')
         .then(res => res.json())
         .then(data => {
           if (data.success) {
             setTreeData(data.tree);
+            let maxTime = 0;
+            const findMaxTime = (items: any[]) => {
+              items.forEach(item => {
+                if (item.mtime > maxTime) maxTime = item.mtime;
+                if (item.children) findMaxTime(item.children);
+              });
+            };
+            findMaxTime(data.tree);
+            setLatestUpdateTime(maxTime);
           }
         })
-        .catch(err => console.error("Failed to load tree:", err));
+        .finally(() => setIsLoadingTree(false));
     }
   }, [isOpen]);
 
@@ -40,6 +60,25 @@ export default function SystemLogManager() {
       .catch(err => setFileContent(`// Failed to fetch file content: ${err.message}`));
   };
 
+
+  const handleCopyTree = () => {
+    const generateTreeText = (items: any[], prefix = '') => {
+      let text = '';
+      items.forEach((item, idx) => {
+        const isLast = idx === items.length - 1;
+        const pointer = isLast ? '└── ' : '├── ';
+        text += ;
+        if (item.children) text += generateTreeText(item.children, prefix + (isLast ? '    ' : '│   '));
+      });
+      return text;
+    };
+    navigator.clipboard.writeText("ORBIS Foundation Project Structure:
+
+" + generateTreeText(treeData));
+    setIsTreeCopied(true);
+    setTimeout(() => setIsTreeCopied(false), 2000);
+  };
+
   const handleCopy = () => {
     navigator.clipboard.writeText(fileContent);
     setIsCopied(true);
@@ -50,13 +89,14 @@ export default function SystemLogManager() {
   const renderTree = (items: any[]) => {
     return items.map((item, index) => {
       if (item.type === 'directory') {
+        const folderHasError = errorStatus.hasError && typeof errorStatus.file === 'string' && errorStatus.file.startsWith(item.path);
         return (
-          <div key={index} className="ml-2 my-1">
-            <div className="flex items-center gap-2 text-slate-300 py-1 font-medium text-xs">
-              <Folder size={14} className="text-blue-400" />
+          <div key={index} className="ml-3 my-2">
+            <div className={}>
+              <Folder size={16} className={folderHasError ? 'text-red-400' : 'text-blue-400'} />
               <span>{item.name}</span>
             </div>
-            <div className="pl-3 border-l border-slate-800 ml-1">
+            <div className="pl-2 border-l-2 border-slate-700/50 ml-2 mt-1">
               {item.children && renderTree(item.children)}
             </div>
           </div>
@@ -67,16 +107,11 @@ export default function SystemLogManager() {
           <div
             key={index}
             onClick={() => handleFileClick(item.path)}
-            className={`flex items-center gap-2 py-1 px-2 rounded cursor-pointer text-xs my-0.5 transition ${
-              selectedFile === item.path 
-                ? 'bg-slate-800 text-white font-semibold' 
-                : isErrorFile 
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/50 font-bold animate-pulse' 
-                  : 'text-slate-300 hover:bg-slate-800/50'
-            }`}
+            className={}
           >
-            <FileCode size={14} className={isErrorFile ? 'text-red-400' : 'text-slate-400'} />
+            <FileCode size={16} className={isErrorFile ? 'text-red-400' : isLatestUpdate ? 'text-yellow-400' : 'text-slate-400'} />
             <span className="truncate">{item.name}</span>
+            {isLatestUpdate && <span className="ml-auto text-[10px] bg-yellow-500/20 px-1.5 py-0.5 rounded text-yellow-500">Updated</span>}
           </div>
         );
       }
