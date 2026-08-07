@@ -1,28 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { Heart, Activity, Terminal, AlertTriangle, X, Folder, FileCode, Copy, Check, Code } from 'lucide-react';
+import { Heart, Activity, Terminal, AlertTriangle, X, Folder, FileCode, Copy, Check, Code, ChevronLeft } from 'lucide-react';
 
 export default function SystemLogManager() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeView, setActiveView] = useState<'cards' | 'source'>('cards');
-  
+
   const [treeData, setTreeData] = useState<any[]>([]);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState<string>('// Loading source code from server...');
-  const [isCopied, setIsCopied] = useState(false);
   const [latestUpdateTime, setLatestUpdateTime] = useState<number>(0);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileContent, setFileContent] = useState<string>('');
+  
+  const [isCopied, setIsCopied] = useState(false);
   const [isTreeCopied, setIsTreeCopied] = useState(false);
   const [isLoadingTree, setIsLoadingTree] = useState(false);
-  const [errorStatus, setErrorStatus] = useState({ hasError: false, file: '', line: 0 });
+  
+  const [errorStatus, setErrorStatus] = useState<{hasError: boolean, file: string | null, errorLine: number | null}>({ hasError: false, file: null, errorLine: null });
 
   // রিয়েল-টাইমে সার্ভার থেকে ফোল্ডার ট্রি ফেচ করা
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && activeView === 'source') {
       setIsLoadingTree(true);
       fetch('/api/system/status')
         .then(res => res.json())
         .then(data => {
           if (data.success && data.hasError) setErrorStatus(data);
-          else setErrorStatus({ hasError: false, file: null, errorLine: null } as any);
+          else setErrorStatus({ hasError: false, file: null, errorLine: null });
         }).catch(() => {});
 
       fetch('/api/system/tree')
@@ -43,23 +45,26 @@ export default function SystemLogManager() {
         })
         .finally(() => setIsLoadingTree(false));
     }
-  }, [isOpen]);
+  }, [isOpen, activeView]);
 
   // নির্দিষ্ট ফাইলের কোড লোড করা
   const handleFileClick = (filePath: string) => {
     setSelectedFile(filePath);
+    setFileContent('// Loading source code from server...\n');
     fetch(`/api/system/file?path=${encodeURIComponent(filePath)}`)
       .then(res => res.json())
       .then(data => {
-        if (data.success) {
-          setFileContent(data.content);
-        } else {
-          setFileContent(`// Error: ${data.message}`);
-        }
+        if (data.success) setFileContent(data.content);
+        else setFileContent(`// Error: ${data.message}`);
       })
       .catch(err => setFileContent(`// Failed to fetch file content: ${err.message}`));
   };
 
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(fileContent);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
 
   const handleCopyTree = () => {
     const generateTreeText = (items: any[], prefix = '') => {
@@ -67,51 +72,55 @@ export default function SystemLogManager() {
       items.forEach((item, idx) => {
         const isLast = idx === items.length - 1;
         const pointer = isLast ? '└── ' : '├── ';
-        text += ;
-        if (item.children) text += generateTreeText(item.children, prefix + (isLast ? '    ' : '│   '));
+        text += `${prefix}${pointer}${item.name}\n`;
+        if (item.children) {
+          text += generateTreeText(item.children, prefix + (isLast ? '    ' : '│   '));
+        }
       });
       return text;
     };
-    navigator.clipboard.writeText("ORBIS Foundation Project Structure:
-
-" + generateTreeText(treeData));
+    const fullTreeText = "ORBIS Foundation Project Structure:\n\n" + generateTreeText(treeData);
+    navigator.clipboard.writeText(fullTreeText);
     setIsTreeCopied(true);
     setTimeout(() => setIsTreeCopied(false), 2000);
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(fileContent);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
-  };
-
-  // রিকার্সিভ রেন্ডারিং ফাংশন (ফোল্ডার এবং ফাইল দেখানোর জন্য)
+  // রিকার্সিভ রেন্ডারিং ফাংশন
   const renderTree = (items: any[]) => {
     return items.map((item, index) => {
       if (item.type === 'directory') {
         const folderHasError = errorStatus.hasError && typeof errorStatus.file === 'string' && errorStatus.file.startsWith(item.path);
         return (
-          <div key={index} className="ml-3 my-2">
-            <div className={}>
-              <Folder size={16} className={folderHasError ? 'text-red-400' : 'text-blue-400'} />
+          <div key={index} className="ml-2 my-1">
+            <div className={`flex items-center gap-2 py-1 px-2 rounded font-medium text-xs transition-colors ${
+              folderHasError ? 'bg-red-500/10 text-red-400 border border-red-500/30' : 'text-slate-300'
+            }`}>
+              <Folder size={14} className={folderHasError ? 'text-red-400' : 'text-blue-400'} />
               <span>{item.name}</span>
             </div>
-            <div className="pl-2 border-l-2 border-slate-700/50 ml-2 mt-1">
+            <div className="pl-3 border-l border-slate-700/50 ml-1 mt-1">
               {item.children && renderTree(item.children)}
             </div>
           </div>
         );
       } else {
         const isErrorFile = errorStatus.hasError && errorStatus.file === item.path;
+        const isLatestUpdate = !isErrorFile && item.mtime >= latestUpdateTime - 60000;
         return (
           <div
             key={index}
             onClick={() => handleFileClick(item.path)}
-            className={}
+            className={`flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer text-xs my-0.5 transition-all ${
+              isErrorFile
+                ? 'bg-red-500/20 text-red-400 border border-red-500/50 font-bold animate-pulse'
+                : isLatestUpdate
+                  ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 font-semibold'
+                  : 'text-slate-300 hover:bg-slate-800/50'
+            }`}
           >
-            <FileCode size={16} className={isErrorFile ? 'text-red-400' : isLatestUpdate ? 'text-yellow-400' : 'text-slate-400'} />
+            <FileCode size={14} className={isErrorFile ? 'text-red-400' : isLatestUpdate ? 'text-yellow-400' : 'text-slate-400'} />
             <span className="truncate">{item.name}</span>
-            {isLatestUpdate && <span className="ml-auto text-[10px] bg-yellow-500/20 px-1.5 py-0.5 rounded text-yellow-500">Updated</span>}
+            {isLatestUpdate && <span className="ml-auto text-[9px] bg-yellow-500/20 px-1 rounded text-yellow-500">Updated</span>}
           </div>
         );
       }
@@ -123,7 +132,7 @@ export default function SystemLogManager() {
       {/* Main Dashboard Card */}
       <div
         onClick={() => setIsOpen(true)}
-        className="p-4 rounded-2xl border backdrop-blur-md cursor-pointer transition-all duration-300 bg-[#0f172a]/80 border-slate-700 hover:border-blue-500/50"
+        className="p-4 rounded-2xl border backdrop-blur-md cursor-pointer transition-all duration-300 bg-[#0f172a]/80 border-slate-700 hover:border-blue-500/50 shadow-lg"
       >
         <div className="flex items-center gap-3 mb-2">
           <Heart className="text-blue-400" size={20} />
@@ -137,30 +146,30 @@ export default function SystemLogManager() {
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-[#0f172a] border border-slate-700 rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden shadow-2xl">
-            
+
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900 shrink-0">
               <div className="flex items-center gap-3">
                 <Activity size={20} className="text-blue-400" />
                 <h2 className="text-lg font-bold text-white">System Monitor & Live Source Explorer</h2>
               </div>
               <div className="flex items-center gap-2">
-                {activeView === 'source' && (
-                  <button 
+                {activeView === 'source' && !selectedFile && (
+                  <button
                     onClick={() => setActiveView('cards')}
                     className="px-3 py-1.5 text-xs font-medium bg-slate-800 text-slate-300 rounded hover:bg-slate-700 transition"
                   >
                     Back to Cards
                   </button>
                 )}
-                <button onClick={() => setIsOpen(false)} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800">
+                <button onClick={() => { setIsOpen(false); setSelectedFile(null); setActiveView('cards'); }} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800">
                   <X size={20} />
                 </button>
               </div>
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-hidden p-4">
+            <div className="flex-1 overflow-hidden p-4 bg-[#09090b]">
               
               {/* 3-Cards View */}
               {activeView === 'cards' && (
@@ -181,9 +190,9 @@ export default function SystemLogManager() {
                     <p className="text-xs text-slate-400">User events and system actions</p>
                   </div>
 
-                  <div 
+                  <div
                     onClick={() => setActiveView('source')}
-                    className="p-5 rounded-xl border border-slate-700 bg-slate-800/50 hover:bg-slate-800 cursor-pointer transition-colors"
+                    className="p-5 rounded-xl border border-slate-700 bg-slate-800/50 hover:bg-slate-800 cursor-pointer transition-colors shadow-lg"
                   >
                     <div className="flex items-center gap-2 mb-3">
                       <Code size={20} className="text-purple-400" />
@@ -196,45 +205,70 @@ export default function SystemLogManager() {
 
               {/* Source Code Explorer View */}
               {activeView === 'source' && (
-                <div className="flex h-full border border-slate-800 rounded-xl overflow-hidden bg-[#09090b]">
+                <div className="h-full relative overflow-hidden rounded-xl border border-slate-800 flex flex-col bg-[#0f172a]">
                   
-                  {/* Left: Live File Tree */}
-                  <div className="w-1/3 border-r border-slate-800 bg-slate-900/50 p-4 overflow-y-auto">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Live Repository</h3>
-                    <div className="space-y-1">
-                      {treeData.length > 0 ? renderTree(treeData) : (
-                        <p className="text-xs text-slate-500 animate-pulse">Scanning server files...</p>
+                  {/* Tree View - Active when NO file is selected */}
+                  {!selectedFile && (
+                    <div className="flex-1 p-4 overflow-y-auto pb-10">
+                      <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Project Structure</h3>
+                        <button onClick={handleCopyTree} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition ${isTreeCopied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-blue-400 hover:bg-slate-700'}`}>
+                          {isTreeCopied ? <Check size={14} /> : <Copy size={14} />}
+                          {isTreeCopied ? 'Copied Tree' : 'Copy Tree'}
+                        </button>
+                      </div>
+
+                      {isLoadingTree ? (
+                        <div className="flex flex-col items-center justify-center py-10 opacity-50">
+                          <Activity size={32} className="animate-spin text-blue-400 mb-4" />
+                          <p className="text-sm text-slate-400">Fetching live dependency tree...</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {treeData.length > 0 ? renderTree(treeData) : <p className="text-slate-500 text-sm">No files found.</p>}
+                        </div>
                       )}
                     </div>
-                  </div>
+                  )}
 
-                  {/* Right: Code Viewer & Full Copy Option */}
-                  <div className="flex-1 flex flex-col relative">
-                    <div className="flex items-center justify-between p-2 border-b border-slate-800 bg-slate-900/80">
-                      <span className="text-xs font-mono text-slate-400 px-2 truncate max-w-[60%]">
-                        {selectedFile || 'Select a file from the left tree'}
-                      </span>
+                  {/* Code Viewer View - Active when a file IS selected */}
+                  {selectedFile && (
+                    <div className="absolute inset-0 z-20 bg-[#0f172a] flex flex-col animate-in slide-in-from-bottom-4 duration-200">
                       
-                      <button 
-                        onClick={handleCopy}
-                        disabled={!selectedFile}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${
-                          !selectedFile 
-                            ? 'opacity-50 cursor-not-allowed bg-slate-800 text-slate-500' 
-                            : isCopied 
-                              ? 'bg-emerald-500/20 text-emerald-400' 
-                              : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
-                        }`}
-                      >
-                        {isCopied ? <Check size={14} /> : <Copy size={14} />}
-                        {isCopied ? 'Copied Full File' : 'Copy Full Code'}
-                      </button>
-                    </div>
+                      <div className="flex items-center justify-between p-3 border-b border-slate-700 bg-slate-900 shrink-0">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <button onClick={() => setSelectedFile(null)} className="p-1.5 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 shrink-0">
+                            <ChevronLeft size={16} />
+                          </button>
+                          <span className="text-xs font-mono text-slate-300 truncate max-w-[150px] sm:max-w-md bg-slate-800 px-2 py-1 rounded">
+                            {selectedFile.split('/').pop()}
+                          </span>
+                        </div>
+                        <button onClick={handleCopyCode} className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-all shrink-0 ${isCopied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-md'}`}>
+                          {isCopied ? <Check size={14} /> : <Copy size={14} />}
+                          {isCopied ? 'Copied!' : 'Copy Code'}
+                        </button>
+                      </div>
 
-                    <div className="flex-1 p-4 overflow-auto font-mono text-xs text-slate-300 whitespace-pre">
-                      {fileContent}
+                      <div className="flex-1 overflow-auto bg-[#09090b] font-mono text-[11px] sm:text-xs text-slate-300 pb-10">
+                        {fileContent.split('\n').map((line, idx) => {
+                          const lineNumber = idx + 1;
+                          const isErrorLine = errorStatus.hasError && selectedFile === errorStatus.file && lineNumber === errorStatus.errorLine;
+                          return (
+                            <div key={lineNumber} className={`flex w-full min-w-max hover:bg-white/5 transition-colors ${isErrorLine ? 'bg-red-500/20 text-red-300 font-bold border-l-2 border-red-500' : ''}`}>
+                              <div className="w-10 sm:w-12 shrink-0 text-right pr-3 py-0.5 text-slate-600 select-none border-r border-slate-800/50 bg-slate-900/30">
+                                {lineNumber}
+                              </div>
+                              <div className="pl-4 py-0.5 whitespace-pre">
+                                {line || ' '}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
                     </div>
-                  </div>
+                  )}
 
                 </div>
               )}
