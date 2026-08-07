@@ -16,7 +16,9 @@ async function ensureSchema() {
             ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'SUCCESS',
             ADD COLUMN IF NOT EXISTS "errorMessage" TEXT DEFAULT '';
         `);
-    } catch (e) {}
+    } catch (e) {
+        // Safe schema execution
+    }
 }
 ensureSchema();
 
@@ -63,37 +65,17 @@ router.post('/sync', async (req, res) => {
 
 router.get('/history', async (req, res) => {
     try {
-        const queryStr = 'SELECT "commitId", "filePath", "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 300';
+        const queryStr = 'SELECT "commitId", "filePath", "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 150';
         const { rows } = await pool.query(queryStr);
-        
-        // Grouping records safely on backend
-        const commitMap = {};
-        (rows || []).forEach(row => {
-            const cid = row.commitId || 'legacy-commit';
-            if (!commitMap[cid]) {
-                commitMap[cid] = {
-                    commitId: cid,
-                    createdAt: row.createdAt,
-                    status: row.status || 'SUCCESS',
-                    errorMessage: row.errorMessage || '',
-                    files: []
-                };
-            }
-            if (!commitMap[cid].files.some(f => f.filePath === row.filePath)) {
-                commitMap[cid].files.push({
-                    filePath: row.filePath,
-                    createdAt: row.createdAt
-                });
-            }
-            if (row.status === 'FAILED') {
-                commitMap[cid].status = 'FAILED';
-                if (row.errorMessage) commitMap[cid].errorMessage = row.errorMessage;
-            }
-        });
-
-        res.json({ success: true, history: Object.values(commitMap) });
+        res.json({ success: true, history: rows || [] });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        try {
+            const fallbackStr = 'SELECT "commitId", "filePath", "createdAt" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 150';
+            const { rows } = await pool.query(fallbackStr);
+            res.json({ success: true, history: rows || [] });
+        } catch (err) {
+            res.status(500).json({ success: false, message: err.message });
+        }
     }
 });
 
