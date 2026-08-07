@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CommandBar from '../../components/CommandCenter/CommandBar';
 import SystemLogManager from '../system-logs/SystemLogManager';
+import TimeMachineCard from '../components/TimeMachine/TimeMachineCard';
 
 const getLogContent = (cardName: string | null) => {
   if (!cardName) return '';
@@ -138,7 +139,6 @@ export function AdminDashboard() {
     return () => { isMounted = false; clearInterval(interval); };
   }, []);
 
-  // Helper to map card name for telemetry (reduces complexity in JSX)
   const getTargetName = (card: string | null) => {
     if (!card) return '';
     const map: Record<string, string> = {
@@ -148,8 +148,11 @@ export function AdminDashboard() {
     return map[card] || card;
   };
 
-  // FIXED: Extracted nested ternary to reduce Cognitive Complexity
   const renderPremiumModalContent = () => {
+    if (activeCard === 'time_machine') {
+      return <TimeMachineCard />;
+    }
+
     if (activeCard === 'overview') {
       if (activeSubCard) {
         return (
@@ -215,7 +218,6 @@ export function AdminDashboard() {
       );
     }
 
-    // Default view for other cards
     const targetName = getTargetName(activeCard);
     return (
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col h-full">
@@ -247,7 +249,6 @@ export function AdminDashboard() {
 
   return (
     <div className="w-full min-h-screen bg-[#F8FAFC] flex flex-col relative pb-6 font-sans">
-      {/* SIDEBAR OVERLAY & MENU */}
       <AnimatePresence>
         {isSidebarOpen && (
           <>
@@ -268,7 +269,6 @@ export function AdminDashboard() {
         )}
       </AnimatePresence>
 
-      {/* HEADER */}
       <header className="flex items-center justify-between px-5 py-4 bg-white sticky top-0 z-10 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => setIsSidebarOpen(true)} className="text-slate-500 hover:text-slate-700 p-1">
@@ -294,7 +294,6 @@ export function AdminDashboard() {
         </div>
       </header>
 
-      {/* WELCOME CARD - FIXED Accessibility Issue (Converted to native button) */}
       <div className="px-5 mt-5 mb-2">
         <button 
           type="button" 
@@ -321,7 +320,6 @@ export function AdminDashboard() {
         </button>
       </div>
 
-      {/* ORBIS Command Center Auto-Injected */}
       <div className="w-full px-5 mb-4">
         <CommandBar onCommandSubmit={executeOrbisCommand} />
       </div>
@@ -372,14 +370,12 @@ export function AdminDashboard() {
         )}
       </AnimatePresence>
 
-      {/* QUICK ACCESS CARDS */}
       <div className="px-5 mb-4">
         <button type="button" onClick={() => { setViewMode('tree'); setShowOutput(true); }} className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 p-3 rounded-[16px] text-[13px] font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-indigo-100 active:scale-95 transition-all">
           <span className="text-lg">🗂️</span> লাইভ ডিপেন্ডেন্সি ট্রি
         </button>
       </div>
 
-      {/* 8 PREMIUM GRID CARDS */}
       <div className="px-5 grid grid-cols-2 gap-3.5">
         <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('overview')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center gap-2 mb-2">
@@ -459,15 +455,26 @@ export function AdminDashboard() {
             <p className="text-[11px] font-semibold text-green-600/80 mt-0.5">{data.coreStatus}</p>
           </div>
         </motion.div>
+        
+        {/* 🔥 নতুন Time Machine কার্ডটি যুক্ত করা হলো (একদম পুরনো স্টাইল বজায় রেখে) */}
+        <motion.div whileTap={{ scale: 0.96 }} onClick={() => setActiveCard('time_machine')} className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="bg-yellow-50 p-1.5 rounded-lg"><span className="text-sm">⏳</span></div>
+            <h3 className="text-[12px] font-bold text-slate-600">Time Machine</h3>
+          </div>
+          <div>
+            <p className="text-xl font-black text-slate-800">History</p>
+            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">Code Revisions</p>
+          </div>
+        </motion.div>
       </div>
 
-      {/* PREMIUM MODAL */}
       <AnimatePresence>
         {activeCard && (
           <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed inset-0 bg-white z-50 flex flex-col">
             <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center shadow-sm">
               <h2 className="text-[16px] font-bold text-slate-800 capitalize flex items-center gap-2">
-                <span className="text-xl">📊</span> {activeCard.replace('_', ' ')} Monitor
+                <span className="text-xl">{activeCard === 'time_machine' ? '⏳' : '📊'}</span> {activeCard.replace('_', ' ')}
               </h2>
               <button type="button" onClick={() => { setActiveCard(null); setActiveSubCard(null); }} className="bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold text-[12px] hover:bg-slate-200 transition-colors">
                 Close
@@ -484,7 +491,6 @@ export function AdminDashboard() {
 }
 export default AdminDashboard;
 
-
 export const generateRawTelemetry = (target: string | null, sysStats: any) => {
     if (!target) return 'Awaiting module selection...';
     const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' });
@@ -495,29 +501,23 @@ export const generateRawTelemetry = (target: string | null, sysStats: any) => {
         case 'Overview':
         case 'SYSTEM UPTIME':
             return header + `> OS Platform: ${sysStats.platform} (${sysStats.release})\n> Server Hostname: ${sysStats.hostname}\n> OS Uptime: ${sysStats.uptime}\n> Node Process Uptime: ${sysStats.processUptime} Seconds\n> Status: ${sysStats.status}`;
-
         case 'Architecture':
         case 'CPU ARCH':
             return header + `> Architecture: ${sysStats.arch}\n> CPU Model: ${sysStats.cpuModel}\n> Total Cores: ${sysStats.cpuCores} Logical Threads\n> Node.js Heap Allocated: ${sysStats.heapUsed} MB`;
-
         case 'Microservices':
         case 'RAM USAGE':
             return header + `> Total RAM: ${sysStats.totalMem} GB\n> Used RAM: ${sysStats.usedMem} GB (${sysStats.ramUsedPercent}%)\n> Free RAM: ${sysStats.freeMem} GB\n> Memory Status: ${Number.parseFloat(sysStats.ramUsedPercent) > 85 ? 'WARNING: HIGH LOAD' : 'OPTIMAL'}`;
-
         case 'Master Node':
         case 'OS PLATFORM':
         case 'Health':
             return header + `> Kernel / Release: ${sysStats.release}\n> System Type: ${sysStats.platform}\n> Process Arch: ${sysStats.arch}\n> Hardware Sync: COMPLETE`;
-
         case 'API Gateway':
         case 'SERVER STATUS':
         case 'Engine':
             return header + `> Backend API: ${sysStats.status}\n> Process Active Memory: ${sysStats.heapUsed} MB\n> Server OS Uptime: ${sysStats.uptime}`;
-
         case 'Avg Load':
         case 'CPU LOAD':
             return header + `> CPU Load Average (1 min): ${sysStats.load}\n> CPU Load Average (5 min): ${sysStats.load5m}\n> CPU Load Average (15 min): ${sysStats.load15m}\n> Core Distribution: ${sysStats.cpuCores > 0 ? (Number.parseFloat(sysStats.load) / sysStats.cpuCores * 100).toFixed(1) : 0}% per core`;
-
         default:
             return header + `> Requesting raw data for ${target}...\n> Metrics Snapshot: \n` + JSON.stringify(sysStats, null, 2);
     }
