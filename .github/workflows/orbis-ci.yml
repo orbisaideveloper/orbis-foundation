@@ -29,24 +29,15 @@ jobs:
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
 
-      # Safety Layer 1: TypeScript Structural & Type Check across 300+ folders
       - name: Run Global Type Check (tsc --noEmit)
-        run: |
-          echo "🔍 Running TypeScript Structural Check across all folders..."
-          npm run type-check
+        run: npm run type-check
 
-      # Safety Layer 2: File Deletion Guard (Blocks commit if existing source files were deleted)
       - name: Check for Unintended File Deletions
         run: |
-          echo "🛡️ Checking for accidental file deletions..."
           DELETED_FILES=$(git diff-tree --no-commit-id --name-only -r --diff-filter=D ${{ github.sha }})
           if [ -n "$DELETED_FILES" ]; then
-            echo "🚨 CRITICAL ALERT: The following existing source files were deleted in this commit:"
-            echo "$DELETED_FILES"
-            echo "❌ Build blocked to prevent accidental loss of system modules."
+            echo "🚨 CRITICAL ALERT: Files deleted!"
             exit 1
-          else
-            echo "✅ No critical files deleted."
           fi
 
       - name: Run Tests and Generate Coverage
@@ -74,7 +65,7 @@ jobs:
           fi
 
           COMMIT_HASH="${{ github.sha }}"
-          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r $COMMIT_HASH)
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD~1 HEAD)
           for FILE in $CHANGED_FILES; do
             if [ -f "$FILE" ]; then
               CONTENT=$(jq -Rs . < "$FILE")
