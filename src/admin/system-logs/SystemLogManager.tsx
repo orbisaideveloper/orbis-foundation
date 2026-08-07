@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Heart, Activity, Terminal, AlertTriangle, X, Folder, FileCode, Copy, Check, Code, ChevronLeft, History } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Heart, Activity, Terminal, AlertTriangle, X, Folder, FileCode, Copy, Check, Code, ChevronLeft, History, Search } from 'lucide-react';
 import TimeMachineCard from '../components/TimeMachine/TimeMachineCard';
 
 export default function SystemLogManager() {
@@ -10,13 +10,15 @@ export default function SystemLogManager() {
   const [latestUpdateTime, setLatestUpdateTime] = useState<number>(0);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
+  
+  // নতুন সার্চ স্টেট
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [isCopied, setIsCopied] = useState(false);
   const [isTreeCopied, setIsTreeCopied] = useState(false);
   const [isLoadingTree, setIsLoadingTree] = useState(false);
   const [errorStatus, setErrorStatus] = useState<{hasError: boolean, file: string | null, errorLine: number | null}>({ hasError: false, file: null, errorLine: null });
 
-  // রিয়েল-টাইমে সার্ভার থেকে ফোল্ডার ট্রি ফেচ করা
   useEffect(() => {
     if (isOpen && activeView === 'source') {
       setIsLoadingTree(true);
@@ -47,7 +49,6 @@ export default function SystemLogManager() {
     }
   }, [isOpen, activeView]);
 
-  // নির্দিষ্ট ফাইলের কোড লোড করা
   const handleFileClick = (filePath: string) => {
     setSelectedFile(filePath);
     setFileContent('// Loading source code from server...\n');            
@@ -85,7 +86,30 @@ export default function SystemLogManager() {
     setTimeout(() => setIsTreeCopied(false), 2000);                     
   };
 
-  // রিকার্সিভ রেন্ডারিং ফাংশন                                            
+  // সার্চের উপর ভিত্তি করে ট্রি ফিল্টার করার লজিক
+  const filteredTreeData = useMemo(() => {
+    if (!searchQuery.trim()) return treeData;
+    const query = searchQuery.toLowerCase();
+
+    const filterNodes = (nodes: any[]): any[] => {
+      return nodes.map(node => {
+        if (node.type === 'directory') {
+          const filteredChildren = filterNodes(node.children || []);
+          if (filteredChildren.length > 0 || node.name.toLowerCase().includes(query)) {
+            return { ...node, children: filteredChildren };
+          }
+          return null;
+        } else {
+          if (node.name.toLowerCase().includes(query) || node.path.toLowerCase().includes(query)) {
+            return node;
+          }
+          return null;
+        }
+      }).filter(Boolean);
+    };
+    return filterNodes(treeData);
+  }, [treeData, searchQuery]);
+
   const renderTree = (items: any[]) => {
     return items.map((item, index) => {
       if (item.type === 'directory') {
@@ -129,7 +153,6 @@ export default function SystemLogManager() {
   
   return (
     <>                                                                      
-      {/* Main Dashboard Card */}
       <div
         onClick={() => setIsOpen(true)}
         className="p-4 rounded-2xl border backdrop-blur-md cursor-pointer transition-all duration-300 bg-[#0f172a]/80 border-slate-700 hover:border-blue-500/50 shadow-lg"
@@ -142,12 +165,10 @@ export default function SystemLogManager() {
         <p className="text-xs text-slate-400 mt-1">Real-time repository explorer & logs</p>
       </div>
 
-      {/* Main Modal */}
       {isOpen && (                                                            
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-[#0f172a] border border-slate-700 rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden shadow-2xl">
-
-            {/* Header */}                                                        
+                                                      
             <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900 shrink-0">
               <div className="flex items-center gap-3">                               
                 <Activity size={20} className="text-blue-400" />                      
@@ -156,25 +177,26 @@ export default function SystemLogManager() {
               <div className="flex items-center gap-2">
                 {((activeView === 'source' && !selectedFile) || activeView === 'time_machine') && (
                   <button
-                    onClick={() => setActiveView('cards')}
+                    onClick={() => {
+                        setActiveView('cards');
+                        setSearchQuery(''); // Back করলে সার্চ ক্লিয়ার হয়ে যাবে
+                    }}
                     className="px-3 py-1.5 text-xs font-medium bg-slate-800 text-slate-300 rounded hover:bg-slate-700 transition"
                   >                                                                       
                     Back to Cards                                                       
                   </button>
                 )}
                 <button 
-                  onClick={() => { setIsOpen(false); setSelectedFile(null); setActiveView('cards'); }} 
+                  onClick={() => { setIsOpen(false); setSelectedFile(null); setActiveView('cards'); setSearchQuery(''); }} 
                   className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800"
                 >                                       
                   <X size={20} />
                 </button>
               </div>
             </div>                                                    
-            
-            {/* Content Area */}                                                  
+                                                              
             <div className="flex-1 overflow-hidden p-4 bg-[#09090b]">
 
-              {/* 4-Cards View (Updated Grid to 2x2 for better layout) */}
               {activeView === 'cards' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full content-start">
                   <div className="p-5 rounded-xl border border-slate-700 bg-slate-800/50 hover:bg-slate-800 cursor-pointer">
@@ -204,7 +226,6 @@ export default function SystemLogManager() {
                     <p className="text-xs text-slate-400">Browse live repository & view source code</p>
                   </div>
 
-                  {/* New Time Machine Card */}
                   <div                                                                    
                     onClick={() => setActiveView('time_machine')}                               
                     className="p-5 rounded-xl border border-slate-700 bg-slate-800/50 hover:bg-slate-800 cursor-pointer transition-colors shadow-lg"
@@ -218,19 +239,29 @@ export default function SystemLogManager() {
                 </div>                                                              
               )}                                                      
               
-              {/* Source Code Explorer View */}
               {activeView === 'source' && (                                           
                 <div className="h-full relative overflow-hidden rounded-xl border border-slate-800 flex flex-col bg-[#0f172a]">
 
-                  {/* Tree View - Active when NO file is selected */}
                   {!selectedFile && (
                     <div className="flex-1 p-4 overflow-y-auto pb-10">
-                      <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2">                                                       
+                      <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">                                                       
                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Project Structure</h3>
                         <button onClick={handleCopyTree} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition ${isTreeCopied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-blue-400 hover:bg-slate-700'}`}>                                                     
                           {isTreeCopied ? <Check size={14} /> : <Copy size={14} />}
                           {isTreeCopied ? 'Copied Tree' : 'Copy Tree'}
                         </button>
+                      </div>
+
+                      {/* 🔥 নতুন সার্চ বার যুক্ত করা হলো */}
+                      <div className="mb-4 relative">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                            type="text"
+                            placeholder="Search files or folders..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded-lg pl-9 p-2.5 outline-none focus:border-blue-500 transition-colors"
+                        />
                       </div>
                                                                                             
                       {isLoadingTree ? (
@@ -240,16 +271,18 @@ export default function SystemLogManager() {
                         </div>
                       ) : (
                         <div className="space-y-1">
-                          {treeData.length > 0 ? renderTree(treeData) : <p className="text-slate-500 text-sm">No files found.</p>}
+                          {filteredTreeData.length > 0 ? renderTree(filteredTreeData) : (
+                            <p className="text-slate-500 text-sm text-center py-4">
+                              {searchQuery ? 'No matching files found.' : 'No files found.'}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
                   )}
 
-                  {/* Code Viewer View - Active when a file IS selected */}
                   {selectedFile && (
                     <div className="absolute inset-0 z-20 bg-[#0f172a] flex flex-col animate-in slide-in-from-bottom-4 duration-200">
-
                       <div className="flex items-center justify-between p-3 border-b border-slate-700 bg-slate-900 shrink-0">
                         <div className="flex items-center gap-2 overflow-hidden">
                           <button onClick={() => setSelectedFile(null)} className="p-1.5 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 shrink-0">                                                                                    
@@ -281,13 +314,11 @@ export default function SystemLogManager() {
                           );                                                                  
                         })}
                       </div>
-
                     </div>
                   )}                                                  
                 </div>                                                              
               )}                                                      
               
-              {/* 🔥 Time Machine View */}
               {activeView === 'time_machine' && (
                 <div className="h-full relative overflow-hidden rounded-xl border border-slate-800 flex flex-col bg-[#0f172a]">
                   <TimeMachineCard />
