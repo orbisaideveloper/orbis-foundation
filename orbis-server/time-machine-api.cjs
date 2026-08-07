@@ -52,28 +52,9 @@ router.post('/sync', async (req, res) => {
 
 router.get('/history', async (req, res) => {
     try {
-        const queryStr = 'SELECT "commitId", "filePath", "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 200';
+        const queryStr = 'SELECT "commitId", "filePath", "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 150';
         const { rows } = await pool.query(queryStr);
-        
-        const grouped = {};
-        rows.forEach(row => {
-            const cid = row.commitId || 'unknown';
-            if (!grouped[cid]) {
-                grouped[cid] = {
-                    commitId: cid,
-                    createdAt: row.createdAt,
-                    status: row.status || 'SUCCESS',
-                    errorMessage: row.errorMessage || '',
-                    files: []
-                };
-            }
-            grouped[cid].files.push({
-                filePath: row.filePath,
-                createdAt: row.createdAt
-            });
-        });
-
-        res.json({ success: true, history: Object.values(grouped) });
+        res.json({ success: true, history: rows || [] });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -91,7 +72,7 @@ router.get('/version', async (req, res) => {
             [commitId, filePath]
         );
         
-        if (rows.length === 0) return res.status(404).json({ success: false, message: 'Version not found' });
+        if (!rows || rows.length === 0) return res.status(404).json({ success: false, message: 'Version not found' });
         
         res.json({ success: true, data: rows[0] });
     } catch (error) {
