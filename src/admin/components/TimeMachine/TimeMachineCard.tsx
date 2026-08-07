@@ -9,7 +9,8 @@ export default function TimeMachineCard() {
     const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
-        fetch('/api/source/time-machine/history')
+        // 🚀 ফিক্সড: /api/source থেকে /api/system করা হলো
+        fetch('/api/system/time-machine/history')
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
@@ -26,7 +27,8 @@ export default function TimeMachineCard() {
     const handleSelectVersion = (item: any) => {
         setSelectedVersion(item);
         setLoading(true);
-        fetch(`/api/source/time-machine/version?commitId=${item.commitId}&filePath=${encodeURIComponent(item.filePath)}`)
+        // 🚀 ফিক্সড: /api/source থেকে /api/system করা হলো
+        fetch(`/api/system/time-machine/version?commitId=${item.commitId}&filePath=${encodeURIComponent(item.filePath)}`)
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
@@ -80,7 +82,7 @@ export default function TimeMachineCard() {
                     {loading ? (
                         <div className="text-center py-8 text-slate-400 animate-pulse flex-1">Loading time machine logs...</div>
                     ) : filteredHistory.length === 0 ? (
-                        <div className="text-center py-8 text-slate-500 flex-1">No matching logs found.</div>
+                        <div className="text-center py-8 text-slate-500 flex-1">No matching logs found. Modify files to generate history.</div>
                     ) : (
                         <div className="space-y-2 overflow-y-auto pr-2 custom-scrollbar flex-1 max-h-[50vh]">
                             {filteredHistory.map((item, index) => (
