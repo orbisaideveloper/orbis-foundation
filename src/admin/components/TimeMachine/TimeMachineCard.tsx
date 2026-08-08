@@ -3,7 +3,8 @@ import React, { useState, useEffect } from "react";
 export default function TimeMachineCard() {
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedVersion, setSelectedVersion] = useState<any>(null);
+  const [selectedCommit, setSelectedCommit] = useState<any>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [codeContent, setCodeContent] = useState("");
   const [copied, setCopied] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -23,11 +24,13 @@ export default function TimeMachineCard() {
       });
   }, []);
 
-  const handleSelectVersion = (item: any) => {
-    setSelectedVersion(item);
+  // 🚀 হারানো লজিক ঠিক করা হলো: কমিট এবং নির্দিষ্ট ফাইল দুটোই ট্র্যাকিং
+  const handleSelectFile = (commit: any, filePath: string) => {
+    setSelectedCommit(commit);
+    setSelectedFile(filePath);
     setLoading(true);
     fetch(
-      `/api/system/time-machine/version?commitId=${item.commitId}&filePath=${encodeURIComponent(item.filePath)}`,
+      `/api/system/time-machine/version?commitId=${commit.commitId}&filePath=${encodeURIComponent(filePath)}`,
     )
       .then((res) => res.json())
       .then((data) => {
@@ -44,10 +47,10 @@ export default function TimeMachineCard() {
       });
   };
 
-  // 🚀 স্মার্ট কপি লজিক: কপি করলে AI-এর বোঝার জন্য ট্যাগ ও মার্কডাউন যোগ হয়ে যাবে!
+  // 🚀 স্মার্ট কপি লজিক (Markdown ট্যাগসহ)
   const handleCopy = () => {
     const lines = codeContent.split("\n");
-    const isFailed = selectedVersion?.status === "FAILED";
+    const isFailed = selectedCommit?.status === "FAILED";
 
     const markdownText = lines
       .map((line) => {
@@ -69,23 +72,50 @@ export default function TimeMachineCard() {
       })
       .join("\n");
 
-    const finalCopyText = `### 🕒 Time Machine Context: ${isFailed ? "❌ FAILED BUILD" : "✅ STABLE BUILD"} (Commit: ${selectedVersion?.commitId?.slice(0, 8) || "N/A"})\n\n\`\`\`javascript\n${markdownText}\n\`\`\``;
+    const finalCopyText = `### 🕒 Time Machine Context: ${isFailed ? "❌ FAILED BUILD" : "✅ STABLE BUILD"} (Commit: ${selectedCommit?.commitId?.slice(0, 8) || "N/A"})\n\n\`\`\`javascript\n${markdownText}\n\`\`\``;
 
     navigator.clipboard.writeText(finalCopyText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent, action: () => void) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      action();
+    }
+  };
+
   const filteredHistory = history.filter(
-    (item) =>
-      (item?.filePath || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item?.commitId || "").toLowerCase().includes(searchTerm.toLowerCase()),
+    (commit) =>
+      (commit.commitId || "")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      (commit.files || []).some((f: any) =>
+        (f.filePath || "").toLowerCase().includes(searchTerm.toLowerCase()),
+      ),
   );
 
-  // 🚀 ভিজ্যুয়াল রেন্ডার লজিক: UI-তে মোটা (Bold) এবং ট্যারা (Italic) স্টাইল
-  const renderDiffContent = (code: string, status: string) => {
+  const renderStatusBadge = (status: string) => {
+    if (status === "FAILED") {
+      return (
+        <span className="text-[10px] bg-red-500/20 text-red-400 border border-red-500/40 px-2 py-0.5 rounded font-bold">
+          ❌ CI FAILED
+        </span>
+      );
+    }
+    return (
+      <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-2 py-0.5 rounded font-bold">
+        ✅ PASSED
+      </span>
+    );
+  };
+
+  // 🚀 ভিজ্যুয়াল ডিফারেন্স লজিক (রঙিন, মোটা ও ট্যারা টেক্সট)
+  const renderDiffContent = (code: string) => {
+    if (!code) return null;
     const lines = code.split("\n");
-    const isFailed = status === "FAILED";
+    const isFailed = selectedCommit?.status === "FAILED";
 
     return lines.map((line, idx) => {
       let lineStyle = "text-slate-200";
@@ -98,26 +128,27 @@ export default function TimeMachineCard() {
           line.toLowerCase().includes("fail") ||
           line.includes("404"))
       ) {
-        lineStyle = "text-red-400 font-bold italic"; // লাল, মোটা ও ট্যারা
+        lineStyle = "text-red-400 font-bold italic";
         bgStyle = "bg-red-950/60 border-l-4 border-red-500 pl-2";
         icon = "🚨 ";
       } else if (
         line.trim().startsWith("+") ||
         line.includes("NEWLY EDITED") ||
-        line.includes("Fix:")
+        line.includes("Fix:") ||
+        line.includes("ALTER TABLE")
       ) {
-        lineStyle = "text-emerald-400 font-bold italic"; // সবুজ, মোটা ও ট্যারা
+        lineStyle = "text-emerald-400 font-bold italic";
         bgStyle = "bg-emerald-950/40 border-l-2 border-emerald-500 pl-1";
         icon = "✨ ";
-      } else if (line.trim().startsWith("-")) {
-        lineStyle = "text-rose-300 line-through opacity-70";
+      } else if (line.trim().startsWith("-") || line.includes("DELETE FROM")) {
+        lineStyle = "text-rose-300 line-through opacity-70 font-semibold";
         bgStyle = "bg-rose-950/40 border-l-2 border-rose-500 pl-1";
         icon = "🗑️ ";
       }
 
       return (
         <div
-          key={idx}
+          key={`line-${idx + 1}`}
           className={`py-0.5 px-2 font-mono text-[13.5px] leading-relaxed transition-colors ${lineStyle} ${bgStyle}`}
         >
           <span className="inline-block w-8 text-slate-600 select-none text-[11px] mr-2 text-right">
@@ -134,7 +165,7 @@ export default function TimeMachineCard() {
 
   return (
     <div className="bg-[#111827] border border-slate-800 rounded-xl p-3 sm:p-4 text-slate-200 shadow-xl w-full h-full flex flex-col font-sans">
-      {!selectedVersion ? (
+      {!selectedFile ? (
         <div className="flex flex-col h-full">
           <div className="mb-4 flex flex-col gap-3">
             <div>
@@ -142,7 +173,7 @@ export default function TimeMachineCard() {
                 ⏳ Source Time Machine
               </h2>
               <p className="text-[12px] text-slate-400 mt-1">
-                Smart AI Code Tracker & Status Snapshot.
+                Commit-grouped snapshot and Smart AI Tracker.
               </p>
             </div>
             <div className="relative">
@@ -151,7 +182,7 @@ export default function TimeMachineCard() {
               </span>
               <input
                 type="text"
-                placeholder="Search by file path or commit..."
+                placeholder="Search by commit ID or file path..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full pl-9 p-2.5 outline-none"
@@ -161,53 +192,76 @@ export default function TimeMachineCard() {
 
           {loading ? (
             <div className="text-center py-8 text-slate-400 animate-pulse flex-1 text-sm">
-              Loading time machine logs...
+              Loading grouped commit logs...
             </div>
           ) : filteredHistory.length === 0 ? (
             <div className="text-center py-8 text-slate-500 flex-1 text-sm">
-              No logs found yet.
+              No logs found.
             </div>
           ) : (
-            <div className="space-y-2.5 overflow-y-auto pr-1 custom-scrollbar flex-1 max-h-[60vh]">
-              {filteredHistory.map((item, index) => (
+            <div className="space-y-3 overflow-y-auto pr-1 custom-scrollbar flex-1 max-h-[60vh]">
+              {filteredHistory.map((commit) => (
                 <div
-                  key={index}
-                  onClick={() => handleSelectVersion(item)}
-                  className="bg-slate-900/90 border border-slate-800 hover:border-yellow-500/50 p-3 rounded-lg flex justify-between items-center cursor-pointer transition group"
+                  key={commit.commitId || `commit-${commit.createdAt}`}
+                  className="bg-slate-900/90 border border-slate-800 p-3 rounded-lg flex flex-col gap-2.5 shadow-md"
                 >
-                  <div className="overflow-hidden pr-2">
-                    <div className="text-[12px] font-mono text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-500/20 truncate max-w-[200px]">
-                      📂 {item.filePath}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className="text-[11px] font-mono text-slate-400">
+                  <div className="flex justify-between items-center border-b border-slate-800/80 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] font-mono font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-500/20">
                         Commit:{" "}
-                        {item.commitId ? item.commitId.slice(0, 8) : "N/A"}
+                        {commit.commitId ? commit.commitId.slice(0, 8) : "N/A"}
                       </span>
-                      {item.status === "FAILED" ? (
-                        <span className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/40 px-1.5 py-0.5 rounded font-bold">
-                          ❌ FAILED
-                        </span>
-                      ) : (
-                        <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-1.5 py-0.5 rounded font-bold">
-                          ✅ PASSED
-                        </span>
-                      )}
+                      {renderStatusBadge(commit.status)}
                     </div>
-                  </div>
-                  <div className="text-right min-w-[90px]">
-                    <span className="text-[10px] text-slate-400 block mb-1">
-                      {item.createdAt
-                        ? new Date(item.createdAt).toLocaleString("en-IN", {
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {commit.createdAt
+                        ? new Date(commit.createdAt).toLocaleString("en-IN", {
                             timeZone: "Asia/Kolkata",
                             dateStyle: "short",
                             timeStyle: "short",
                           })
                         : ""}
                     </span>
-                    <span className="text-[11px] bg-slate-800 text-slate-200 px-2.5 py-1 rounded group-hover:bg-yellow-500 group-hover:text-black transition-colors block text-center font-medium">
-                      View Code
+                  </div>
+
+                  {commit.status === "FAILED" && commit.errorMessage && (
+                    <div className="text-[11px] font-mono bg-red-950/60 border border-red-800/60 text-red-300 p-2.5 rounded-lg whitespace-pre-wrap select-all">
+                      ⚠️{" "}
+                      <strong className="text-red-200">Failure Reason:</strong>{" "}
+                      {commit.errorMessage}
+                    </div>
+                  )}
+
+                  {/* 🚀 এখানে গ্রুপিং লজিক ফিরিয়ে আনা হয়েছে */}
+                  <div className="flex flex-col gap-1.5 mt-0.5">
+                    <span className="text-[11px] text-slate-400 font-semibold">
+                      Files Changed ({commit.files?.length || 0}):
                     </span>
+                    <div className="space-y-1.5">
+                      {commit.files?.map((file: any) => (
+                        <div
+                          key={`${commit.commitId}-${file.filePath}`}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() =>
+                            handleSelectFile(commit, file.filePath)
+                          }
+                          onKeyDown={(e) =>
+                            handleKeyDown(e, () =>
+                              handleSelectFile(commit, file.filePath),
+                            )
+                          }
+                          className="flex justify-between items-center bg-slate-950 hover:border-yellow-500/50 border border-slate-800/80 p-2 rounded-md cursor-pointer transition group"
+                        >
+                          <span className="text-[12px] font-mono text-slate-300 truncate max-w-[210px] group-hover:text-yellow-400">
+                            📂 {file.filePath}
+                          </span>
+                          <span className="text-[11px] bg-slate-800 hover:bg-yellow-500 hover:text-black text-slate-200 px-2.5 py-1 rounded transition font-medium">
+                            View Code
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -218,15 +272,17 @@ export default function TimeMachineCard() {
         <div className="flex flex-col h-full relative">
           <div className="sticky top-0 z-30 backdrop-blur-md bg-slate-900/90 border border-slate-800/80 p-2.5 rounded-lg mb-2 flex flex-row items-center justify-between gap-2 shadow-lg">
             <button
-              onClick={() => setSelectedVersion(null)}
+              type="button"
+              onClick={() => setSelectedFile(null)}
               className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg transition font-medium shrink-0"
             >
               ← Back
             </button>
             <span className="text-[12px] font-mono text-yellow-400 truncate max-w-[160px] sm:max-w-[300px] text-center">
-              📂 {selectedVersion.filePath}
+              📂 {selectedFile}
             </span>
             <button
+              type="button"
               onClick={handleCopy}
               className={`text-xs ${copied ? "bg-emerald-500 text-white" : "bg-yellow-500 text-black"} hover:opacity-90 font-bold px-3 py-1.5 rounded-lg transition shrink-0 shadow-md active:scale-95`}
             >
@@ -241,7 +297,7 @@ export default function TimeMachineCard() {
               </div>
             ) : (
               <div className="whitespace-pre overflow-x-auto">
-                {renderDiffContent(codeContent, selectedVersion.status)}
+                {renderDiffContent(codeContent)}
               </div>
             )}
           </div>
