@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'src/admin/__tests__/backend/**/*.cjs', 'orbis-server/**/*.test.cjs'],
     coverage: {
       provider: 'v8',

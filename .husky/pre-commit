@@ -9,3 +9,6 @@ npm run check:circular || {
 }
 
 echo "✅ [Termux] কোড ১০০% পারফেক্ট! গিটহাবে যাচ্ছে..."
+
+# 🛡️ Coverage Guard 90%
+npm run test:coverage
