@@ -68,6 +68,9 @@
     "src/**/*.{ts,tsx,js,jsx}": [
       "prettier --write",
       "eslint --fix"
+    ],
+    "orbis-server/**/*.cjs": [
+      "prettier --write"
     ]
   }
 }
