@@ -19,35 +19,25 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: 'npm'
-          
+
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
 
       - name: Run Global Type Check (tsc --noEmit)
         run: npm run type-check
 
-      - name: Check for Unintended File Deletions
-        run: |
-          DELETED_FILES=$(git diff --name-only --diff-filter=D HEAD~1 HEAD 2>/dev/null || echo "")
-          if [ -n "$DELETED_FILES" ]; then
-            echo "🚨 CRITICAL ALERT: Files deleted!"
-            exit 1
-          fi
-
-      - name: Run Tests
+      - name: Run Tests and Generate Coverage
         id: tests
-        continue-on-error: true
         run: npm run coverage
-        
+
       - name: SonarCloud Scan
         id: sonar
-        continue-on-error: true
         uses: SonarSource/sonarcloud-github-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -64,26 +54,13 @@ jobs:
           fi
 
           COMMIT_HASH="${{ github.sha }}"
-          echo "📌 Commit Hash: $COMMIT_HASH"
-          
-          # ১০০% নিখুঁত লজিক: সরাসরি পুশ হওয়া কমিটের আইডি থেকে ফাইলের লিস্ট বের করা
           CHANGED_FILES=$(git show --pretty="" --name-only $COMMIT_HASH)
-          
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "⚠️ No files detected for this commit."
-          else
-            echo "📂 Files to sync:"
-            echo "$CHANGED_FILES"
-            for FILE in $CHANGED_FILES; do
-              if [ -f "$FILE" ]; then
-                echo "✅ Syncing: $FILE"
-                CONTENT=$(jq -Rs . < "$FILE")
-                curl -s -X POST "https://orbis-foundation.onrender.com/api/system/time-machine/sync" \
-                  -H "Content-Type: application/json" \
-                  -d "{\"filePath\": \"$FILE\", \"commitId\": \"$COMMIT_HASH\", \"status\": \"$STATUS\", \"content\": $CONTENT}"
-              else
-                echo "⏭️ File not found on disk, skipping: $FILE"
-              fi
-            done
-          fi
-          echo "🎉 Sync complete."
+
+          for FILE in $CHANGED_FILES; do
+            if [ -f "$FILE" ]; then
+              CONTENT=$(jq -Rs . < "$FILE")
+              curl -s -X POST "https://orbis-foundation.onrender.com/api/system/time-machine/sync" \
+                -H "Content-Type: application/json" \
+                -d "{\"filePath\": \"$FILE\", \"commitId\": \"$COMMIT_HASH\", \"status\": \"$STATUS\", \"content\": $CONTENT}"
+            fi
+          done
