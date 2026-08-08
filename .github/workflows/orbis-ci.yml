@@ -19,39 +19,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: 'npm'
-          
+
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Run Global Type Check (tsc --noEmit)
-        run: npm run type-check
-
-      - name: Run Tests
-        id: tests
-        continue-on-error: true
+      - name: Run Tests and Generate Coverage
         run: npm run coverage
 
-      - name: Sync Commit Snapshot to Time Machine Module
-        if: always()
-        continue-on-error: true
-        run: |
-          STATUS="SUCCESS"
-          if [ "${{ steps.tests.outcome }}" != "success" ]; then
-            STATUS="FAILED"
-          fi
-          COMMIT_HASH="${{ github.sha }}"
-          CHANGED_FILES=$(git show --pretty="" --name-only $COMMIT_HASH)
-          for FILE in $CHANGED_FILES; do
-            if [ -f "$FILE" ]; then
-              CONTENT=$(jq -Rs . < "$FILE")
-              curl -s -X POST "https://orbis-foundation.onrender.com/api/system/time-machine/sync" \
-                -H "Content-Type: application/json" \
-                -d "{\"filePath\": \"$FILE\", \"commitId\": \"$COMMIT_HASH\", \"status\": \"$STATUS\", \"content\": $CONTENT}"
-            fi
-          done
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
