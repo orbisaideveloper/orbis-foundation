@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  ReactNode,
+  useMemo,
+  useCallback,
+} from "react";
 
 export interface IReleaseService {
   activeVersion: string;
@@ -7,23 +14,31 @@ export interface IReleaseService {
 
 const ReleaseContext = createContext<IReleaseService | undefined>(undefined);
 
-export const ReleaseProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [activeVersion, setActiveVersion] = useState('v1.0.0-phase03');
+export const ReleaseProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
+  const [activeVersion, setActiveVersion] = useState("v1.0.0-phase03");
 
   const rollback = useCallback((version: string) => {
     setActiveVersion(version);
   }, []);
 
-  const value = useMemo(() => ({
-    activeVersion,
-    rollback
-  }), [activeVersion, rollback]);
+  const value = useMemo(
+    () => ({
+      activeVersion,
+      rollback,
+    }),
+    [activeVersion, rollback],
+  );
 
-  return <ReleaseContext.Provider value={value}>{children}</ReleaseContext.Provider>;
+  return (
+    <ReleaseContext.Provider value={value}>{children}</ReleaseContext.Provider>
+  );
 };
 
 export const useRelease = () => {
   const context = useContext(ReleaseContext);
-  if (!context) throw new Error('useRelease must be used within a ReleaseProvider');
+  if (!context)
+    throw new Error("useRelease must be used within a ReleaseProvider");
   return context;
 };

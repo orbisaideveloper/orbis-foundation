@@ -1,5 +1,5 @@
-import React from 'react';
-import { Activity } from 'lucide-react';
+import React from "react";
+import { Activity } from "lucide-react";
 
 export const AppHeader: React.FC = () => {
   return (

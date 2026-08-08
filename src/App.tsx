@@ -1,6 +1,6 @@
-import SystemDiagnosticConsole from './components/SystemDiagnosticConsole';
-import React from 'react';
-import AdminViews from './admin/AdminViews';
+import SystemDiagnosticConsole from "./components/SystemDiagnosticConsole";
+import React from "react";
+import AdminViews from "./admin/AdminViews";
 
 function App() {
   return (

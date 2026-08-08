@@ -1,4 +1,4 @@
-import { CoreBridge } from '../integrations/CoreBridge';
+import { CoreBridge } from "../integrations/CoreBridge";
 
 export class RuntimeSnapshotWidget {
   private readonly bridge = CoreBridge.getInstance();
@@ -8,7 +8,7 @@ export class RuntimeSnapshotWidget {
     return {
       timestamp: new Date().toISOString(),
       data: snapshot,
-      jsonView: JSON.stringify(snapshot, null, 2)
+      jsonView: JSON.stringify(snapshot, null, 2),
     };
   }
 }

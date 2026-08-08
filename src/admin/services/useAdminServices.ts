@@ -1,8 +1,8 @@
 // @ts-nocheck
-import { useAuth } from '../auth/AuthProvider';
-import { useRuntime } from '../runtime/RuntimeContext';
-import { useRelease } from '../release/ReleaseContext';
-import { IAdminService } from '../../contracts/admin.contracts';
+import { useAuth } from "../auth/AuthProvider";
+import { useRuntime } from "../runtime/RuntimeContext";
+import { useRelease } from "../release/ReleaseContext";
+import { IAdminService } from "../../contracts/admin.contracts";
 
 export const useAdminServices = (): IAdminService => {
   const auth = useAuth();
@@ -24,6 +24,6 @@ export const useAdminServices = (): IAdminService => {
       hasPermission: auth.hasPermission,
       triggerRestart: runtime.triggerRestart,
       rollback: release.rollback,
-    }
+    },
   };
 };

@@ -11,9 +11,11 @@ export default defineConfig({
       exclude: [
         'node_modules/',
         'dist/',
+        'build/',
         'src/generated/',
         '**/*.d.ts',
-        '**/*.test.*'
+        '**/*.test.*',
+        'orbis-server/ai-healer.cjs'
       ]
     }
   }

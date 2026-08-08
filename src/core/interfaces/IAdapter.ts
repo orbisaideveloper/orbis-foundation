@@ -3,8 +3,8 @@
  * Ensures all external integrations follow a standard adapter pattern.
  */
 export interface IAdapter {
-    readonly providerName: string;
-    connect(): Promise<boolean>;
-    disconnect(): Promise<void>;
-    healthCheck(): Promise<boolean>;
+  readonly providerName: string;
+  connect(): Promise<boolean>;
+  disconnect(): Promise<void>;
+  healthCheck(): Promise<boolean>;
 }

@@ -1,7 +1,7 @@
 // ==========================================
 // 1. SECURITY & AUTH CONTRACTS
 // ==========================================
-export type Role = 'GUEST' | 'OPERATOR' | 'ADMIN' | 'SYSTEM';
+export type Role = "GUEST" | "OPERATOR" | "ADMIN" | "SYSTEM";
 
 export interface IAuthService {
   user: string | null;
@@ -15,19 +15,20 @@ export interface IAuthService {
 // ==========================================
 // 2. RUNTIME & SYSTEM HEALTH CONTRACTS
 // ==========================================
-export type SystemStatus = 'ONLINE' | 'OFFLINE' | 'UNKNOWN' | 'DEGRADED';
+export type SystemStatus = "ONLINE" | "OFFLINE" | "UNKNOWN" | "DEGRADED";
 
 export interface IRuntimeService {
   engineStatus: SystemStatus;
   brainStatus: SystemStatus;
-  cpuUsage: number;    // Percentage 0-100
+  cpuUsage: number; // Percentage 0-100
   memoryUsage: number; // Percentage 0-100
 }
 
 // ==========================================
 // 3. RELEASE PIPELINE CONTRACTS
 // ==========================================
-export type ReleaseState = 'NO ACTIVE RELEASE' | 'PREPARING' | 'TESTING' | 'DEPLOYING' | 'STABLE';
+export type ReleaseState =
+  "NO ACTIVE RELEASE" | "PREPARING" | "TESTING" | "DEPLOYING" | "STABLE";
 
 export interface IReleaseService {
   status: ReleaseState;

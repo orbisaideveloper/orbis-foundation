@@ -1,4 +1,4 @@
-export type ServiceStatus = 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN';
+export type ServiceStatus = "HEALTHY" | "DEGRADED" | "DOWN" | "UNKNOWN";
 
 export interface SystemMetrics {
   cpuUsage: number;

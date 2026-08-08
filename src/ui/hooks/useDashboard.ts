@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { DashboardGrid } from '../../control-center/layout/DashboardGrid';
+import { useState, useEffect } from "react";
+import { DashboardGrid } from "../../control-center/layout/DashboardGrid";
 
 // Connects React UI to the Locked Phase-02 Headless Architecture
 export const useDashboard = () => {
@@ -7,7 +7,7 @@ export const useDashboard = () => {
 
   useEffect(() => {
     const dashboard = new DashboardGrid();
-    
+
     // Initial Render
     setData(dashboard.render());
 

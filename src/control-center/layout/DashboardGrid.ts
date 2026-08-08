@@ -1,7 +1,7 @@
-import { SystemStatusWidget } from '../widgets/SystemStatusWidget';
-import { HealthMatrixWidget } from '../widgets/HealthMatrixWidget';
-import { RuntimeSnapshotWidget } from '../widgets/RuntimeSnapshotWidget';
-import { CoreBridge } from '../integrations/CoreBridge';
+import { SystemStatusWidget } from "../widgets/SystemStatusWidget";
+import { HealthMatrixWidget } from "../widgets/HealthMatrixWidget";
+import { RuntimeSnapshotWidget } from "../widgets/RuntimeSnapshotWidget";
+import { CoreBridge } from "../integrations/CoreBridge";
 
 export class DashboardGrid {
   private readonly statusWidget = new SystemStatusWidget();
@@ -11,16 +11,16 @@ export class DashboardGrid {
 
   public render() {
     const components = this.bridge.getHealthComponents();
-    
+
     return {
       header: this.statusWidget.render(),
       registries: {
-        componentCount: components.length > 0 ? components.length : "0"
+        componentCount: components.length > 0 ? components.length : "0",
       },
       grid: {
         healthMatrix: this.healthWidget.render(),
-        runtimeSnapshot: this.snapshotWidget.render()
-      }
+        runtimeSnapshot: this.snapshotWidget.render(),
+      },
     };
   }
 }

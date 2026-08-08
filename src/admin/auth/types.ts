@@ -1,7 +1,7 @@
 export enum AdminRole {
-  SUPER_ADMIN = 'SUPER_ADMIN',
-  RELEASE_MANAGER = 'RELEASE_MANAGER',
-  VIEWER = 'VIEWER'
+  SUPER_ADMIN = "SUPER_ADMIN",
+  RELEASE_MANAGER = "RELEASE_MANAGER",
+  VIEWER = "VIEWER",
 }
 
 export interface AdminUser {

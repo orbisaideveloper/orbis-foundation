@@ -1,10 +1,14 @@
-import React, { Suspense } from 'react';
-import { Outlet } from 'react-router-dom';
-import AdminSidebar from './AdminSidebar';
+import React, { Suspense } from "react";
+import { Outlet } from "react-router-dom";
+import AdminSidebar from "./AdminSidebar";
 
 const AdminLayout: React.FC = () => {
   return (
-    <div className="flex flex-col md:flex-row h-screen w-full bg-slate-50 text-slate-800 overflow-hidden font-sans relative" role="application" aria-label="Protected Admin Control Center">
+    <div
+      className="flex flex-col md:flex-row h-screen w-full bg-slate-50 text-slate-800 overflow-hidden font-sans relative"
+      role="application"
+      aria-label="Protected Admin Control Center"
+    >
       {/* Light Glassmorphism Background Glows */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
         <div className="absolute top-[-10%] left-[-5%] w-[500px] h-[500px] bg-green-200/50 rounded-full blur-[100px]"></div>
@@ -25,16 +29,20 @@ const AdminLayout: React.FC = () => {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
             </span>
-            <span className="text-xs font-bold text-green-600 uppercase tracking-wider">System Live</span>
+            <span className="text-xs font-bold text-green-600 uppercase tracking-wider">
+              System Live
+            </span>
           </div>
         </header>
 
         <section className="flex-1 p-4 md:p-8 overflow-y-auto">
-          <Suspense fallback={
-            <div className="flex h-full items-center justify-center">
-              <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-green-500"></div>
-            </div>
-          }>
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center">
+                <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-green-500"></div>
+              </div>
+            }
+          >
             <Outlet />
           </Suspense>
         </section>

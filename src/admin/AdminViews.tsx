@@ -1,5 +1,5 @@
-import React from 'react';
-import AdminDashboard from './dashboard/AdminDashboard';
+import React from "react";
+import AdminDashboard from "./dashboard/AdminDashboard";
 
 export const AdminViews: React.FC = () => {
   return (

@@ -1,4 +1,5 @@
-export type ReleaseStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'PUBLISHED' | 'ROLLED_BACK';
+export type ReleaseStatus =
+  "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "PUBLISHED" | "ROLLED_BACK";
 
 export interface ReleaseVersion {
   id: string;

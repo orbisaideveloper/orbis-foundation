@@ -1,10 +1,10 @@
 /**
  * ORBIS FOUNDATION - PHASE 03
  * AI COMMAND LAYER & VOICE ARCHITECTURE (RESERVED)
- * 
+ *
  * DIRECTIVE COMPLIANCE:
  * "Reserve architecture only. Do NOT implement Voice Engine yet."
- * 
+ *
  * Future Capabilities to hook into:
  * - Voice Search & Navigation
  * - Intent-based Runtime Queries
@@ -12,7 +12,7 @@
  */
 
 export interface AiIntent {
-  action: 'check_status' | 'analyze_health' | 'find_errors' | 'copy_snapshot';
+  action: "check_status" | "analyze_health" | "find_errors" | "copy_snapshot";
   targetWidget?: string;
 }
 

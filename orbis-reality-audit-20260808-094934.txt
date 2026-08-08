@@ -1,0 +1,644 @@
+=======================================================
+🧠 ORBIS REALITY AUDIT
+=======================================================
+Time: Sat Aug  8 09:49:34 IST 2026
+Project: /data/data/com.termux/files/home/orbis-foundation
+
+========== 1. RUNTIME SERVICES ==========
+OLLAMA: REAL_RUNNING
+NODE: NOT_RUNNING
+
+========== 2. OLLAMA REAL TEST ==========
+OLLAMA_BINARY: AVAILABLE
+ollama version is 0.31.1
+./orbis-reality-audit.sh: line 38: /tmp/orbis-ollama.json: Permission denied
+OLLAMA_API: NOT_RESPONDING
+
+========== 3. NODE / NPM ==========
+v26.4.0
+11.19.0
+
+========== 4. REQUIRED TOOLS ==========
+git: AVAILABLE
+node: AVAILABLE
+npm: AVAILABLE
+npx: AVAILABLE
+ollama: AVAILABLE
+
+========== 5. PROJECT PACKAGES ==========
+husky: INSTALLED
+lint-staged: INSTALLED
+eslint: INSTALLED
+prettier: INSTALLED
+vitest: INSTALLED
+madge: INSTALLED
+depcheck: INSTALLED
+
+========== 6. REAL PACKAGE VERSIONS ==========
+├── @typescript-eslint/eslint-plugin@7.18.0
+├── @typescript-eslint/parser@7.18.0
+├── @vitest/coverage-v8@4.1.10
+├── depcheck@1.4.7
+├── eslint-plugin-react-hooks@4.6.2
+├── eslint-plugin-react-refresh@0.4.26
+├── eslint-plugin-sonarjs@4.2.0
+├── eslint@8.57.1
+├── husky@9.1.7
+├── lint-staged@17.3.0
+├── madge@8.0.0
+├── prettier@3.9.6
+├── typescript@5.9.3
+└── vitest@4.1.10
+
+========== 7. PACKAGE SCRIPTS ==========
+{
+  "dev": "vite",
+  "build": "tsc && vite build",
+  "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+  "preview": "vite preview",
+  "test": "vitest run --coverage",
+  "coverage": "vitest run --coverage",
+  "start": "serve -s dist",
+  "type-check": "tsc --noEmit",
+  "prepare": "husky",
+  "dead-code": "depcheck",
+  "format": "prettier --write src/**/*.{ts,tsx,js,jsx,json,css}",
+  "check:circular": "madge --circular --extensions ts,tsx,cjs --exclude '^src/generated/.*' ./src ./orbis-server",
+  "check:duplicates": "jscpd ./src ./orbis-server",
+  "check:deadcode": "knip",
+  "test:coverage": "vitest run --coverage"
+}
+
+========== 8. GIT STATUS ==========
+?? orbis-reality-audit-20260808-094934.txt
+?? orbis-reality-audit.sh
+?? orbis-system-report.sh
+
+main
+a362483 fix(time-machine): restore file grouping logic and resolve 404 version content error
+
+========== 9. HUSKY ==========
+HUSKY_PRE_COMMIT: EXISTS
+echo "🛡️ [Husky Guard] অটো-ফিক্সার ও ক্লিনআপ শুরু..."
+npx lint-staged
+
+echo "🔄 [Madge Guard] সার্কুলার ডিপেন্ডেন্সি চেক..."
+npm run check:circular || { 
+    echo "❌ Circular Dependency Alert!" 
+    node orbis-server/ai-healer.cjs "Circular Dependency Error"
+    exit 1 
+}
+
+echo "✅ [Termux] কোড ১০০% পারফেক্ট! গিটহাবে যাচ্ছে..."
+
+========== 10. REAL MADGE TEST ==========
+
+> orbis-foundation@1.0.0 check:circular
+> madge --circular --extensions ts,tsx,cjs --exclude '^src/generated/.*' ./src ./orbis-server
+
+- Finding files
+Processed 110 files (4s) (8 warnings)
+
+✔ No circular dependency found!
+
+MADGE_RESULT: PASS
+
+========== 11. REAL TYPE CHECK ==========
+
+> orbis-foundation@1.0.0 type-check
+> tsc --noEmit
+
+TYPECHECK_RESULT: PASS
+
+========== 12. REAL BUILD ==========
+
+> orbis-foundation@1.0.0 build
+> tsc && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 2205 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.46 kB │ gzip:   0.30 kB
+dist/assets/index-n9TkRaFz.css   39.06 kB │ gzip:   7.12 kB
+dist/assets/index-DBPsHJgJ.js   328.51 kB │ gzip: 101.52 kB │ map: 1,197.49 kB
+✓ built in 15.87s
+BUILD_RESULT: PASS
+
+========== 13. REAL VITEST ==========
+
+> orbis-foundation@1.0.0 test:coverage
+> vitest run --coverage
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/data/data/com.termux/files/home/orbis-foundation[39m
+      [2mCoverage enabled with [22m[33mv8[39m
+
+[90mstderr[2m | src/core/health/HealthReporter.test.ts[2m > [22m[2mHealthReporter[2m > [22m[2mshould report failure if a component throws an error
+[22m[39m[ORBIS Health] Component check failed: Error: Crash
+    at Object.checkHealth [90m(/data/data/com.termux/files/home/orbis-foundation/[39msrc/core/health/HealthReporter.test.ts:60:46[90m)[39m
+    at HealthReporter.runChecks [90m(/data/data/com.termux/files/home/orbis-foundation/[39msrc/core/health/HealthReporter.ts:31:51[90m)[39m
+    at [90m/data/data/com.termux/files/home/orbis-foundation/[39msrc/core/health/HealthReporter.test.ts:63:24
+    at [90mfile:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+
+ [32m✓[39m src/core/logging/Logger.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 95[2mms[22m[39m
+ [32m✓[39m src/core/health/HealthReporter.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 147[2mms[22m[39m
+ [32m✓[39m src/core/orchestrator/SystemOrchestrator.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 109[2mms[22m[39m
+ [31m❯[39m src/components/CommandCenter/__tests__/CommandBar.test.tsx [2m([22m[2m3 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[32m 96[2mms[22m[39m
+[31m     [31m×[31m renders correctly and handles input submit[39m[32m 61[2mms[22m[39m
+[31m     [31m×[31m triggers submit on Enter key[39m[32m 5[2mms[22m[39m
+[31m     [31m×[31m handles voice button click gracefully when speech recognition is missing[39m[32m 3[2mms[22m[39m
+ [31m❯[39m src/admin/__tests__/auth/Security.test.tsx [2m([22m[2m2 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 92[2mms[22m[39m
+[31m     [31m×[31m blocks unauthenticated access[39m[32m 54[2mms[22m[39m
+[31m     [31m×[31m allows access to specific roles and blocks others[39m[32m 5[2mms[22m[39m
+[90mstderr[2m | src/core/engine/Engine.test.ts[2m > [22m[2mEngine[2m > [22m[2mshould warn when initializing from RUNNING state
+[22m[39m[ORBIS Engine] Cannot initialize from status: RUNNING
+
+[90mstderr[2m | src/core/engine/Engine.test.ts[2m > [22m[2mEngine[2m > [22m[2mshould handle initialization failure
+[22m[39m[ORBIS Engine] Initialization failed: Error: Test Error
+    at [90m/data/data/com.termux/files/home/orbis-foundation/[39msrc/core/engine/Engine.test.ts:34:73
+    at [90mfile:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///data/data/com.termux/files/home/orbis-foundation/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2955:64
+
+ [32m✓[39m src/core/logging/LogFormatter.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 77[2mms[22m[39m
+ [32m✓[39m src/core/engine/Engine.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 148[2mms[22m[39m
+ [31m❯[39m src/admin/__tests__/runtime/RuntimeProvider.test.tsx [2m([22m[2m2 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 144[2mms[22m[39m
+[31m     [31m×[31m provides default STABLE status initially[39m[32m 77[2mms[22m[39m
+[31m     [31m×[31m updates state securely when real-time data arrives/actions trigger[39m[32m 22[2mms[22m[39m
+ [32m✓[39m src/core/logging/LogStore.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 57[2mms[22m[39m
+ [32m✓[39m src/core/health/HealthRegistry.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 57[2mms[22m[39m
+ [31m❯[39m src/admin/__tests__/dashboard/AdminDashboard.test.tsx [2m([22m[2m10 tests[22m[2m | [22m[31m10 failed[39m[2m)[22m[32m 171[2mms[22m[39m
+[31m     [31m×[31m renders all main 8 grid cards and updates live data[39m[32m 67[2mms[22m[39m
+[31m     [31m×[31m opens and closes sidebar via overlay backdrop and close button[39m[32m 11[2mms[22m[39m
+[31m     [31m×[31m opens terminal output from sidebar buttons[39m[32m 21[2mms[22m[39m
+[31m     [31m×[31m executes terminal output and copy button functionality[39m[32m 9[2mms[22m[39m
+[31m     [31m×[31m triggers quick access dependency tree and copies live tree text[39m[32m 8[2mms[22m[39m
+[31m     [31m×[31m tests all remaining grid cards modal streams (Engine, Health, Brain, AI, Release, Modules)[39m[32m 5[2mms[22m[39m
+[31m     [31m×[31m handles all overview sub-cards and test fallback log content[39m[32m 3[2mms[22m[39m
+[31m     [31m×[31m submits command via CommandBar input[39m[32m 3[2mms[22m[39m
+[31m     [31m×[31m handles fetch errors gracefully in executeOrbisCommand and fetchLiveTree[39m[32m 13[2mms[22m[39m
+[31m     [31m×[31m handles browser popstate event listener[39m[32m 5[2mms[22m[39m
+ [31m❯[39m src/admin/__tests__/ErrorBoundary.test.tsx [2m([22m[2m2 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 122[2mms[22m[39m
+[31m     [31m×[31m should render children when no error occurs[39m[32m 73[2mms[22m[39m
+[31m     [31m×[31m should render fallback UI when an error occurs[39m[32m 7[2mms[22m[39m
+ [32m✓[39m src/control-center/tests/control-center.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 77[2mms[22m[39m
+ [31m❯[39m src/admin/__tests__/release/ReleaseProvider.test.tsx [2m([22m[2m2 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 99[2mms[22m[39m
+[31m     [31m×[31m provides default active version initially[39m[32m 63[2mms[22m[39m
+[31m     [31m×[31m handles the full release lifecycle correctly via rollback[39m[32m 3[2mms[22m[39m
+ [31m❯[39m src/admin/__tests__/services/useAdminServices.test.tsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 94[2mms[22m[39m
+[31m     [31m×[31m aggregates all core providers into a structured state/actions facade[39m[32m 68[2mms[22m[39m
+ [32m✓[39m src/ui/tests/ui.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 220[2mms[22m[39m
+ [32m✓[39m src/admin/__tests__/auth/permissions.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 50[2mms[22m[39m
+ [31m❯[39m src/admin/__tests__/dashboard/components/DashboardComponents.test.tsx [2m([22m[2m2 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 84[2mms[22m[39m
+[31m     [31m×[31m renders ComingSoonBadge component[39m[32m 44[2mms[22m[39m
+[31m     [31m×[31m renders StatCard component safely[39m[32m 10[2mms[22m[39m
+ [31m❯[39m src/admin/__tests__/providers/AdminCoreProvider.test.tsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 70[2mms[22m[39m
+[31m     [31m×[31m successfully wraps children with all core providers without crashing[39m[32m 44[2mms[22m[39m
+ [32m✓[39m src/core/managers/AdapterManager.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 43[2mms[22m[39m
+ [31m❯[39m src/admin/__tests__/AdminLayout.test.tsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 112[2mms[22m[39m
+[31m     [31m×[31m renders the Protected Admin Control Center landmark[39m[32m 76[2mms[22m[39m
+ [32m✓[39m src/core/managers/PluginManager.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 54[2mms[22m[39m
+ [31m❯[39m src/admin/__tests__/AdminSidebar.test.tsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 86[2mms[22m[39m
+[31m     [31m×[31m renders all essential navigation links[39m[32m 55[2mms[22m[39m
+ [32m✓[39m src/core/orchestrator/SystemStatusSnapshot.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 51[2mms[22m[39m
+ [32m✓[39m src/core/events/EventBus.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 47[2mms[22m[39m
+ [32m✓[39m src/core/utils/calculator.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 44[2mms[22m[39m
+ [31m❯[39m src/admin/__tests__/AdminViews.test.tsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 65[2mms[22m[39m
+[31m     [31m×[31m renders Dashboard seamlessly without old clutter[39m[32m 27[2mms[22m[39m
+ [31m❯[39m src/App.test.tsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 112[2mms[22m[39m
+[31m     [31m×[31m renders the application correctly[39m[32m 49[2mms[22m[39m
+[90mstderr[2m | src/ui/tests/GlassCard.test.tsx[2m > [22m[2mGlassCard Interactions (Coverage Restoration)[2m > [22m[2mshould copy object data as JSON to clipboard
+[22m[39mWarning: An update to GlassCard inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at GlassCard (/data/data/com.termux/files/home/orbis-foundation/src/ui/components/GlassCard.tsx:13:22)
+
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+ [32m✓[39m src/ui/tests/GlassCard.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 1133[2mms[22m[39m
+     [33m[2m✓[22m[39m should copy string data to clipboard and show visual feedback [33m 382[2mms[22m[39m
+     [33m[2m✓[22m[39m should toggle expanded JSON view [33m 672[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 29 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/App.test.tsx[2m > [22mApp Component[2m > [22mrenders the application correctly
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/App.test.tsx:[2m27:5[22m[39m
+    [90m 25|[39m [34mdescribe[39m([32m'App Component'[39m[33m,[39m () [33m=>[39m {
+    [90m 26|[39m   [34mit[39m([32m'renders the application correctly'[39m[33m,[39m [35masync[39m () [33m=>[39m {
+    [90m 27|[39m     [34mrender[39m([33m<[39m[33mApp[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m 28|[39m     expect((await screen.findAllByText(/Orbis Foundation/i))[0]).toBeI…
+    [90m 29|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/AdminLayout.test.tsx[2m > [22mAdminLayout Accessibility and Structure[2m > [22mrenders the Protected Admin Control Center landmark
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/AdminLayout.test.tsx:[2m8:5[22m[39m
+    [90m  6|[39m [34mdescribe[39m([32m'AdminLayout Accessibility and Structure'[39m[33m,[39m () [33m=>[39m {
+    [90m  7|[39m   [34mit[39m([32m'renders the Protected Admin Control Center landmark'[39m[33m,[39m () [33m=>[39m {
+    [90m  8|[39m     [34mrender[39m(
+    [90m   |[39m     [31m^[39m
+    [90m  9|[39m       [33m<[39m[33mMemoryRouter[39m[33m>[39m
+    [90m 10|[39m         [33m<[39m[33mAdminLayout[39m [33m/[39m[33m>[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/AdminSidebar.test.tsx[2m > [22mAdminSidebar Navigation[2m > [22mrenders all essential navigation links
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/AdminSidebar.test.tsx:[2m8:5[22m[39m
+    [90m  6|[39m [34mdescribe[39m([32m'AdminSidebar Navigation'[39m[33m,[39m () [33m=>[39m {
+    [90m  7|[39m   [34mit[39m([32m'renders all essential navigation links'[39m[33m,[39m () [33m=>[39m {
+    [90m  8|[39m     [34mrender[39m(
+    [90m   |[39m     [31m^[39m
+    [90m  9|[39m       [33m<[39m[33mMemoryRouter[39m[33m>[39m
+    [90m 10|[39m         [33m<[39m[33mAdminSidebar[39m [33m/[39m[33m>[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/AdminViews.test.tsx[2m > [22mAdminViews Component[2m > [22mrenders Dashboard seamlessly without old clutter
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/AdminViews.test.tsx:[2m27:5[22m[39m
+    [90m 25|[39m [34mdescribe[39m([32m'AdminViews Component'[39m[33m,[39m () [33m=>[39m {
+    [90m 26|[39m   [34mit[39m([32m'renders Dashboard seamlessly without old clutter'[39m[33m,[39m () [33m=>[39m {
+    [90m 27|[39m     [34mrender[39m([33m<[39m[33mAdminViews[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m 28|[39m     expect((screen.getAllByText((content, element) => element?.textCon…
+    [90m 29|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/ErrorBoundary.test.tsx[2m > [22mErrorBoundary[2m > [22mshould render children when no error occurs
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m Proxy.render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/ErrorBoundary.test.tsx:[2m14:5[22m[39m
+    [90m 12|[39m [34mdescribe[39m([32m'ErrorBoundary'[39m[33m,[39m () [33m=>[39m {
+    [90m 13|[39m   [34mit[39m([32m'should render children when no error occurs'[39m[33m,[39m () [33m=>[39m {
+    [90m 14|[39m     [34mrender[39m(
+    [90m   |[39m     [31m^[39m
+    [90m 15|[39m       [33m<[39m[33mErrorBoundary[39m[33m>[39m
+    [90m 16|[39m         [33m<[39m[33mdiv[39m[33m>[39mTest Content[33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/ErrorBoundary.test.tsx[2m > [22mErrorBoundary[2m > [22mshould render fallback UI when an error occurs
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m Proxy.render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/ErrorBoundary.test.tsx:[2m30:5[22m[39m
+    [90m 28|[39m     }[33m;[39m
+    [90m 29|[39m
+    [90m 30|[39m     [34mrender[39m(
+    [90m   |[39m     [31m^[39m
+    [90m 31|[39m       [33m<[39m[33mErrorBoundary[39m [33mfallback[39m[33m=[39m[33m{[39m[33m<[39m[33mdiv[39m[33m>[39mError Occurred[33m<[39m[33m/[39m[33mdiv[39m[33m>[39m[33m}[39m[33m>[39m
+    [90m 32|[39m         [33m<[39m[33mThrowError[39m [33m/[39m[33m>[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/AdminDashboard.test.tsx[2m > [22mAdminDashboard Full Coverage Tests[2m > [22mrenders all main 8 grid cards and updates live data
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/AdminDashboard.test.tsx:[2m44:25[22m[39m
+    [90m 42|[39m
+    [90m 43|[39m   it('renders all main 8 grid cards and updates live data', async () =…
+    [90m 44|[39m     [35mconst[39m { unmount } [33m=[39m [34mrender[39m([33m<[39m[33mAdminDashboard[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m                         [31m^[39m
+    [90m 45|[39m     expect(screen.getAllByText((content, element) => element?.textCont…
+    [90m 46|[39m     [34mexpect[39m(screen[33m.[39m[34mgetAllByText[39m([36m/Overview/i[39m)[[34m0[39m])[33m.[39m[34mtoBeInTheDocument[39m()[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/AdminDashboard.test.tsx[2m > [22mAdminDashboard Full Coverage Tests[2m > [22mopens and closes sidebar via overlay backdrop and close button
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/AdminDashboard.test.tsx:[2m56:5[22m[39m
+    [90m 54|[39m
+    [90m 55|[39m   it('opens and closes sidebar via overlay backdrop and close button',…
+    [90m 56|[39m     [34mrender[39m([33m<[39m[33mAdminDashboard[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m 57|[39m     [35mconst[39m hamburgerBtn [33m=[39m screen[33m.[39m[34mgetAllByRole[39m([32m'button'[39m)[[34m0[39m][33m;[39m
+    [90m 58|[39m     fireEvent[33m.[39m[34mclick[39m(hamburgerBtn)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/AdminDashboard.test.tsx[2m > [22mAdminDashboard Full Coverage Tests[2m > [22mopens terminal output from sidebar buttons
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/AdminDashboard.test.tsx:[2m71:5[22m[39m
+    [90m 69|[39m
+    [90m 70|[39m   [34mit[39m([32m'opens terminal output from sidebar buttons'[39m[33m,[39m () [33m=>[39m {
+    [90m 71|[39m     [34mrender[39m([33m<[39m[33mAdminDashboard[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m 72|[39m     fireEvent[33m.[39m[34mclick[39m(screen[33m.[39m[34mgetAllByRole[39m([32m'button'[39m)[[34m0[39m])[33m;[39m
+    [90m 73|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/AdminDashboard.test.tsx[2m > [22mAdminDashboard Full Coverage Tests[2m > [22mexecutes terminal output and copy button functionality
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/AdminDashboard.test.tsx:[2m88:5[22m[39m
+    [90m 86|[39m
+    [90m 87|[39m   it('executes terminal output and copy button functionality', async (…
+    [90m 88|[39m     [34mrender[39m([33m<[39m[33mAdminDashboard[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m 89|[39m     const diagBtn = screen.getByRole('button', { name: /ডায়াগনস্টিক/i …
+    [90m 90|[39m     fireEvent[33m.[39m[34mclick[39m(diagBtn)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/AdminDashboard.test.tsx[2m > [22mAdminDashboard Full Coverage Tests[2m > [22mtriggers quick access dependency tree and copies live tree text
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/AdminDashboard.test.tsx:[2m107:5[22m[39m
+    [90m105|[39m
+    [90m106|[39m   it('triggers quick access dependency tree and copies live tree text'…
+    [90m107|[39m     [34mrender[39m([33m<[39m[33mAdminDashboard[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m108|[39m     const treeQuickBtn = screen.getByRole('button', { name: /লাইভ ডিপে…
+    [90m109|[39m     fireEvent[33m.[39m[34mclick[39m(treeQuickBtn)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/AdminDashboard.test.tsx[2m > [22mAdminDashboard Full Coverage Tests[2m > [22mtests all remaining grid cards modal streams (Engine, Health, Brain, AI, Release, Modules)
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/AdminDashboard.test.tsx:[2m121:5[22m[39m
+    [90m119|[39m
+    [90m120|[39m   it('tests all remaining grid cards modal streams (Engine, Health, Br…
+    [90m121|[39m     [34mrender[39m([33m<[39m[33mAdminDashboard[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m122|[39m
+    [90m123|[39m     const cardsToTest = ['Engine', 'Health', 'Brain Sync', 'AI Agents'…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/AdminDashboard.test.tsx[2m > [22mAdminDashboard Full Coverage Tests[2m > [22mhandles all overview sub-cards and test fallback log content
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/AdminDashboard.test.tsx:[2m140:5[22m[39m
+    [90m138|[39m
+    [90m139|[39m   it('handles all overview sub-cards and test fallback log content', a…
+    [90m140|[39m     [34mrender[39m([33m<[39m[33mAdminDashboard[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m141|[39m     [35mconst[39m overviewCard [33m=[39m screen[33m.[39m[34mgetAllByText[39m([32m'Overview'[39m)[[34m0[39m][33m;[39m
+    [90m142|[39m     fireEvent[33m.[39m[34mclick[39m(overviewCard)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/AdminDashboard.test.tsx[2m > [22mAdminDashboard Full Coverage Tests[2m > [22msubmits command via CommandBar input
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/AdminDashboard.test.tsx:[2m171:5[22m[39m
+    [90m169|[39m
+    [90m170|[39m   [34mit[39m([32m'submits command via CommandBar input'[39m[33m,[39m [35masync[39m () [33m=>[39m {
+    [90m171|[39m     [34mrender[39m([33m<[39m[33mAdminDashboard[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m172|[39m     const input = screen.getByPlaceholderText('ORBIS-কে নির্দেশ দিন...…
+    [90m173|[39m     fireEvent[33m.[39m[34mchange[39m(input[33m,[39m { target[33m:[39m { value[33m:[39m [32m'status check'[39m } })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/AdminDashboard.test.tsx[2m > [22mAdminDashboard Full Coverage Tests[2m > [22mhandles fetch errors gracefully in executeOrbisCommand and fetchLiveTree
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/AdminDashboard.test.tsx:[2m188:5[22m[39m
+    [90m186|[39m     global.fetch = vi.fn().mockRejectedValue(new Error('Network Error'…
+    [90m187|[39m
+    [90m188|[39m     [34mrender[39m([33m<[39m[33mAdminDashboard[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m189|[39m     const treeQuickBtn = screen.getByRole('button', { name: /লাইভ ডিপে…
+    [90m190|[39m     fireEvent[33m.[39m[34mclick[39m(treeQuickBtn)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/AdminDashboard.test.tsx[2m > [22mAdminDashboard Full Coverage Tests[2m > [22mhandles browser popstate event listener
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/AdminDashboard.test.tsx:[2m201:5[22m[39m
+    [90m199|[39m
+    [90m200|[39m   [34mit[39m([32m'handles browser popstate event listener'[39m[33m,[39m [35masync[39m () [33m=>[39m {
+    [90m201|[39m     [34mrender[39m([33m<[39m[33mAdminDashboard[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m202|[39m     [35mconst[39m runtimeCard [33m=[39m screen[33m.[39m[34mgetByText[39m([36m/Runtime/i[39m)[33m;[39m
+    [90m203|[39m     fireEvent[33m.[39m[34mclick[39m(runtimeCard)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/providers/AdminCoreProvider.test.tsx[2m > [22mAdminCoreProvider Architecture (Step-303)[2m > [22msuccessfully wraps children with all core providers without crashing
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/providers/AdminCoreProvider.test.tsx:[2m16:5[22m[39m
+    [90m 14|[39m [34mdescribe[39m([32m'AdminCoreProvider Architecture (Step-303)'[39m[33m,[39m () [33m=>[39m {
+    [90m 15|[39m   it('successfully wraps children with all core providers without cras…
+    [90m 16|[39m     [34mrender[39m(
+    [90m   |[39m     [31m^[39m
+    [90m 17|[39m       [33m<[39m[33mAdminCoreProvider[39m[33m>[39m
+    [90m 18|[39m         [33m<[39m[33mTestConsumer[39m [33m/[39m[33m>[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/runtime/RuntimeProvider.test.tsx[2m > [22mRuntime Integration (Step-304)[2m > [22mprovides default STABLE status initially
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/runtime/RuntimeProvider.test.tsx:[2m20:5[22m[39m
+    [90m 18|[39m [34mdescribe[39m([32m'Runtime Integration (Step-304)'[39m[33m,[39m () [33m=>[39m {
+    [90m 19|[39m   [34mit[39m([32m'provides default STABLE status initially'[39m[33m,[39m () [33m=>[39m {
+    [90m 20|[39m     [34mrender[39m(
+    [90m   |[39m     [31m^[39m
+    [90m 21|[39m       [33m<[39m[33mRuntimeProvider[39m[33m>[39m
+    [90m 22|[39m         [33m<[39m[33mTestComponent[39m [33m/[39m[33m>[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/runtime/RuntimeProvider.test.tsx[2m > [22mRuntime Integration (Step-304)[2m > [22mupdates state securely when real-time data arrives/actions trigger
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/runtime/RuntimeProvider.test.tsx:[2m31:5[22m[39m
+    [90m 29|[39m   it('updates state securely when real-time data arrives/actions trigg…
+    [90m 30|[39m     vi[33m.[39m[34museFakeTimers[39m()[33m;[39m
+    [90m 31|[39m     [34mrender[39m(
+    [90m   |[39m     [31m^[39m
+    [90m 32|[39m       [33m<[39m[33mRuntimeProvider[39m[33m>[39m
+    [90m 33|[39m         [33m<[39m[33mTestComponent[39m [33m/[39m[33m>[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/release/ReleaseProvider.test.tsx[2m > [22mRelease Integration[2m > [22mprovides default active version initially
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/release/ReleaseProvider.test.tsx:[2m19:5[22m[39m
+    [90m 17|[39m [34mdescribe[39m([32m'Release Integration'[39m[33m,[39m () [33m=>[39m {
+    [90m 18|[39m   [34mit[39m([32m'provides default active version initially'[39m[33m,[39m () [33m=>[39m {
+    [90m 19|[39m     [34mrender[39m(
+    [90m   |[39m     [31m^[39m
+    [90m 20|[39m       [33m<[39m[33mReleaseProvider[39m[33m>[39m
+    [90m 21|[39m         [33m<[39m[33mTestComponent[39m [33m/[39m[33m>[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/release/ReleaseProvider.test.tsx[2m > [22mRelease Integration[2m > [22mhandles the full release lifecycle correctly via rollback
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/release/ReleaseProvider.test.tsx:[2m28:5[22m[39m
+    [90m 26|[39m
+    [90m 27|[39m   it('handles the full release lifecycle correctly via rollback', () =…
+    [90m 28|[39m     [34mrender[39m(
+    [90m   |[39m     [31m^[39m
+    [90m 29|[39m       [33m<[39m[33mReleaseProvider[39m[33m>[39m
+    [90m 30|[39m         [33m<[39m[33mTestComponent[39m [33m/[39m[33m>[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/services/useAdminServices.test.tsx[2m > [22mAdmin Service Layer (Step-401)[2m > [22maggregates all core providers into a structured state/actions facade
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[90m [2m❯[22m renderHook node_modules/@testing-library/react/dist/pure.js:[2m339:7[22m[39m
+[36m [2m❯[22m src/admin/__tests__/services/useAdminServices.test.tsx:[2m13:24[22m[39m
+    [90m 11|[39m     )[33m;[39m
+    [90m 12|[39m
+    [90m 13|[39m     const { result } = renderHook(() => useAdminServices(), { wrapper …
+    [90m   |[39m                        [31m^[39m
+    [90m 14|[39m
+    [90m 15|[39m     [90m// Verify the correct structure[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/auth/Security.test.tsx[2m > [22mSecurity Foundation (Step-303)[2m > [22mblocks unauthenticated access
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m Proxy.render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/auth/Security.test.tsx:[2m29:5[22m[39m
+    [90m 27|[39m     })[33m;[39m
+    [90m 28|[39m
+    [90m 29|[39m     [34mrender[39m(
+    [90m   |[39m     [31m^[39m
+    [90m 30|[39m       [33m<[39m[33mAuthGuard[39m[33m>[39m
+    [90m 31|[39m         [33m<[39m[33mdiv[39m [33mdata-testid[39m[33m=[39m[32m"protected-content"[39m[33m>[39mSecret System Data[33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/auth/Security.test.tsx[2m > [22mSecurity Foundation (Step-303)[2m > [22mallows access to specific roles and blocks others
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m Proxy.render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/auth/Security.test.tsx:[2m50:5[22m[39m
+    [90m 48|[39m     })[33m;[39m
+    [90m 49|[39m
+    [90m 50|[39m     [34mrender[39m(
+    [90m   |[39m     [31m^[39m
+    [90m 51|[39m       [33m<[39m[33mAuthGuard[39m [33mrequiredPermission[39m[33m=[39m[32m"SYSTEM_RESTART"[39m[33m>[39m
+    [90m 52|[39m         [33m<[39m[33mdiv[39m [33mdata-testid[39m[33m=[39m[32m"restricted-content"[39m[33m>[39mCore Engine Restart[33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/components/CommandCenter/__tests__/CommandBar.test.tsx[2m > [22mCommandBar Component[2m > [22mrenders correctly and handles input submit
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/components/CommandCenter/__tests__/CommandBar.test.tsx:[2m9:5[22m[39m
+    [90m  7|[39m   [34mit[39m([32m'renders correctly and handles input submit'[39m[33m,[39m () [33m=>[39m {
+    [90m  8|[39m     [35mconst[39m mockSubmit [33m=[39m vi[33m.[39m[34mfn[39m()[33m;[39m
+    [90m  9|[39m     [34mrender[39m([33m<[39m[33mCommandBar[39m [33monCommandSubmit[39m[33m=[39m[33m{[39mmockSubmit[33m}[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m 10|[39m
+    [90m 11|[39m     const input = screen.getByPlaceholderText('ORBIS-কে নির্দেশ দিন...…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/components/CommandCenter/__tests__/CommandBar.test.tsx[2m > [22mCommandBar Component[2m > [22mtriggers submit on Enter key
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/components/CommandCenter/__tests__/CommandBar.test.tsx:[2m22:5[22m[39m
+    [90m 20|[39m   [34mit[39m([32m'triggers submit on Enter key'[39m[33m,[39m () [33m=>[39m {
+    [90m 21|[39m     [35mconst[39m mockSubmit [33m=[39m vi[33m.[39m[34mfn[39m()[33m;[39m
+    [90m 22|[39m     [34mrender[39m([33m<[39m[33mCommandBar[39m [33monCommandSubmit[39m[33m=[39m[33m{[39mmockSubmit[33m}[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m 23|[39m
+    [90m 24|[39m     const input = screen.getByPlaceholderText('ORBIS-কে নির্দেশ দিন...…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/components/CommandCenter/__tests__/CommandBar.test.tsx[2m > [22mCommandBar Component[2m > [22mhandles voice button click gracefully when speech recognition is missing
+[31m[1mReferenceError[22m: window is not defined[39m
+[36m [2m❯[22m src/components/CommandCenter/__tests__/CommandBar.test.tsx:[2m32:5[22m[39m
+    [90m 30|[39m
+    [90m 31|[39m   it('handles voice button click gracefully when speech recognition is…
+    [90m 32|[39m     window[33m.[39malert [33m=[39m vi[33m.[39m[34mfn[39m()[33m;[39m
+    [90m   |[39m     [31m^[39m
+    [90m 33|[39m     [34mrender[39m([33m<[39m[33mCommandBar[39m [33monCommandSubmit[39m[33m=[39m[33m{[39mvi[33m.[39m[34mfn[39m()[33m}[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m 34|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[27/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/components/DashboardComponents.test.tsx[2m > [22mDashboard Extra Components Coverage[2m > [22mrenders ComingSoonBadge component
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/components/DashboardComponents.test.tsx:[2m13:27[22m[39m
+    [90m 11|[39m [34mdescribe[39m([32m'Dashboard Extra Components Coverage'[39m[33m,[39m () [33m=>[39m {
+    [90m 12|[39m   [34mit[39m([32m'renders ComingSoonBadge component'[39m[33m,[39m () [33m=>[39m {
+    [90m 13|[39m     [35mconst[39m { container } [33m=[39m [34mrender[39m([33m<[39m[33mComingSoonBadge[39m [33m/[39m[33m>[39m)[33m;[39m
+    [90m   |[39m                           [31m^[39m
+    [90m 14|[39m     [34mexpect[39m(container)[33m.[39m[34mtoBeDefined[39m()[33m;[39m
+    [90m 15|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[28/29]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/admin/__tests__/dashboard/components/DashboardComponents.test.tsx[2m > [22mDashboard Extra Components Coverage[2m > [22mrenders StatCard component safely
+[31m[1mReferenceError[22m: document is not defined[39m
+[90m [2m❯[22m render node_modules/@testing-library/react/dist/pure.js:[2m256:5[22m[39m
+[36m [2m❯[22m src/admin/__tests__/dashboard/components/DashboardComponents.test.tsx:[2m18:27[22m[39m
+    [90m 16|[39m
+    [90m 17|[39m   [34mit[39m([32m'renders StatCard component safely'[39m[33m,[39m () [33m=>[39m {
+    [90m 18|[39m     const { container } = render(<StatCard label="Total Users" title="…
+    [90m   |[39m                           [31m^[39m
+    [90m 19|[39m     [34mexpect[39m(container)[33m.[39m[34mtoBeDefined[39m()[33m;[39m
+    [90m 20|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[29/29]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m13 failed[39m[22m[2m | [22m[1m[32m16 passed[39m[22m[90m (29)[39m
+[2m      Tests [22m [1m[31m29 failed[39m[22m[2m | [22m[1m[32m46 passed[39m[22m[90m (75)[39m
+[2m   Start at [22m 09:50:47
+[2m   Duration [22m 19.78s[2m (transform 4.39s, setup 0ms, import 39.26s, tests 3.75s, environment 12.14s)[22m
+
+VITEST_RESULT: FAIL
+
+========== 14. AI HEALER REAL TEST ==========
+AI_HEALER_FILE: EXISTS
+AI_HEALER_BACKEND: OLLAMA_AVAILABLE
+
+========== 15. TIME MACHINE FILES ==========
+EXISTS: orbis-server/time-machine-api.cjs
+EXISTS: src/admin/components/TimeMachine/TimeMachineCard.tsx
+EXISTS: .github/workflows/orbis-ci.yml
+
+========== 16. SYSTEM TREE ==========
+SOURCE_FILE_COUNT: 123
+
+========== FINAL ==========
+REALITY_AUDIT_FILE: orbis-reality-audit-20260808-094934.txt
+=======================================================

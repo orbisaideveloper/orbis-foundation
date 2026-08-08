@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { CoreBridge } from '../integrations/CoreBridge';
+import { CoreBridge } from "../integrations/CoreBridge";
 
 export class SystemStatusWidget {
   private readonly bridge = CoreBridge.getInstance();
@@ -11,7 +11,7 @@ export class SystemStatusWidget {
     return {
       status: snapshot?.status || fallback,
       eventCount: snapshot?.metrics?.eventCount ?? "0",
-      bootTime: snapshot?.bootTime || "System Offline"
+      bootTime: snapshot?.bootTime || "System Offline",
     };
   }
 }
