@@ -34,13 +34,13 @@ jobs:
 
       - name: Check for Unintended File Deletions
         run: |
-          DELETED_FILES=$(git diff-tree --no-commit-id --name-only -r --diff-filter=D ${{ github.sha }})
+          DELETED_FILES=$(git diff --name-only --diff-filter=D HEAD~1 HEAD || echo "")
           if [ -n "$DELETED_FILES" ]; then
             echo "🚨 CRITICAL ALERT: Files deleted!"
             exit 1
           fi
 
-      - name: Run Tests and Generate Coverage
+      - name: Run Tests
         id: tests
         continue-on-error: true
         run: npm run coverage
@@ -58,19 +58,21 @@ jobs:
         continue-on-error: true
         run: |
           STATUS="SUCCESS"
-          ERR_MSG=""
           if [ "${{ steps.tests.outcome }}" != "success" ] || [ "${{ steps.sonar.outcome }}" != "success" ]; then
             STATUS="FAILED"
-            ERR_MSG="Pipeline step failed. Check GitHub Actions logs."
           fi
 
           COMMIT_HASH="${{ github.sha }}"
-          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD~1 HEAD)
+          # ফাইল খুঁজে বের করার সবথেকে শক্তিশালী কমান্ড
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+          echo "Files detected for sync: $CHANGED_FILES"
+          
           for FILE in $CHANGED_FILES; do
             if [ -f "$FILE" ]; then
+              echo "Syncing file: $FILE"
               CONTENT=$(jq -Rs . < "$FILE")
               curl -X POST "https://orbis-foundation.onrender.com/api/system/time-machine/sync" \
                 -H "Content-Type: application/json" \
-                -d "{\"filePath\": \"$FILE\", \"commitId\": \"$COMMIT_HASH\", \"status\": \"$STATUS\", \"errorMessage\": \"$ERR_MSG\", \"content\": $CONTENT}"
+                -d "{\"filePath\": \"$FILE\", \"commitId\": \"$COMMIT_HASH\", \"status\": \"$STATUS\", \"content\": $CONTENT}"
             fi
           done
