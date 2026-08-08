@@ -153,7 +153,7 @@ export default function SystemLogManager() {
           typeof errorStatus.file === "string" &&
           errorStatus.file.startsWith(item.path);
         return (
-          <div key={index} className="ml-2 my-1">
+          <div key={`log-entry-${index}`} className="ml-2 my-1">
             <div
               className={`flex items-center gap-2 py-1 px-2 rounded font-medium text-xs transition-colors ${
                 folderHasError
@@ -179,7 +179,7 @@ export default function SystemLogManager() {
           !isErrorFile && item.mtime >= latestUpdateTime - 60000;
         return (
           <div
-            key={index}
+            key={`log-entry-${index}`}
             onClick={() => handleFileClick(item.path)}
             className={`flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer text-xs my-0.5 transition-all ${
               isErrorFile
@@ -241,6 +241,7 @@ export default function SystemLogManager() {
                 {((activeView === "source" && !selectedFile) ||
                   activeView === "time_machine") && (
                   <button
+                    type="button"
                     onClick={() => {
                       setActiveView("cards");
                       setSearchQuery(""); // Back করলে সার্চ ক্লিয়ার হয়ে যাবে
@@ -251,6 +252,7 @@ export default function SystemLogManager() {
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => {
                     setIsOpen(false);
                     setSelectedFile(null);
@@ -332,6 +334,7 @@ export default function SystemLogManager() {
                           Project Structure
                         </h3>
                         <button
+                          type="button"
                           onClick={handleCopyTree}
                           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition ${isTreeCopied ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-blue-400 hover:bg-slate-700"}`}
                         >
@@ -390,6 +393,7 @@ export default function SystemLogManager() {
                       <div className="flex items-center justify-between p-3 border-b border-slate-700 bg-slate-900 shrink-0">
                         <div className="flex items-center gap-2 overflow-hidden">
                           <button
+                            type="button"
                             onClick={() => setSelectedFile(null)}
                             className="p-1.5 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 shrink-0"
                           >
@@ -400,6 +404,7 @@ export default function SystemLogManager() {
                           </span>
                         </div>
                         <button
+                          type="button"
                           onClick={handleCopyCode}
                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-all shrink-0 ${isCopied ? "bg-emerald-500/20 text-emerald-400" : "bg-blue-600 text-white hover:bg-blue-500 shadow-md"}`}
                         >
