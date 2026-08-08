@@ -3,7 +3,6 @@ import {
   Heart,
   Activity,
   Terminal,
-  AlertTriangle,
   X,
   Folder,
   FileCode,
