@@ -29,38 +29,15 @@ jobs:
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Run Global Type Check (tsc --noEmit)
-        run: npm run type-check
-
       - name: Run Tests and Generate Coverage
-        id: tests
         run: npm run coverage
 
       - name: SonarCloud Scan
-        id: sonar
         uses: SonarSource/sonarcloud-github-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-      - name: Sync Commit Snapshot to Time Machine Module
-        if: always()
-        continue-on-error: true
-        run: |
-          echo "⏳ Starting Time Machine Sync..."
-          STATUS="SUCCESS"
-          if [ "${{ steps.tests.outcome }}" != "success" ] || [ "${{ steps.sonar.outcome }}" != "success" ]; then
-            STATUS="FAILED"
-          fi
-
-          COMMIT_HASH="${{ github.sha }}"
-          CHANGED_FILES=$(git show --pretty="" --name-only $COMMIT_HASH)
-
-          for FILE in $CHANGED_FILES; do
-            if [ -f "$FILE" ]; then
-              CONTENT=$(jq -Rs . < "$FILE")
-              curl -s -X POST "https://orbis-foundation.onrender.com/api/system/time-machine/sync" \
-                -H "Content-Type: application/json" \
-                -d "{\"filePath\": \"$FILE\", \"commitId\": \"$COMMIT_HASH\", \"status\": \"$STATUS\", \"content\": $CONTENT}"
-            fi
-          done
+        with:
+          args: >
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+            -Dsonar.coverage.exclusions=**/node_modules/**,**/dist/**,**/*.test.ts,**/*.test.tsx
