@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const PORT = process.env.PORT || 3000;
 
@@ -154,7 +154,7 @@ function analyzeFileLogic(filePath) {
 }
 
 app.get("/api/system-stats", (req, res) => {
-  const os = require("os");
+  const os = require("node:os");
   const totalMem = (os.totalmem() / (1024 * 1024 * 1024)).toFixed(2);
   const freeMem = (os.freemem() / (1024 * 1024 * 1024)).toFixed(2);
   const usedMem = (totalMem - freeMem).toFixed(2);
@@ -211,7 +211,7 @@ app.post("/api/orbis-command", async (req, res) => {
     let logBook =
       "\n\n========================================\n 🕒 LIVE 20 ROLLING COMMIT TIME-SLOTS & AUDIT\n========================================\n";
     try {
-      const { execSync } = require("child_process");
+      const { execSync } = require("node:child_process");
       changedFiles = execSync('git show --name-only --format="" HEAD', {
         cwd: rootPath,
       })

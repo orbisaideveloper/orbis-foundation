@@ -1,6 +1,6 @@
-const { spawn } = require("child_process");
-const http = require("http");
-const path = require("path");
+const { spawn } = require("node:child_process");
+const http = require("node:http");
+const path = require("node:path");
 
 const PORT = process.env.PORT || 10000;
 const BRIDGE_PORT = 3002;

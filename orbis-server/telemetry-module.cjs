@@ -1,6 +1,6 @@
-const crypto = require("crypto");
-const os = require("os");
-const { execSync } = require("child_process");
+const crypto = require("node:crypto");
+const os = require("node:os");
+const { execSync } = require("node:child_process");
 
 // 🟢 লগ লিমিট বাড়িয়ে ১০০ করা হলো
 const systemLogs = [];

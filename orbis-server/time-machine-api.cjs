@@ -1,6 +1,6 @@
 const express = require("express");
 const { Pool } = require("pg");
-const crypto = require("crypto");
+const crypto = require("node:crypto");
 const router = express.Router();
 
 const pool = new Pool({
