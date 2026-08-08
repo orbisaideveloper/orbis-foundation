@@ -1,0 +1,5 @@
+{
+  "entry": ["src/main.tsx", "orbis-server/server.cjs"],
+  "project": ["src/**/*.{ts,tsx}", "orbis-server/**/*.cjs"],
+  "ignore": ["node_modules/**", "dist/**"]
+}

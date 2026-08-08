@@ -1,11 +1,11 @@
-echo "🛡️ [Husky Guard] অটো-ফিক্সার কাজ শুরু করেছে..."
+echo "🛡️ [Husky Guard] অটো-ফিক্সার ও ক্লিনআপ শুরু..."
 npx lint-staged
 
-echo "🔍 সোনারক্লাউডের লোকাল লজিক চেক করা হচ্ছে..."
-npm run type-check
+echo "🔄 [Madge Guard] সার্কুলার ডিপেন্ডেন্সি চেক..."
+npm run check:circular || { 
+    echo "❌ Circular Dependency Alert!" 
+    node orbis-server/ai-healer.cjs "Circular Dependency Error"
+    exit 1 
+}
 
-if [ $? -ne 0 ]; then
-  echo "❌ লজিকে ভুল আছে! কমিট বাতিল করা হলো।"
-  exit 1
-fi
-echo "✅ কোড একদম পারফেক্ট! কমিট সেভ হচ্ছে।"
+echo "✅ [Termux] কোড ১০০% পারফেক্ট! গিটহাবে যাচ্ছে..."

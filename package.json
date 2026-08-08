@@ -14,7 +14,11 @@
     "type-check": "tsc --noEmit",
     "prepare": "husky",
     "dead-code": "depcheck",
-    "format": "prettier --write src/**/*.{ts,tsx,js,jsx,json,css}"
+    "format": "prettier --write src/**/*.{ts,tsx,js,jsx,json,css}",
+    "check:circular": "madge --circular --extensions ts,tsx,cjs --exclude '^src/generated/.*' ./src ./orbis-server",
+    "check:duplicates": "jscpd ./src ./orbis-server",
+    "check:deadcode": "knip",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
@@ -52,8 +56,11 @@
     "eslint-plugin-react-refresh": "^0.4.6",
     "eslint-plugin-sonarjs": "^4.2.0",
     "husky": "^9.1.7",
+    "jscpd": "^5.0.14",
     "jsdom": "^29.1.1",
+    "knip": "^6.32.0",
     "lint-staged": "^17.3.0",
+    "madge": "^8.0.0",
     "postcss": "^8.5.25",
     "prettier": "^3.9.6",
     "prisma": "^7.9.0",
