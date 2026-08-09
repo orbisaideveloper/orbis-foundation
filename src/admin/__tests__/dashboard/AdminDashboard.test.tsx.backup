@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import AdminDashboard from "../../dashboard/AdminDashboard";
 import "@testing-library/jest-dom";
-const NEURAL_COCKPIT_TITLE = "ORBIS Neural Cockpit";
 
 // --- 100% SAFE GLOBAL FETCH MOCK ---
 if (typeof global !== "undefined") {
@@ -60,7 +59,7 @@ describe("AdminDashboard Full Coverage Tests", () => {
     expect(screen.getByText(/Runtime/i)).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText(NEURAL_COCKPIT_TITLE)).toBeInTheDocument();
+      expect(screen.getByText(/System Overview/i)).toBeInTheDocument();
     });
     unmount();
   });
@@ -99,24 +98,23 @@ describe("AdminDashboard Full Coverage Tests", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens the ORBIS Neural Chatbot fullscreen view", async () => {
+  it("executes terminal output and copy button functionality", async () => {
     render(<AdminDashboard />);
+    const diagBtn = screen.getByRole("button", { name: /ডায়াগনস্টিক/i });
+    fireEvent.click(diagBtn);
 
-    const card = screen
-      .getByText(NEURAL_COCKPIT_TITLE)
-      .closest('[role="button"]');
+    expect(screen.getByText("Terminal Output")).toBeInTheDocument();
 
-    expect(card).toBeTruthy();
-
-    fireEvent.click(card!);
+    const copyBtn = screen.getAllByText(/Copy/i)[0];
+    fireEvent.click(copyBtn);
+    expect(navigator.clipboard.writeText).toHaveBeenCalled();
 
     await waitFor(() => {
-      expect(screen.getByText("ORBIS Brain")).toBeInTheDocument();
+      expect(screen.getAllByText(/Copied/i)[0]).toBeInTheDocument();
     });
 
-    expect(
-      screen.getAllByPlaceholderText("ORBIS-কে নির্দেশ দিন...")[1],
-    ).toBeInTheDocument();
+    const closeBtn = screen.getByText("Close");
+    fireEvent.click(closeBtn);
   });
 
   it("triggers quick access dependency tree and copies live tree text", async () => {
@@ -198,24 +196,21 @@ describe("AdminDashboard Full Coverage Tests", () => {
     fireEvent.click(screen.getByRole("button", { name: /Close/i }));
   });
 
-  it("opens the ORBIS Neural Chatbot with keyboard interaction", async () => {
+  it("submits command via CommandBar input", async () => {
     render(<AdminDashboard />);
+    const input = screen.getByPlaceholderText("ORBIS-কে নির্দেশ দিন...");
+    fireEvent.change(input, { target: { value: "status check" } });
 
-    const card = screen
-      .getByText(NEURAL_COCKPIT_TITLE)
-      .closest('[role="button"]');
-
-    expect(card).toBeTruthy();
-
-    fireEvent.keyDown(card!, { key: "Enter" });
+    const runBtn = screen.getByText("রান");
+    fireEvent.click(runBtn);
 
     await waitFor(() => {
-      expect(screen.getByText("ORBIS Brain")).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/orbis-command",
+        expect.any(Object),
+      );
+      expect(screen.getByText("Terminal Output")).toBeInTheDocument();
     });
-
-    expect(
-      screen.getAllByPlaceholderText("ORBIS-কে নির্দেশ দিন...")[1],
-    ).toBeInTheDocument();
   });
 
   it("handles fetch errors gracefully in executeOrbisCommand and fetchLiveTree", async () => {

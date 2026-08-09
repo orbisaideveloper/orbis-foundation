@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import CommandBar from "../../components/CommandCenter/CommandBar";
 import SystemLogManager from "../system-logs/SystemLogManager";
+import { GlassChatCard } from "../../features/orbis-ai-chatbot/components/GlassChatCard";
+
+const SOURCE_TREE_NAME = "Source Tree";
+const MASTER_NODE_NAME = "Master Node";
 
 const getLogContent = (cardName: string | null) => {
   if (!cardName) return "";
@@ -23,13 +26,13 @@ const getLogContent = (cardName: string | null) => {
       "> Modular structure integrity... [STABLE]\n> Dependency tree optimized.",
     Microservices:
       "> Pinging 14 active services...\n> Auth, Data, Storage... [ALL ONLINE]\n> Cluster latency: 8ms.",
-    "Master Node":
+    MASTER_NODE_NAME:
       "> Master Node Health: 100%\n> CPU: 12% | RAM: 45%\n> Node synchronization complete.",
     "API Gateway":
       "> Traffic routing... Active\n> Request rate: 450 req/s\n> Gateway firewall: SECURE.",
     "Avg Load":
       "> Current Server Load: 12.4%\n> Traffic distribution optimal.\n> Auto-scaling standby... [READY].",
-    "Source Tree":
+    SOURCE_TREE_NAME:
       "> Scanning directory structure...\n\n📦 src/\n ┣ 📂 admin/\n ┃ ┣ 📂 dashboard/\n ┃ ┃ ┗ 📜 AdminDashboard.tsx\n ┃ ┗ 📂 __tests__/\n ┣ 📂 core/\n ┃ ┣ 📂 events/\n ┃ ┗ 📂 managers/\n ┣ 📜 App.tsx\n ┗ 📜 main.tsx\n\n> System tree mapped successfully.",
   };
   return `[SYSTEM LOG] - ${time}\nTarget: ${cardName}\nStatus: ACTIVE / SECURE\n\nFetching real-time encrypted telemetry...\n${details[cardName] || "> Systems normal."}\n\nData stream is ready for copying.`;
@@ -89,25 +92,6 @@ export function AdminDashboard() {
   );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const executeOrbisCommand = async (command: string) => {
-    setViewMode("diagnostic");
-    setShowOutput(true);
-    setOutputData(`[ORBIS SYSTEM] Executing: "${command}"\nScanning...`);
-    try {
-      const response = await fetch("/api/orbis-command", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command }),
-      });
-      const data = await response.json();
-      setOutputData(`[RESULT]\n${data.result}`);
-    } catch (error) {
-      setOutputData(
-        `[ERROR] Server API not responding.\nDetails: ${(error as Error).message}`,
-      );
-    }
-  };
-
   const fetchLiveTree = async () => {
     try {
       const response = await fetch("/api/orbis-command", {
@@ -135,7 +119,7 @@ export function AdminDashboard() {
   }, [activeCard]);
 
   useEffect(() => {
-    if (showOutput || activeSubCard === "Source Tree") {
+    if (showOutput || activeSubCard === SOURCE_TREE_NAME) {
       fetchLiveTree();
     }
   }, [showOutput, activeSubCard]);
@@ -217,7 +201,7 @@ export function AdminDashboard() {
       engine: "Engine",
       core: "Architecture",
       runtime: "Microservices",
-      release: "Master Node",
+      release: MASTER_NODE_NAME,
     };
     return map[card] || card;
   };
@@ -246,7 +230,7 @@ export function AdminDashboard() {
                   type="button"
                   onClick={() => {
                     navigator.clipboard.writeText(
-                      activeSubCard === "Source Tree"
+                      activeSubCard === SOURCE_TREE_NAME
                         ? liveTree
                         : generateRawTelemetry(activeSubCard, sysStats),
                     );
@@ -260,7 +244,7 @@ export function AdminDashboard() {
               </div>
               <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
                 <pre className="font-mono text-[12px] text-emerald-400 whitespace-pre-wrap leading-relaxed select-text">
-                  {activeSubCard === "Source Tree"
+                  {activeSubCard === SOURCE_TREE_NAME
                     ? liveTree
                     : generateRawTelemetry(activeSubCard, sysStats)
                         .replace(
@@ -326,7 +310,7 @@ export function AdminDashboard() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveSubCard("Master Node")}
+            onClick={() => setActiveSubCard(MASTER_NODE_NAME)}
             className="text-left bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
           >
             <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">
@@ -489,16 +473,7 @@ export function AdminDashboard() {
               />
             </svg>
           </button>
-          <h1
-            className="text-[16px] font-bold text-slate-800 flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all"
-            onClick={() =>
-              window.dispatchEvent(
-                new CustomEvent("open-source-map", {
-                  detail: "main_dashboard",
-                }),
-              )
-            }
-          >
+          <h1 className="text-[16px] font-bold text-slate-800 flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all">
             <div className="relative w-6 h-6 flex items-center justify-center">
               <img
                 src="/orbis-logo.png"
@@ -544,29 +519,8 @@ export function AdminDashboard() {
         </button>
       </div>
 
-      <div className="px-5 mt-4 mb-3 flex justify-between items-center">
-        <div>
-          <h2 className="text-[19px] font-bold text-slate-800">
-            System Overview
-          </h2>
-          <p className="text-[13px] text-slate-500">
-            Smart Orchestration Management
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setViewMode("diagnostic");
-            setShowOutput(true);
-          }}
-          className="bg-slate-900 text-white px-3 py-1.5 rounded-[12px] text-[11px] font-bold flex items-center gap-1.5 shadow-md hover:bg-slate-800 active:scale-95 transition-all"
-        >
-          <span className="text-sm">💻</span> ডায়াগনস্টিক
-        </button>
-      </div>
-
-      <div className="w-full px-5 mb-4">
-        <CommandBar onCommandSubmit={executeOrbisCommand} />
+      <div className="w-full px-5 mt-4 mb-5">
+        <GlassChatCard />
       </div>
 
       <AnimatePresence>
@@ -864,7 +818,7 @@ export const generateRawTelemetry = (target: string | null, sysStats: any) => {
         header +
         `> Total RAM: ${sysStats.totalMem} GB\n> Used RAM: ${sysStats.usedMem} GB (${sysStats.ramUsedPercent}%)\n> Free RAM: ${sysStats.freeMem} GB\n> Memory Status: ${Number.parseFloat(sysStats.ramUsedPercent) > 85 ? "WARNING: HIGH LOAD" : "OPTIMAL"}`
       );
-    case "Master Node":
+    case MASTER_NODE_NAME:
     case "OS PLATFORM":
     case "Health":
       return (
