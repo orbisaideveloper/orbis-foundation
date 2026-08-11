@@ -190,6 +190,91 @@ app.get("/api/system-stats", (req, res) => {
   });
 });
 
+// ============================================================
+// ORBIS CHAT API
+// Frontend contract: POST /api/chat
+// Body: { messages: [{ role, content }] }
+// Response: { message: { role: "assistant", content } }
+// ============================================================
+app.post("/api/chat", async (req, res) => {
+  try {
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+
+    const validMessages = messages
+      .filter(
+        (m) =>
+          (m?.role === "user" || m?.role === "assistant") &&
+          typeof m?.content === "string" &&
+          m.content.trim().length > 0,
+      )
+      .slice(-20);
+
+    if (validMessages.length === 0) {
+      return res.status(400).json({
+        error: "No valid chat message supplied.",
+      });
+    }
+
+    const conversation = validMessages
+      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+      .join("\n");
+
+    const prompt =
+      "You are ORBIS AI, the intelligent assistant of ORBIS Foundation. " +
+      "Answer clearly and helpfully. Preserve conversation context. " +
+      "Reply in the same language as the user when practical.\n\n" +
+      conversation +
+      "\nAssistant:";
+
+    const tunnelUrl =
+      process.env.OLLAMA_URL ||
+      "https://range-lives-asking-ant.trycloudflare.com";
+
+    const response = await fetch(`${tunnelUrl}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: process.env.OLLAMA_MODEL || "tinyllama:latest",
+        prompt,
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      console.error("[CHAT_API] Ollama error:", response.status, text);
+
+      return res.status(502).json({
+        error: `AI backend unavailable (${response.status}).`,
+      });
+    }
+
+    const data = await response.json();
+    const content =
+      typeof data?.response === "string" ? data.response.trim() : "";
+
+    if (!content) {
+      return res.status(502).json({
+        error: "AI backend returned an empty response.",
+      });
+    }
+
+    return res.json({
+      message: {
+        role: "assistant",
+        content,
+      },
+    });
+  } catch (error) {
+    console.error("[CHAT_API] Request failed:", error);
+
+    return res.status(500).json({
+      error:
+        error instanceof Error ? error.message : "Chat backend request failed.",
+    });
+  }
+});
+
 app.post("/api/orbis-command", async (req, res) => {
   let rawCommand = req.body.command || "";
   let cleanCommand = rawCommand.replace(/^.*?ai:\s*/i, "").trim();

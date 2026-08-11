@@ -5,14 +5,27 @@ interface FullscreenChatViewProps {
   onClose: () => void;
 }
 
+type ChatRole = "user" | "assistant";
+
 interface ChatMessage {
   id: number;
-  role: "user" | "assistant";
+  role: ChatRole;
   content: string;
+}
+
+interface ChatApiMessage {
+  role: ChatRole;
+  content: string;
+}
+
+interface ChatApiResponse {
+  message?: ChatApiMessage;
+  error?: string;
 }
 
 interface SpeechRecognitionResultEventLike {
   results: {
+    length: number;
     [index: number]: {
       [index: number]: {
         transcript: string;
@@ -37,71 +50,66 @@ interface SpeechRecognitionWindow {
   webkitSpeechRecognition?: new () => SpeechRecognitionLike;
 }
 
+const INITIAL_MESSAGE: ChatMessage = {
+  id: 1,
+  role: "assistant",
+  content: "নমস্কার দাদা! ORBIS Brain প্রস্তুত। আপনি কী জানতে বা করতে চান?",
+};
+
 export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   onClose,
 }) => {
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 1,
-      role: "assistant",
-      content: "নমস্কার দাদা! ORBIS Brain প্রস্তুত। আপনি কী জানতে বা করতে চান?",
-    },
-  ]);
-
+  const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   const sendMessage = async () => {
     const message = inputText.trim();
 
-    if (!message || isSending) {
-      return;
-    }
+    if (!message || isSending) return;
 
-    setMessages((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        role: "user",
-        content: message,
-      },
-    ]);
+    const userMessage: ChatMessage = {
+      id: Date.now(),
+      role: "user",
+      content: message,
+    };
 
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
     setInputText("");
     setIsSending(true);
 
     try {
-      const response = await fetch("/api/orbis-command", {
+      const response = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          command: message,
+          messages: nextMessages.map(({ role, content }): ChatApiMessage => ({
+            role,
+            content,
+          })),
         }),
       });
 
+      const data = (await response.json()) as ChatApiResponse;
+
       if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
+        throw new Error(data.error || `API request failed: ${response.status}`);
       }
 
-      const data = await response.json();
-
-      const result =
-        typeof data?.result === "string"
-          ? data.result
-          : typeof data?.response === "string"
-            ? data.response
-            : "ORBIS কোনো response ফেরত দেয়নি।";
+      const assistantContent = data.message?.content?.trim();
+      if (!assistantContent) {
+        throw new Error("ORBIS কোনো response ফেরত দেয়নি।");
+      }
 
       setMessages((current) => [
         ...current,
         {
           id: Date.now() + 1,
           role: "assistant",
-          content: result,
+          content: assistantContent,
         },
       ]);
     } catch (error) {
@@ -145,18 +153,15 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     }
 
     const recognition = new SpeechRecognition();
-
     recognition.lang = "bn-IN";
     recognition.continuous = false;
     recognition.interimResults = true;
 
     recognition.onresult = (event) => {
       let transcript = "";
-
       for (let index = 0; index < event.results.length; index += 1) {
         transcript += event.results[index][0].transcript;
       }
-
       setInputText(transcript);
     };
 
@@ -168,7 +173,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     recognition.onerror = () => {
       setIsListening(false);
       recognitionRef.current = null;
-
       setMessages((current) => [
         ...current,
         {
@@ -197,12 +201,10 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-orange-400 to-amber-500 shadow-lg">
               <Sparkles className="h-4 w-4 text-white" />
             </div>
-
             <h2 className="text-xl font-bold tracking-wide text-gray-800 dark:text-white">
               ORBIS Brain{" "}
               <span className="text-sm font-normal text-emerald-600 dark:text-emerald-400">
@@ -217,31 +219,21 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`mx-auto flex w-full max-w-4xl gap-4 ${
-              message.role === "user" ? "justify-end" : ""
-            }`}
+            className={`mx-auto flex w-full max-w-4xl gap-4 ${message.role === "user" ? "justify-end" : ""}`}
           >
             {message.role === "assistant" && (
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-100 to-orange-200 shadow-sm dark:from-orange-900/50 dark:to-orange-800/50">
                 <Bot className="h-5 w-5 text-orange-600 dark:text-orange-400" />
               </div>
             )}
-
             <div
-              className={`flex max-w-[85%] flex-col gap-1 pt-1 ${
-                message.role === "user" ? "items-end" : ""
-              }`}
+              className={`flex max-w-[85%] flex-col gap-1 pt-1 ${message.role === "user" ? "items-end" : ""}`}
             >
               <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
                 {message.role === "user" ? "You" : "ORBIS Core"}
               </span>
-
               <div
-                className={`whitespace-pre-wrap rounded-2xl border p-4 shadow-sm backdrop-blur-sm ${
-                  message.role === "user"
-                    ? "rounded-tr-none border-emerald-100/50 bg-emerald-500/10 text-gray-800 dark:border-emerald-900/30 dark:bg-emerald-900/30 dark:text-gray-200"
-                    : "rounded-tl-none border-orange-100/50 bg-white/60 text-gray-700 dark:border-orange-900/30 dark:bg-gray-900/60 dark:text-gray-300"
-                }`}
+                className={`whitespace-pre-wrap rounded-2xl border p-4 shadow-sm backdrop-blur-sm ${message.role === "user" ? "rounded-tr-none border-emerald-100/50 bg-emerald-500/10 text-gray-800 dark:border-emerald-900/30 dark:bg-emerald-900/30 dark:text-gray-200" : "rounded-tl-none border-orange-100/50 bg-white/60 text-gray-700 dark:border-orange-900/30 dark:bg-gray-900/60 dark:text-gray-300"}`}
               >
                 {message.content}
               </div>
@@ -278,17 +270,12 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               disabled={isSending}
               className="max-h-32 min-h-[56px] w-full resize-none rounded-2xl border border-gray-300/50 bg-white/70 py-4 pl-6 pr-14 text-gray-800 shadow-inner outline-none backdrop-blur-md transition-all focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-white/10 dark:bg-black/50 dark:text-white dark:placeholder-gray-400"
             />
-
             <button
               type="button"
               onClick={toggleVoiceInput}
               disabled={isSending}
               aria-label={isListening ? "Stop voice input" : "Voice input"}
-              className={`absolute bottom-3 right-3 rounded-full p-2 transition-colors ${
-                isListening
-                  ? "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400"
-                  : "text-gray-400 hover:bg-gray-100 hover:text-emerald-500 dark:hover:bg-gray-800 dark:hover:text-emerald-400"
-              }`}
+              className={`absolute bottom-3 right-3 rounded-full p-2 transition-colors ${isListening ? "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400" : "text-gray-400 hover:bg-gray-100 hover:text-emerald-500 dark:hover:bg-gray-800 dark:hover:text-emerald-400"}`}
             >
               {isListening ? (
                 <Square className="h-5 w-5" />
@@ -297,7 +284,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               )}
             </button>
           </div>
-
           <button
             type="button"
             onClick={() => void sendMessage()}
