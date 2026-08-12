@@ -11,6 +11,7 @@ interface ChatMessage {
   id: number;
   role: ChatRole;
   content: string;
+  providerName?: string;
 }
 
 interface ChatApiMessage {
@@ -20,6 +21,11 @@ interface ChatApiMessage {
 
 interface ChatApiResponse {
   message?: ChatApiMessage;
+  provider?: {
+    name?: string;
+    type?: string;
+    model?: string;
+  };
   error?: string;
 }
 
@@ -64,9 +70,10 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceTranscriptRef = useRef("");
 
-  const sendMessage = async () => {
-    const message = inputText.trim();
+  const sendMessage = async (messageOverride?: string) => {
+    const message = (messageOverride ?? inputText).trim();
 
     if (!message || isSending) return;
 
@@ -101,7 +108,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
 
       const assistantContent = data.message?.content?.trim();
       if (!assistantContent) {
-        throw new Error("ORBIS কোনো response ফেরত দেয়নি।");
+        throw new Error("AI কোনো response ফেরত দেয়নি।");
       }
 
       setMessages((current) => [
@@ -110,6 +117,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           id: Date.now() + 1,
           role: "assistant",
           content: assistantContent,
+          providerName: data.provider?.name || "ORBIS",
         },
       ]);
     } catch (error) {
@@ -156,18 +164,26 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     recognition.lang = "bn-IN";
     recognition.continuous = false;
     recognition.interimResults = true;
+    voiceTranscriptRef.current = "";
 
     recognition.onresult = (event) => {
       let transcript = "";
       for (let index = 0; index < event.results.length; index += 1) {
         transcript += event.results[index][0].transcript;
       }
+      voiceTranscriptRef.current = transcript.trim();
       setInputText(transcript);
     };
 
     recognition.onend = () => {
+      const transcript = voiceTranscriptRef.current.trim();
       setIsListening(false);
       recognitionRef.current = null;
+      voiceTranscriptRef.current = "";
+
+      if (transcript) {
+        void sendMessage(transcript);
+      }
     };
 
     recognition.onerror = () => {
@@ -230,7 +246,9 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               className={`flex max-w-[85%] flex-col gap-1 pt-1 ${message.role === "user" ? "items-end" : ""}`}
             >
               <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                {message.role === "user" ? "You" : "ORBIS Core"}
+                {message.role === "user"
+                  ? "You"
+                  : message.providerName || "ORBIS Core"}
               </span>
               <div
                 className={`whitespace-pre-wrap rounded-2xl border p-4 shadow-sm backdrop-blur-sm ${message.role === "user" ? "rounded-tr-none border-emerald-100/50 bg-emerald-500/10 text-gray-800 dark:border-emerald-900/30 dark:bg-emerald-900/30 dark:text-gray-200" : "rounded-tl-none border-orange-100/50 bg-white/60 text-gray-700 dark:border-orange-900/30 dark:bg-gray-900/60 dark:text-gray-300"}`}

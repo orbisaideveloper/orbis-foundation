@@ -7,11 +7,9 @@ const PORT = process.env.PORT || 3000;
 
 // --- 🤖 OLLAMA AI INTEGRATION (Brain with Streaming) ---
 async function handleOllamaStream(prompt, res) {
-  const tunnelUrl =
-    process.env.OLLAMA_URL ||
-    "https://range-lives-asking-ant.trycloudflare.com";
+  const ollamaUrl = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
   try {
-    const response = await fetch(`${tunnelUrl}/api/generate`, {
+    const response = await fetch(`${ollamaUrl}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -226,11 +224,9 @@ app.post("/api/chat", async (req, res) => {
       conversation +
       "\nAssistant:";
 
-    const tunnelUrl =
-      process.env.OLLAMA_URL ||
-      "https://range-lives-asking-ant.trycloudflare.com";
+    const ollamaUrl = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 
-    const response = await fetch(`${tunnelUrl}/api/generate`, {
+    const response = await fetch(`${ollamaUrl}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -263,6 +259,11 @@ app.post("/api/chat", async (req, res) => {
       message: {
         role: "assistant",
         content,
+      },
+      provider: {
+        name: "Ollama",
+        type: "local",
+        model: process.env.OLLAMA_MODEL || "tinyllama:latest",
       },
     });
   } catch (error) {
