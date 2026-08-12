@@ -2,8 +2,8 @@ const { PrismaClient } = require("@prisma/client");
 const { Pool } = require("pg");
 const { PrismaPg } = require("@prisma/adapter-pg");
 const providerManager = require("./AIProviderManager.cjs");
+const tavilySearch = require("./tools/TavilySearch.cjs");
 
-// রেন্ডার এবং সুপাবেসের জন্য সঠিক Driver Adapter কনফিগারেশন
 const connectionString = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg({ pool });
@@ -26,21 +26,21 @@ class AIChatService {
       content: m.content,
     }));
     const lastUserMessage =
-      formattedMessages[formattedMessages.length - 1].content.toLowerCase();
+      formattedMessages[formattedMessages.length - 1].content;
+    const lowerCaseMessage = lastUserMessage.toLowerCase();
 
     try {
-      // ১. ORBIS Brain (Memory & Knowledge Check)
+      // ১. ORBIS Brain (Local Database Check)
       const brainKnowledge = await prisma.foundationBrainKnowledge.findFirst({
         where: {
           isActive: true,
           OR: [
-            { content: { contains: lastUserMessage } },
-            { tags: { contains: lastUserMessage } },
+            { content: { contains: lowerCaseMessage } },
+            { tags: { contains: lowerCaseMessage } },
           ],
         },
       });
 
-      // ২. যদি ব্রেইন উত্তর জানে
       if (brainKnowledge) {
         return {
           message: { role: "assistant", content: brainKnowledge.content },
@@ -48,13 +48,57 @@ class AIChatService {
         };
       }
 
-      // ৩. যদি না জানে, তবে প্রোভাইডারের কাছে পাঠানো
+      // ২. Web Search Orchestration (Tavily)
+      let webContext = "";
+      let usedWebSearch = false;
+
+      // স্মার্ট ট্রিগার: যদি প্রশ্নে এই শব্দগুলো থাকে তবেই ইন্টারনেট খুঁজবে
+      const searchKeywords = [
+        "what",
+        "who",
+        "latest",
+        "update",
+        "news",
+        "price",
+        "খবর",
+        "কে",
+        "কী",
+        "কি",
+        "বর্তমান",
+        "আজকের",
+        "এখন",
+      ];
+      const needsSearch = searchKeywords.some((kw) =>
+        lowerCaseMessage.includes(kw),
+      );
+
+      if (needsSearch) {
+        const searchResult = await tavilySearch.search(lastUserMessage);
+        if (searchResult) {
+          webContext = `\n\n[Real-time Web Context: ${searchResult}]\n\n(Use the above web context to answer the user's question accurately. Reply in the user's language.)`;
+          usedWebSearch = true;
+        }
+      }
+
+      // ৩. External AI Provider (Ollama/Gemini)
+      const messagesForAI = [...formattedMessages];
+      if (usedWebSearch) {
+        // ইউজারের শেষ মেসেজের সাথে ইন্টারনেটের ডেটা লুকিয়ে জুড়ে দেওয়া হলো
+        messagesForAI[messagesForAI.length - 1].content += webContext;
+      }
+
       const provider = providerManager.getActiveProvider();
-      const providerResponse = await provider.generateChat(formattedMessages);
+      const providerResponse = await provider.generateChat(messagesForAI);
+
+      // মেটাডেটা আপডেট: অ্যাডমিন প্যানেলে দেখাবে ওয়েব সার্চ হয়েছে কিনা
+      if (usedWebSearch) {
+        providerResponse.provider.type = "WEB_SEARCH_AUGMENTED";
+        providerResponse.provider.name = `${providerResponse.provider.name} + Tavily`;
+      }
 
       return {
         message: { role: "assistant", content: providerResponse.content },
-        provider: providerResponse.provider, // অ্যাডমিন ড্যাশবোর্ডে এটি দেখা যাবে
+        provider: providerResponse.provider,
       };
     } catch (error) {
       console.error("[AI_CHAT_SERVICE] Request failed:", error.message);
