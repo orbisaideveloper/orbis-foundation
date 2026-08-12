@@ -31,21 +31,23 @@ class AIChatService {
       formattedMessages[formattedMessages.length - 1].content;
     const lowerCaseMessage = lastUserMessage.toLowerCase();
 
-    // ⚠️ ADMIN DIAGNOSTIC TRACKER (কোড কোথায় আছে তা ট্র্যাক করার জন্য)
+    // ⚠️ ADMIN DIAGNOSTIC TRACKER
     let currentStep = "Initializing request";
 
     try {
-      // ১. ORBIS Brain (Local Database Check)
-      currentStep = "Checking ORBIS Brain (Local Database)";
-      const brainKnowledge = await prisma.foundationBrainKnowledge.findFirst({
-        where: {
-          isActive: true,
-          OR: [
-            { content: { contains: lowerCaseMessage } },
-            { tags: { contains: lowerCaseMessage } },
-          ],
-        },
+      // ১. ORBIS Brain (Local Database Check) - ১০০% বুলেতপ্রুফ পদ্ধতি!
+      currentStep = "Fetching ORBIS Brain memory";
+      const allKnowledge = await prisma.foundationBrainKnowledge.findMany({
+        where: { isActive: true },
       });
+
+      currentStep = "Scanning memory for matches";
+      // জাভাস্ক্রিপ্ট দিয়ে ফিল্টার করছি, যাতে Prisma কোনো এরর দিতে না পারে
+      const brainKnowledge = allKnowledge.find(
+        (k) =>
+          k.content.toLowerCase().includes(lowerCaseMessage) ||
+          (k.tags && k.tags.toLowerCase().includes(lowerCaseMessage)),
+      );
 
       if (brainKnowledge) {
         return {
@@ -101,7 +103,6 @@ class AIChatService {
       currentStep = "Generating response from AI Provider";
       const providerResponse = await provider.generateChat(messagesForAI);
 
-      // ⚠️ SAFEGUARD FIX
       currentStep = "Formatting Final Response";
       if (usedWebSearch && providerResponse && providerResponse.provider) {
         providerResponse.provider.type = "WEB_SEARCH_AUGMENTED";
@@ -120,8 +121,6 @@ class AIChatService {
         `[AI_CHAT_SERVICE] Failed at step: ${currentStep}. Error:`,
         error.stack || error.message,
       );
-
-      // ⚠️ ADMIN DETAILED ERROR FIX: চ্যাট স্ক্রিনে একদম বিস্তারিত কারণ এবং কোন ধাপে ক্র্যাশ করেছে তা দেখাবে!
       throw new Error(
         `[Admin Diagnostic] Failed during: '${currentStep}'. Exact Reason: ${error.message}`,
       );
