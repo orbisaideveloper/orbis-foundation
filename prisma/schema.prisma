@@ -39,3 +39,28 @@ model FoundationSourceCodeHistory {
   versionHash String? // ভার্সন ট্র্যাকিংয়ের জন্য (ঐচ্ছিক)
   updatedAt   DateTime @default(now()) // আপডেট হওয়ার সময়
 }
+
+// ==========================================
+// ORBIS BRAIN MEMORY & KNOWLEDGE BASE
+// ==========================================
+
+// ১. Brain Knowledge (কোম্পানির স্থায়ী তথ্য, নিয়ম, প্রোডাক্ট ইত্যাদি)
+model BrainKnowledge {
+  id        String   @id @default(uuid())
+  category  String   // যেমন: "COMPANY_INFO", "CORE_RULES", "PRODUCT"
+  content   String   // আসল তথ্য (যেমন: "আমাদের কোম্পানির নাম ORBIS Foundation...")
+  tags      String?  // খোঁজার সুবিধার জন্য কি-ওয়ার্ড (যেমন: "name, about, foundation")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ২. User Memory (ইউজারদের সম্পর্কে যা যা শিখবে বা মনে রাখবে)
+model UserMemory {
+  id        String   @id @default(uuid())
+  sessionId String   // ইউজারের ডিভাইস বা লগইন আইডি চেনার জন্য
+  factKey   String   // যেমন: "user_name", "prefer_language"
+  factValue String   // যেমন: "Rahul", "Bengali"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
