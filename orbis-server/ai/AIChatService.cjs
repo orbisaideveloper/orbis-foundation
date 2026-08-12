@@ -21,6 +21,8 @@ class AIChatService {
       )
       .slice(-20);
 
+    if (validMessages.length === 0) throw new Error("No valid messages found.");
+
     const formattedMessages = validMessages.map((m) => ({
       role: m.role,
       content: m.content,
@@ -29,8 +31,12 @@ class AIChatService {
       formattedMessages[formattedMessages.length - 1].content;
     const lowerCaseMessage = lastUserMessage.toLowerCase();
 
+    // ⚠️ ADMIN DIAGNOSTIC TRACKER (কোড কোথায় আছে তা ট্র্যাক করার জন্য)
+    let currentStep = "Initializing request";
+
     try {
       // ১. ORBIS Brain (Local Database Check)
+      currentStep = "Checking ORBIS Brain (Local Database)";
       const brainKnowledge = await prisma.foundationBrainKnowledge.findFirst({
         where: {
           isActive: true,
@@ -49,9 +55,9 @@ class AIChatService {
       }
 
       // ২. Web Search Orchestration (Tavily)
+      currentStep = "Analyzing keywords for Web Search (Tavily)";
       let webContext = "";
       let usedWebSearch = false;
-
       const searchKeywords = [
         "what",
         "who",
@@ -72,35 +78,53 @@ class AIChatService {
       );
 
       if (needsSearch) {
+        currentStep = "Fetching live data from Tavily API";
         const searchResult = await tavilySearch.search(lastUserMessage);
         if (searchResult) {
-          webContext = `\n\n[Real-time Web Context: ${searchResult}]\n\n(Use the above web context to answer the user's question accurately. Reply in the user's language.)`;
+          webContext = `\n\n[Real-time Web Context: ${searchResult}]\n\n(Use the above web context to answer the user's question accurately.)`;
           usedWebSearch = true;
         }
       }
 
       // ৩. External AI Provider (Ollama/Gemini)
+      currentStep = "Preparing messages for External AI Provider";
       const messagesForAI = [...formattedMessages];
       if (usedWebSearch) {
         messagesForAI[messagesForAI.length - 1].content += webContext;
       }
 
-      // ⚠️ ভুলটি এখানে ছিল! getActiveProvider() এর বদলে getDefaultProvider() হবে
+      currentStep = "Connecting to Default AI Provider";
       const provider = providerManager.getDefaultProvider();
+      if (!provider)
+        throw new Error("No Default AI Provider configured in the system.");
+
+      currentStep = "Generating response from AI Provider";
       const providerResponse = await provider.generateChat(messagesForAI);
 
-      if (usedWebSearch) {
+      // ⚠️ SAFEGUARD FIX
+      currentStep = "Formatting Final Response";
+      if (usedWebSearch && providerResponse && providerResponse.provider) {
         providerResponse.provider.type = "WEB_SEARCH_AUGMENTED";
         providerResponse.provider.name = `${providerResponse.provider.name} + Tavily`;
       }
 
       return {
         message: { role: "assistant", content: providerResponse.content },
-        provider: providerResponse.provider,
+        provider:
+          providerResponse && providerResponse.provider
+            ? providerResponse.provider
+            : { name: "System Provider", type: "EXTERNAL" },
       };
     } catch (error) {
-      console.error("[AI_CHAT_SERVICE] Request failed:", error.message);
-      throw new Error("Chat backend request failed.");
+      console.error(
+        `[AI_CHAT_SERVICE] Failed at step: ${currentStep}. Error:`,
+        error.stack || error.message,
+      );
+
+      // ⚠️ ADMIN DETAILED ERROR FIX: চ্যাট স্ক্রিনে একদম বিস্তারিত কারণ এবং কোন ধাপে ক্র্যাশ করেছে তা দেখাবে!
+      throw new Error(
+        `[Admin Diagnostic] Failed during: '${currentStep}'. Exact Reason: ${error.message}`,
+      );
     }
   }
 }
