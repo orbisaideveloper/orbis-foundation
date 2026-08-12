@@ -34,13 +34,20 @@ class AIChatService {
     let currentStep = "Initializing request";
 
     try {
-      // ১. ORBIS Brain - Ultimate Bypass!
-      // কোনো আর্গুমেন্ট পাস করছি না, তাই Prisma-র এরর দেওয়ার সুযোগ নেই।
-      currentStep = "Fetching ORBIS Brain memory";
-      const allKnowledge = await prisma.foundationBrainKnowledge.findMany();
+      // ১. ORBIS Brain - DIRECT SQL (Prisma-কে পুরোপুরি বাইপাস করা হলো!)
+      currentStep = "Executing Direct SQL Query (Bypassing Prisma completely)";
+
+      let allKnowledge = [];
+      try {
+        const dbResult = await pool.query(
+          'SELECT * FROM "FoundationBrainKnowledge"',
+        );
+        allKnowledge = dbResult.rows;
+      } catch (sqlError) {
+        throw new Error(`SQL DB Error: ${sqlError.message}`);
+      }
 
       currentStep = "Scanning memory for matches";
-      // পুরো ফিল্টারিং এবং চেকিং জাভাস্ক্রিপ্টে হচ্ছে
       const brainKnowledge = allKnowledge.find(
         (k) =>
           k.isActive === true &&
