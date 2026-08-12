@@ -52,7 +52,6 @@ class AIChatService {
       let webContext = "";
       let usedWebSearch = false;
 
-      // স্মার্ট ট্রিগার: যদি প্রশ্নে এই শব্দগুলো থাকে তবেই ইন্টারনেট খুঁজবে
       const searchKeywords = [
         "what",
         "who",
@@ -83,14 +82,13 @@ class AIChatService {
       // ৩. External AI Provider (Ollama/Gemini)
       const messagesForAI = [...formattedMessages];
       if (usedWebSearch) {
-        // ইউজারের শেষ মেসেজের সাথে ইন্টারনেটের ডেটা লুকিয়ে জুড়ে দেওয়া হলো
         messagesForAI[messagesForAI.length - 1].content += webContext;
       }
 
-      const provider = providerManager.getActiveProvider();
+      // ⚠️ ভুলটি এখানে ছিল! getActiveProvider() এর বদলে getDefaultProvider() হবে
+      const provider = providerManager.getDefaultProvider();
       const providerResponse = await provider.generateChat(messagesForAI);
 
-      // মেটাডেটা আপডেট: অ্যাডমিন প্যানেলে দেখাবে ওয়েব সার্চ হয়েছে কিনা
       if (usedWebSearch) {
         providerResponse.provider.type = "WEB_SEARCH_AUGMENTED";
         providerResponse.provider.name = `${providerResponse.provider.name} + Tavily`;
