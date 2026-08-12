@@ -3,6 +3,9 @@ const cors = require("cors");
 const fs = require("node:fs");
 const path = require("node:path");
 
+// নতুন AI Chat Service ইমপোর্ট করা হলো
+const aiChatService = require("./ai/AIChatService.cjs");
+
 const PORT = process.env.PORT || 3000;
 
 // --- 🤖 OLLAMA AI INTEGRATION (Brain with Streaming) ---
@@ -135,15 +138,15 @@ function analyzeFileLogic(filePath) {
     report += `\n🛠️ ডায়াগনস্টিক রিপোর্ট:\n`;
 
     if (content.includes("alert(")) {
-      report += `- [WARNING] alert() ফাংশন কোডের ফ্লো ব্লক করে দেয়।\n`;
+      report += `- [WARNING] alert() ফাংশন কোডের ফ্লো ব্লক করে দেয়。\n`;
       issueFound = true;
     }
     if (content.match(/catch\s*\(/)) {
-      report += `- [LOGIC] try-catch এরর হ্যান্ডলিং আছে।\n`;
+      report += `- [LOGIC] try-catch এরর হ্যান্ডলিং আছে。\n`;
       issueFound = true;
     }
     if (!issueFound) {
-      report += `- কোনো বেসিক লজিক্যাল ত্রুটি চোখে পড়েনি।\n`;
+      report += `- কোনো বেসিক লজিক্যাল ত্রুটি চোখে পড়েনি。\n`;
     }
     return report + `\n----------------------------------------\n`;
   } catch (e) {
@@ -189,89 +192,28 @@ app.get("/api/system-stats", (req, res) => {
 });
 
 // ============================================================
-// ORBIS CHAT API
-// Frontend contract: POST /api/chat
-// Body: { messages: [{ role, content }] }
-// Response: { message: { role: "assistant", content } }
+// ORBIS CHAT API - Updated to use AI Provider Architecture
 // ============================================================
 app.post("/api/chat", async (req, res) => {
   try {
-    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    const rawMessages = req.body?.messages;
 
-    const validMessages = messages
-      .filter(
-        (m) =>
-          (m?.role === "user" || m?.role === "assistant") &&
-          typeof m?.content === "string" &&
-          m.content.trim().length > 0,
-      )
-      .slice(-20);
+    // Delegate entirely to the new AIChatService
+    const responsePayload = await aiChatService.processChatRequest(rawMessages);
 
-    if (validMessages.length === 0) {
-      return res.status(400).json({
-        error: "No valid chat message supplied.",
-      });
-    }
-
-    const conversation = validMessages
-      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-      .join("\n");
-
-    const prompt =
-      "You are ORBIS AI, the intelligent assistant of ORBIS Foundation. " +
-      "Answer clearly and helpfully. Preserve conversation context. " +
-      "Reply in the same language as the user when practical.\n\n" +
-      conversation +
-      "\nAssistant:";
-
-    const ollamaUrl = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-
-    const response = await fetch(`${ollamaUrl}/api/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: process.env.OLLAMA_MODEL || "tinyllama:latest",
-        prompt,
-        stream: false,
-      }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      console.error("[CHAT_API] Ollama error:", response.status, text);
-
-      return res.status(502).json({
-        error: `AI backend unavailable (${response.status}).`,
-      });
-    }
-
-    const data = await response.json();
-    const content =
-      typeof data?.response === "string" ? data.response.trim() : "";
-
-    if (!content) {
-      return res.status(502).json({
-        error: "AI backend returned an empty response.",
-      });
-    }
-
-    return res.json({
-      message: {
-        role: "assistant",
-        content,
-      },
-      provider: {
-        name: "Ollama",
-        type: "local",
-        model: process.env.OLLAMA_MODEL || "tinyllama:latest",
-      },
-    });
+    return res.json(responsePayload);
   } catch (error) {
-    console.error("[CHAT_API] Request failed:", error);
+    console.error("[CHAT_API] Request failed:", error.message);
 
-    return res.status(500).json({
-      error:
-        error instanceof Error ? error.message : "Chat backend request failed.",
+    // Determine proper status code based on error message mapping
+    const status =
+      error.message.includes("authentication") ||
+      error.message.includes("unavailable")
+        ? 502
+        : 500;
+
+    return res.status(status).json({
+      error: error.message || "Chat backend request failed.",
     });
   }
 });
@@ -348,7 +290,6 @@ app.post("/api/orbis-command", async (req, res) => {
     }
     return res.json({ result: output });
   } else {
-    // টার্গেট ফাইল বা AST চেক করা
     function getAllValidFiles(dir, fileList = []) {
       if (!fs.existsSync(dir)) return fileList;
       const items = fs.readdirSync(dir);
@@ -412,12 +353,10 @@ app.post("/api/orbis-command", async (req, res) => {
       );
     }
 
-    // যদি বিশেষ কোনো কোড ফাইল স্ক্যান করতে না বলা হয়ে থাকে, তবে এটি সাধারণ প্রশ্ন এবং সরাসরি Ollama এআই-তে যাবে
     if (!targetFilePath) {
       return handleOllamaStream(cleanCommand, res);
     }
 
-    // AST Parsing
     const ts = require("typescript");
     const targetFileName = path.basename(targetFilePath);
     const content = fs.readFileSync(targetFilePath, "utf8");
@@ -461,11 +400,7 @@ app.listen(PORT, () => {
   console.log(`Orbis Server running on port ${PORT}`);
 });
 
-// Multi-model co-existence active: TinyLlama & Qwen 2.5 Bridge Routing
-
-// --- Multi-Agent Collaboration (TinyLlama + Qwen 2.5 MoA Router) ---
 function getActiveAiModel(prompt) {
-  // ছোট বা দ্রুত উত্তরের জন্য TinyLlama, আর ডিপ লজিকের জন্য Qwen 2.5 1.5B রাউট করা
   if (prompt && prompt.length < 50) {
     return "tinyllama";
   }

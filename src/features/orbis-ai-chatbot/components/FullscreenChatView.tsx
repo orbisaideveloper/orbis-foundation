@@ -1,5 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { ArrowLeft, Mic, Send, Bot, Sparkles, Square } from "lucide-react";
+import { chatStorage } from "../storage/ChatStorageManager";
 
 interface FullscreenChatViewProps {
   onClose: () => void;
@@ -60,7 +61,10 @@ const INITIAL_MESSAGE: ChatMessage = {
   id: 1,
   role: "assistant",
   content: "নমস্কার দাদা! ORBIS Brain প্রস্তুত। আপনি কী জানতে বা করতে চান?",
+  providerName: "ORBIS",
 };
+
+const CONVERSATION_ID = "default-chat-v1";
 
 export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   onClose,
@@ -68,17 +72,59 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isDbReady, setIsDbReady] = useState(false);
+
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceTranscriptRef = useRef("");
 
+  // ১. Initialize DB and load history on mount
+  useEffect(() => {
+    const initChat = async () => {
+      try {
+        await chatStorage.init();
+        await chatStorage.createConversation(CONVERSATION_ID, "My Orbis Chat");
+        const history =
+          await chatStorage.getMessagesByConversation(CONVERSATION_ID);
+
+        if (history.length > 0) {
+          setMessages(
+            history.map((msg) => ({
+              id: msg.id,
+              role: msg.role,
+              content: msg.content,
+              providerName: msg.providerName,
+            })),
+          );
+        } else {
+          setMessages([INITIAL_MESSAGE]);
+          await chatStorage.saveMessage({
+            id: INITIAL_MESSAGE.id,
+            conversationId: CONVERSATION_ID,
+            role: INITIAL_MESSAGE.role,
+            content: INITIAL_MESSAGE.content,
+            createdAt: Date.now(),
+            providerName: INITIAL_MESSAGE.providerName,
+          });
+        }
+        setIsDbReady(true);
+      } catch (error) {
+        console.error("Local storage initialization failed:", error);
+        setMessages([INITIAL_MESSAGE]);
+        setIsDbReady(true);
+      }
+    };
+
+    initChat();
+  }, []);
+
   const sendMessage = async (messageOverride?: string) => {
     const message = (messageOverride ?? inputText).trim();
+    if (!message || isSending || !isDbReady) return;
 
-    if (!message || isSending) return;
-
+    const userMsgId = Date.now();
     const userMessage: ChatMessage = {
-      id: Date.now(),
+      id: userMsgId,
       role: "user",
       content: message,
     };
@@ -87,6 +133,19 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     setMessages(nextMessages);
     setInputText("");
     setIsSending(true);
+
+    // ২. Save User Message to Local Storage
+    try {
+      await chatStorage.saveMessage({
+        id: userMsgId,
+        conversationId: CONVERSATION_ID,
+        role: "user",
+        content: message,
+        createdAt: Date.now(),
+      });
+    } catch (e) {
+      console.error("Failed to save user message locally", e);
+    }
 
     try {
       const response = await fetch("/api/chat", {
@@ -111,32 +170,60 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         throw new Error("AI কোনো response ফেরত দেয়নি।");
       }
 
-      setMessages((current) => [
-        ...current,
-        {
-          id: Date.now() + 1,
+      const providerName = data.provider?.name || "ORBIS";
+      const astMsgId = Date.now() + 1;
+      const astMessage: ChatMessage = {
+        id: astMsgId,
+        role: "assistant",
+        content: assistantContent,
+        providerName: providerName,
+      };
+
+      setMessages((current) => [...current, astMessage]);
+
+      // ৩. Save Assistant Message to Local Storage
+      try {
+        await chatStorage.saveMessage({
+          id: astMsgId,
+          conversationId: CONVERSATION_ID,
           role: "assistant",
           content: assistantContent,
-          providerName: data.provider?.name || "ORBIS",
-        },
-      ]);
+          createdAt: Date.now(),
+          providerName: providerName,
+        });
+      } catch (e) {
+        console.error("Failed to save assistant message locally", e);
+      }
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
 
-      setMessages((current) => [
-        ...current,
-        {
-          id: Date.now() + 1,
+      const errorMsgId = Date.now() + 1;
+      const errorMsg: ChatMessage = {
+        id: errorMsgId,
+        role: "assistant",
+        content: `দুঃখিত, ORBIS AI-এর সঙ্গে সংযোগ করা যাচ্ছে না।\n\n${errorMessage}`,
+        providerName: "System",
+      };
+
+      setMessages((current) => [...current, errorMsg]);
+
+      try {
+        await chatStorage.saveMessage({
+          id: errorMsgId,
+          conversationId: CONVERSATION_ID,
           role: "assistant",
-          content: `দুঃখিত, ORBIS AI-এর সঙ্গে সংযোগ করা যাচ্ছে না।\n\n${errorMessage}`,
-        },
-      ]);
+          content: errorMsg.content,
+          createdAt: Date.now(),
+          providerName: "System",
+        });
+      } catch (e) {}
     } finally {
       setIsSending(false);
     }
   };
 
+  // ৪. Voice Input (অপরিবর্তিত রাখা হয়েছে)
   const toggleVoiceInput = () => {
     if (isListening && recognitionRef.current) {
       recognitionRef.current.stop();
@@ -155,6 +242,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           role: "assistant",
           content:
             "এই browser-এ Voice Input support নেই। Chrome/Edge-এর supported browser ব্যবহার করুন।",
+          providerName: "System",
         },
       ]);
       return;
@@ -196,6 +284,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           role: "assistant",
           content:
             "Voice Input চালু করা যায়নি। Microphone permission এবং browser settings পরীক্ষা করুন।",
+          providerName: "System",
         },
       ]);
     };
@@ -285,13 +374,13 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                 }
               }}
               placeholder="ORBIS-কে নির্দেশ দিন..."
-              disabled={isSending}
+              disabled={isSending || !isDbReady}
               className="max-h-32 min-h-[56px] w-full resize-none rounded-2xl border border-gray-300/50 bg-white/70 py-4 pl-6 pr-14 text-gray-800 shadow-inner outline-none backdrop-blur-md transition-all focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-white/10 dark:bg-black/50 dark:text-white dark:placeholder-gray-400"
             />
             <button
               type="button"
               onClick={toggleVoiceInput}
-              disabled={isSending}
+              disabled={isSending || !isDbReady}
               aria-label={isListening ? "Stop voice input" : "Voice input"}
               className={`absolute bottom-3 right-3 rounded-full p-2 transition-colors ${isListening ? "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400" : "text-gray-400 hover:bg-gray-100 hover:text-emerald-500 dark:hover:bg-gray-800 dark:hover:text-emerald-400"}`}
             >
@@ -305,7 +394,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           <button
             type="button"
             onClick={() => void sendMessage()}
-            disabled={!inputText.trim() || isSending}
+            disabled={!inputText.trim() || isSending || !isDbReady}
             aria-label="Send message"
             className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/30 transition-all hover:scale-105 hover:from-emerald-400 hover:to-emerald-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
           >
