@@ -1,5 +1,13 @@
 import React, { useRef, useState, useEffect } from "react";
-import { ArrowLeft, Mic, Send, Bot, Sparkles, Square } from "lucide-react";
+import {
+  ArrowLeft,
+  Mic,
+  Send,
+  Bot,
+  Sparkles,
+  Square,
+  Trash2,
+} from "lucide-react";
 import { chatStorage } from "../storage/ChatStorageManager";
 
 interface FullscreenChatViewProps {
@@ -77,21 +85,32 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceTranscriptRef = useRef("");
+  const initialized = useRef(false);
 
-  // ১. Initialize DB and load history on mount
   useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+
     const initChat = async () => {
       try {
         await chatStorage.init();
-        await chatStorage.createConversation(CONVERSATION_ID, "My Orbis Chat");
+        try {
+          await chatStorage.createConversation(
+            CONVERSATION_ID,
+            "My Orbis Chat",
+          );
+        } catch (e) {
+          // Ignore
+        }
+
         const history =
           await chatStorage.getMessagesByConversation(CONVERSATION_ID);
 
-        if (history.length > 0) {
+        if (history && history.length > 0) {
           setMessages(
             history.map((msg) => ({
               id: msg.id,
-              role: msg.role,
+              role: msg.role as ChatRole,
               content: msg.content,
               providerName: msg.providerName,
             })),
@@ -109,7 +128,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         }
         setIsDbReady(true);
       } catch (error) {
-        console.error("Local storage initialization failed:", error);
+        console.error("Local storage DB load failed:", error);
         setMessages([INITIAL_MESSAGE]);
         setIsDbReady(true);
       }
@@ -118,9 +137,46 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     initChat();
   }, []);
 
+  const handleClearHistory = () => {
+    if (
+      window.confirm(
+        "সতর্কতা: আপনি কি আপনার ডিভাইসে সেভ থাকা সম্পূর্ণ চ্যাট মুছে ফেলতে চান?",
+      )
+    ) {
+      try {
+        indexedDB.deleteDatabase("OrbisChatDB");
+        window.location.reload();
+      } catch (e) {
+        console.error("Failed to clear DB", e);
+      }
+    }
+  };
+
   const sendMessage = async (messageOverride?: string) => {
     const message = (messageOverride ?? inputText).trim();
     if (!message || isSending || !isDbReady) return;
+
+    // স্মার্ট লজিক আপডেট: এক কথায় সব ডিলিট বন্ধ করা হলো
+    if (
+      message.includes("ডিলিট") ||
+      message.toLowerCase().includes("clear") ||
+      message.toLowerCase().includes("delete")
+    ) {
+      const warningMsg: ChatMessage = {
+        id: Date.now(),
+        role: "assistant",
+        content:
+          "আমি আপনার নির্দেশ বুঝতে পেরেছি। তবে ভুলবশত সব চ্যাট একসাথে মুছে যাওয়া এড়াতে আমি সরাসরি ডিলিট করছি না। নির্দিষ্ট তারিখ অনুযায়ী (Date-wise) বা অপ্রয়োজনীয় চ্যাট বেছে মোছার ফিচারটি ডেভেলপাররা যুক্ত করছেন। সম্পূর্ণ হিস্ট্রি মুছতে চাইলে উপরের লাল 'Trash' আইকনটি ব্যবহার করতে পারেন।",
+        providerName: "System",
+      };
+      setMessages((current) => [
+        ...current,
+        { id: Date.now() - 1, role: "user", content: message },
+        warningMsg,
+      ]);
+      setInputText("");
+      return;
+    }
 
     const userMsgId = Date.now();
     const userMessage: ChatMessage = {
@@ -134,7 +190,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     setInputText("");
     setIsSending(true);
 
-    // ২. Save User Message to Local Storage
     try {
       await chatStorage.saveMessage({
         id: userMsgId,
@@ -144,7 +199,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         createdAt: Date.now(),
       });
     } catch (e) {
-      console.error("Failed to save user message locally", e);
+      console.error("Failed to save user msg", e);
     }
 
     try {
@@ -152,7 +207,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: nextMessages.map(({ role, content }): ChatApiMessage => ({
+          messages: nextMessages.map(({ role, content }) => ({
             role,
             content,
           })),
@@ -162,13 +217,11 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       const data = (await response.json()) as ChatApiResponse;
 
       if (!response.ok) {
-        throw new Error(data.error || `API request failed: ${response.status}`);
+        throw new Error(data.error || `API error: ${response.status}`);
       }
 
       const assistantContent = data.message?.content?.trim();
-      if (!assistantContent) {
-        throw new Error("AI কোনো response ফেরত দেয়নি।");
-      }
+      if (!assistantContent) throw new Error("AI কোনো response দেয়নি।");
 
       const providerName = data.provider?.name || "ORBIS";
       const astMsgId = Date.now() + 1;
@@ -181,7 +234,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
 
       setMessages((current) => [...current, astMessage]);
 
-      // ৩. Save Assistant Message to Local Storage
       try {
         await chatStorage.saveMessage({
           id: astMsgId,
@@ -192,44 +244,29 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           providerName: providerName,
         });
       } catch (e) {
-        console.error("Failed to save assistant message locally", e);
+        console.error("Failed to save assistant msg", e);
       }
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
-
       const errorMsgId = Date.now() + 1;
       const errorMsg: ChatMessage = {
         id: errorMsgId,
         role: "assistant",
-        content: `দুঃখিত, ORBIS AI-এর সঙ্গে সংযোগ করা যাচ্ছে না।\n\n${errorMessage}`,
+        content: `দুঃখিত, সংযোগ করা যাচ্ছে না।\n\n${errorMessage}`,
         providerName: "System",
       };
-
       setMessages((current) => [...current, errorMsg]);
-
-      try {
-        await chatStorage.saveMessage({
-          id: errorMsgId,
-          conversationId: CONVERSATION_ID,
-          role: "assistant",
-          content: errorMsg.content,
-          createdAt: Date.now(),
-          providerName: "System",
-        });
-      } catch (e) {}
     } finally {
       setIsSending(false);
     }
   };
 
-  // ৪. Voice Input (অপরিবর্তিত রাখা হয়েছে)
   const toggleVoiceInput = () => {
     if (isListening && recognitionRef.current) {
       recognitionRef.current.stop();
       return;
     }
-
     const speechWindow = window as Window & SpeechRecognitionWindow;
     const SpeechRecognition =
       speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
@@ -240,8 +277,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         {
           id: Date.now(),
           role: "assistant",
-          content:
-            "এই browser-এ Voice Input support নেই। Chrome/Edge-এর supported browser ব্যবহার করুন।",
+          content: "Voice Input support নেই।",
           providerName: "System",
         },
       ]);
@@ -268,10 +304,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       setIsListening(false);
       recognitionRef.current = null;
       voiceTranscriptRef.current = "";
-
-      if (transcript) {
-        void sendMessage(transcript);
-      }
+      if (transcript) void sendMessage(transcript);
     };
 
     recognition.onerror = () => {
@@ -282,8 +315,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         {
           id: Date.now(),
           role: "assistant",
-          content:
-            "Voice Input চালু করা যায়নি। Microphone permission এবং browser settings পরীক্ষা করুন।",
+          content: "Voice Input চালু করা যায়নি।",
           providerName: "System",
         },
       ]);
@@ -318,6 +350,15 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
             </h2>
           </div>
         </div>
+
+        {/* ডিলিট বাটন (শুধুমাত্র ম্যানুয়াল ডিলিটের জন্য) */}
+        <button
+          onClick={handleClearHistory}
+          title="চ্যাট হিস্ট্রি মুছুন"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100 hover:text-red-600 dark:bg-red-950/50 dark:hover:bg-red-900/80"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </header>
 
       <div className="flex-1 space-y-6 overflow-y-auto p-4 md:p-8">
@@ -347,7 +388,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
             </div>
           </div>
         ))}
-
         {isSending && (
           <div className="mx-auto flex w-full max-w-4xl gap-4">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/40">
