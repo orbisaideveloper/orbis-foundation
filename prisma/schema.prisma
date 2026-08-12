@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model FoundationAdminAuditLog {
@@ -34,10 +35,10 @@ model FoundationSystemLog {
 
 model FoundationSourceCodeHistory {
   id          String   @id @default(uuid())
-  filePath    String // ফাইলের সম্পূর্ণ পাথ (যেমন: src/admin/SystemLogManager.tsx)
-  content     String // ফাইলের ভেতরের সম্পূর্ণ কোড
-  versionHash String? // ভার্সন ট্র্যাকিংয়ের জন্য (ঐচ্ছিক)
-  updatedAt   DateTime @default(now()) // আপডেট হওয়ার সময়
+  filePath    String
+  content     String
+  versionHash String?
+  updatedAt   DateTime @default(now())
 }
 
 // ==========================================
@@ -45,22 +46,22 @@ model FoundationSourceCodeHistory {
 // ==========================================
 
 // ১. Brain Knowledge (কোম্পানির স্থায়ী তথ্য, নিয়ম, প্রোডাক্ট ইত্যাদি)
-model BrainKnowledge {
+model FoundationBrainKnowledge {
   id        String   @id @default(uuid())
-  category  String   // যেমন: "COMPANY_INFO", "CORE_RULES", "PRODUCT"
-  content   String   // আসল তথ্য (যেমন: "আমাদের কোম্পানির নাম ORBIS Foundation...")
-  tags      String?  // খোঁজার সুবিধার জন্য কি-ওয়ার্ড (যেমন: "name, about, foundation")
+  category  String   
+  content   String   
+  tags      String?  
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 // ২. User Memory (ইউজারদের সম্পর্কে যা যা শিখবে বা মনে রাখবে)
-model UserMemory {
+model FoundationUserMemory {
   id        String   @id @default(uuid())
-  sessionId String   // ইউজারের ডিভাইস বা লগইন আইডি চেনার জন্য
-  factKey   String   // যেমন: "user_name", "prefer_language"
-  factValue String   // যেমন: "Rahul", "Bengali"
+  sessionId String   
+  factKey   String   
+  factValue String   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
