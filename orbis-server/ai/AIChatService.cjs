@@ -31,22 +31,21 @@ class AIChatService {
       formattedMessages[formattedMessages.length - 1].content;
     const lowerCaseMessage = lastUserMessage.toLowerCase();
 
-    // ⚠️ ADMIN DIAGNOSTIC TRACKER
     let currentStep = "Initializing request";
 
     try {
-      // ১. ORBIS Brain (Local Database Check) - ১০০% বুলেতপ্রুফ পদ্ধতি!
+      // ১. ORBIS Brain - Ultimate Bypass!
+      // কোনো আর্গুমেন্ট পাস করছি না, তাই Prisma-র এরর দেওয়ার সুযোগ নেই।
       currentStep = "Fetching ORBIS Brain memory";
-      const allKnowledge = await prisma.foundationBrainKnowledge.findMany({
-        where: { isActive: true },
-      });
+      const allKnowledge = await prisma.foundationBrainKnowledge.findMany();
 
       currentStep = "Scanning memory for matches";
-      // জাভাস্ক্রিপ্ট দিয়ে ফিল্টার করছি, যাতে Prisma কোনো এরর দিতে না পারে
+      // পুরো ফিল্টারিং এবং চেকিং জাভাস্ক্রিপ্টে হচ্ছে
       const brainKnowledge = allKnowledge.find(
         (k) =>
-          k.content.toLowerCase().includes(lowerCaseMessage) ||
-          (k.tags && k.tags.toLowerCase().includes(lowerCaseMessage)),
+          k.isActive === true &&
+          ((k.content && k.content.toLowerCase().includes(lowerCaseMessage)) ||
+            (k.tags && k.tags.toLowerCase().includes(lowerCaseMessage))),
       );
 
       if (brainKnowledge) {
@@ -88,7 +87,7 @@ class AIChatService {
         }
       }
 
-      // ৩. External AI Provider (Ollama/Gemini)
+      // ৩. External AI Provider
       currentStep = "Preparing messages for External AI Provider";
       const messagesForAI = [...formattedMessages];
       if (usedWebSearch) {
