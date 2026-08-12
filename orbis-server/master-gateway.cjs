@@ -8,7 +8,6 @@ const SERVER_PORT = 3001;
 
 console.log("🚀 Initializing ORBIS Master Gateway...");
 
-// Server-এ লগ ফরওয়ার্ড করার ফাংশন
 function forwardLogToServer(level, data) {
   const msg = data.toString().trim();
   if (!msg) return;
@@ -19,18 +18,17 @@ function forwardLogToServer(level, data) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
-  req.on("error", () => {}); // Server রেডি না থাকলে ক্র্যাশ করবে না
+  req.on("error", () => {});
   req.write(JSON.stringify({ level, source: "BRIDGE", message: msg }));
   req.end();
 }
 
-// ১. Bridge.cjs রান করানো (Output Capture মোডে)
+// ১. Bridge.cjs রান করানো
 const bridgeProcess = spawn("node", [path.join(__dirname, "bridge.cjs")], {
   env: { ...process.env, PORT: BRIDGE_PORT },
-  stdio: ["inherit", "pipe", "pipe"], // <-- ম্যাজিকটা এখানে!
+  stdio: ["inherit", "pipe", "pipe"],
 });
 
-// Bridge-এর আউটপুট ধরে Server-এ পাঠানো
 bridgeProcess.stdout.on("data", (data) => {
   process.stdout.write(data);
   forwardLogToServer("INFO", data);
@@ -39,14 +37,20 @@ bridgeProcess.stderr.on("data", (data) => {
   process.stderr.write(data);
   forwardLogToServer("ERROR", data);
 });
+bridgeProcess.on("exit", (code) => {
+  console.error(`\n⚠️ [CRITICAL] Bridge process died with code ${code}\n`);
+});
 
 // ২. Server.cjs রান করানো
 const serverProcess = spawn("node", [path.join(__dirname, "server.cjs")], {
   env: { ...process.env, PORT: SERVER_PORT },
   stdio: "inherit",
 });
+serverProcess.on("exit", (code) => {
+  console.error(`\n⚠️ [CRITICAL] Server process died with code ${code}\n`);
+});
 
-// ৩. Master "Door" (Gateway)
+// ৩. Master Gateway
 const gateway = http.createServer((req, res) => {
   const isTelemetry =
     req.url.startsWith("/api/diagnostics") ||
@@ -73,9 +77,10 @@ const gateway = http.createServer((req, res) => {
   } else {
     req.pipe(proxyReq, { end: true });
   }
+
   proxyReq.on("error", (err) => {
     res.writeHead(502);
-    res.end("ORBIS Gateway Error: " + err.message);
+    res.end("ORBIS Gateway Error (Target Service is Down): " + err.message);
   });
 });
 

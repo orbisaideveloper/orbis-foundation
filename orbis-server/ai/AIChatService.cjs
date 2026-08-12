@@ -1,6 +1,13 @@
 const { PrismaClient } = require("@prisma/client");
+const { Pool } = require("pg");
+const { PrismaPg } = require("@prisma/adapter-pg");
 const providerManager = require("./AIProviderManager.cjs");
-const prisma = new PrismaClient();
+
+// রেন্ডার এবং সুপাবেসের জন্য সঠিক Driver Adapter কনফিগারেশন
+const connectionString = process.env.DATABASE_URL;
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg({ pool });
+const prisma = new PrismaClient({ adapter });
 
 class AIChatService {
   async processChatRequest(rawMessages, sessionId = "default-user") {
@@ -41,7 +48,7 @@ class AIChatService {
         };
       }
 
-      // ৩. যদি না জানে, তবে প্রোভাইডারের কাছে পাঠানো (Ollama/Gemini)
+      // ৩. যদি না জানে, তবে প্রোভাইডারের কাছে পাঠানো
       const provider = providerManager.getActiveProvider();
       const providerResponse = await provider.generateChat(formattedMessages);
 
