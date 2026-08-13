@@ -15,6 +15,7 @@ import {
   AttachmentPreview,
   PendingAttachment,
 } from "./attachments/AttachmentPreview";
+import { FileProcessorManager } from "./attachments/FileProcessorManager";
 
 interface FullscreenChatViewProps {
   onClose: () => void;
@@ -175,6 +176,10 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
     setInputText("");
+
+    // 🚀 Keep reference of attachments to process them securely
+    const currentAttachments = [...attachments];
+
     attachments.forEach((att) => {
       if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
     });
@@ -192,6 +197,16 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     } catch (e) {}
 
     try {
+      // 🚀 FileProcessorManager: Convert files to Base64/Text
+      let processedFiles: any[] = [];
+      if (currentAttachments.length > 0) {
+        processedFiles = await Promise.all(
+          currentAttachments.map((att) =>
+            FileProcessorManager.processFile(att.file),
+          ),
+        );
+      }
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -200,6 +215,8 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
             role,
             content,
           })),
+          // 🚀 Add processed attachments to the payload
+          attachments: processedFiles.length > 0 ? processedFiles : undefined,
         }),
       });
       const data = await response.json();
@@ -363,7 +380,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           </div>
         ))}
 
-        {/* 🚀 The NEW Unique "Quantum Pulse" Animation (No Text) */}
         {isSending && (
           <div className="mx-auto flex w-full max-w-4xl gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-50 to-orange-50 border border-emerald-100/50 mt-2 dark:from-emerald-900/20 dark:to-orange-900/20 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
@@ -398,7 +414,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               </div>
             )}
             <div className="flex items-end gap-2 w-full">
-              {/* 🚀 Changed accept attribute to any file to force generic File Picker on Android */}
               <input
                 type="file"
                 ref={fileInputRef}
