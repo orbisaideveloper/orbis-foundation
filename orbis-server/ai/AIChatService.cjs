@@ -5,9 +5,20 @@ const providerManager = require("./AIProviderManager.cjs");
 const tavilySearch = require("./tools/TavilySearch.cjs");
 
 const connectionString = process.env.DATABASE_URL;
-const pool = new Pool({ connectionString });
-const adapter = new PrismaPg({ pool });
-const prisma = new PrismaClient({ adapter });
+let prisma;
+
+// Prisma Initialization (Fail-Safe)
+try {
+  if (connectionString) {
+    const pool = new Pool({ connectionString });
+    const adapter = new PrismaPg({ pool });
+    prisma = new PrismaClient({ adapter });
+  } else {
+    prisma = new PrismaClient();
+  }
+} catch (initError) {
+  console.warn("[PRISMA_INIT] Failed to initialize Prisma:", initError.message);
+}
 
 class AIChatService {
   async processChatRequest(rawMessages, sessionId = "default-user") {
@@ -29,25 +40,36 @@ class AIChatService {
       formattedMessages[formattedMessages.length - 1].content;
     const lowerCaseMessage = lastUserMessage.toLowerCase();
 
-    try {
-      // ১. ORBIS Brain (Local Database Check)
-      const brainKnowledge = await prisma.foundationBrainKnowledge.findFirst({
-        where: {
-          isActive: true,
-          OR: [
-            { content: { contains: lowerCaseMessage } },
-            { tags: { contains: lowerCaseMessage } },
-          ],
-        },
-      });
-
-      if (brainKnowledge) {
-        return {
-          message: { role: "assistant", content: brainKnowledge.content },
-          provider: { name: "ORBIS Brain", type: "INTERNAL_MEMORY" },
-        };
+    // ১. ORBIS Brain (Local Database Check) - ISOLATED & FAIL-SAFE
+    let brainKnowledge = null;
+    if (prisma) {
+      try {
+        brainKnowledge = await prisma.foundationBrainKnowledge.findFirst({
+          where: {
+            isActive: true,
+            OR: [
+              { content: { contains: lowerCaseMessage } },
+              { tags: { contains: lowerCaseMessage } },
+            ],
+          },
+        });
+      } catch (dbError) {
+        console.warn(
+          "[AI_BRAIN_MEMORY] Optional lookup skipped:",
+          dbError.message,
+        );
       }
+    }
 
+    if (brainKnowledge) {
+      return {
+        message: { role: "assistant", content: brainKnowledge.content },
+        provider: { name: "ORBIS Brain", type: "INTERNAL_MEMORY" },
+      };
+    }
+
+    // Main Chat Orchestration
+    try {
       // ২. ORBIS Brain Web Search (Tavily)
       const searchKeywords = [
         "latest",
@@ -81,7 +103,6 @@ class AIChatService {
       }
 
       // ৩. External Independent AI (Ollama/Gemini)
-      // ⚠️ ফিক্স: এখানে getActiveProvider() হবে
       const provider = providerManager.getActiveProvider();
       const providerResponse = await provider.generateChat(formattedMessages);
 
