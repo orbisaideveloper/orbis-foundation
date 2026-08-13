@@ -405,7 +405,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                 onChange={handleFileChange}
                 className="hidden"
                 multiple
-                accept="*/*"
+                accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
               />
               <button
                 type="button"
