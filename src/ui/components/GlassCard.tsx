@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Maximize2, Minimize2, Copy, Check } from "lucide-react";
 import { JsonViewer } from "./JsonViewer";
@@ -19,6 +19,17 @@ export const GlassCard: React.FC<GlassCardProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
 
+  // 🟢 FIX: Clean up the timeout to prevent memory leak and Vitest unhandled errors
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    if (isCopied) {
+      timeoutId = setTimeout(() => setIsCopied(false), 2000);
+    }
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [isCopied]);
+
   const handleCopy = async () => {
     if (!rawData) return;
     try {
@@ -28,13 +39,11 @@ export const GlassCard: React.FC<GlassCardProps> = ({
           : JSON.stringify(rawData, null, 2);
       await navigator.clipboard.writeText(dataToCopy);
       setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy data: ", err);
     }
   };
 
-  // Safe ID generation for ARIA binding
   const cardId = title.replace(/\s+/g, "-").toLowerCase();
 
   return (
@@ -95,11 +104,9 @@ export const GlassCard: React.FC<GlassCardProps> = ({
           )}
         </div>
       </motion.div>
-
       <motion.div layout className="text-white">
         {children}
       </motion.div>
-
       <AnimatePresence>
         {isExpanded && rawData && (
           <motion.div
