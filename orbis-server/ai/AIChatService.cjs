@@ -42,23 +42,38 @@ class AIChatService {
 
     try {
       // ---------------------------------------------------------
-      // STEP 1: ORBIS FIRST (Local Memory Check)
+      // STEP 1: ORBIS MEMORY RETRIEVAL (পড়া বা মনে করা)
       // ---------------------------------------------------------
       let brainKnowledge = null;
+      let memoryContext = "";
+
       if (prisma) {
         try {
-          brainKnowledge = await prisma.foundationBrainKnowledge.findFirst({
+          // ডেটাবেস থেকে ইউজারের আগের কথা বা মেমোরি খুঁজছে
+          const memories = await prisma.foundationBrainKnowledge.findMany({
             where: {
               isActive: true,
               OR: [
                 { content: { contains: lowerCaseMessage } },
-                { tags: { contains: lowerCaseMessage } },
+                { tags: { contains: "auto_learned" } },
               ],
             },
+            take: 3, // সবচেয়ে প্রাসঙ্গিক ৩টি মেমোরি নেবে
           });
+
+          if (memories && memories.length > 0) {
+            memoryContext = memories.map((m) => m.content).join(" | ");
+            // যদি হুবহু উত্তর মিলে যায়, তবে সরাসরি অরবিস ব্রেইন থেকে উত্তর যাবে
+            const exactMatch = memories.find(
+              (m) => m.content === lowerCaseMessage,
+            );
+            if (exactMatch) {
+              brainKnowledge = exactMatch;
+            }
+          }
         } catch (dbError) {
           console.warn(
-            "[AI_BRAIN_MEMORY] Optional lookup skipped:",
+            "[AI_BRAIN_MEMORY] Optional read skipped:",
             dbError.message,
           );
         }
@@ -72,7 +87,7 @@ class AIChatService {
       }
 
       // ---------------------------------------------------------
-      // STEP 2: FAST HEURISTIC ROUTING (ORBIS + TAVILY DIRECT)
+      // STEP 2: STRICT HEURISTIC ROUTING (বাগ ফিক্স: "এখনো" vs "এখন")
       // ---------------------------------------------------------
       const temporalWords = [
         "latest",
@@ -90,9 +105,13 @@ class AIChatService {
         "আবহাওয়া",
         "দাম",
       ];
-      const needsWebSearch = temporalWords.some((kw) =>
-        lowerCaseMessage.includes(kw),
+
+      // Strict Word Boundary Regex - শুধুমাত্র স্বাধীন শব্দ হলে কাজ করবে
+      const regexPattern = new RegExp(
+        `(?:^|\\s|[.,!?])(${temporalWords.join("|")})(?=\\s|[.,!?]|$)`,
+        "i",
       );
+      const needsWebSearch = regexPattern.test(lowerCaseMessage);
 
       let finalResponseContent = "";
       let providerMetadata = {};
@@ -100,37 +119,34 @@ class AIChatService {
       if (needsWebSearch) {
         const searchResult = await tavilySearch.search(lastUserMessage);
         if (searchResult) {
-          // ORBIS নিজেই Tavily এর ডেটা প্রসেস করে দিচ্ছে (No Ollama)
           finalResponseContent = `[ORBIS Web Analysis]:\n${searchResult}`;
           providerMetadata = { name: "ORBIS Brain (Web)", type: "WEB_SEARCH" };
         }
       }
 
       // ---------------------------------------------------------
-      // STEP 3: INDEPENDENT OLLAMA (No Web, Pure AI)
+      // STEP 3: INDEPENDENT AI (মেমোরি সহ)
       // ---------------------------------------------------------
       if (!finalResponseContent) {
         const activeProvider = providerManager.getActiveProvider();
-        const providerResponse =
-          await activeProvider.generateChat(formattedMessages);
 
+        // যদি ব্রেইনের কাছে ইউজারের কোনো মেমোরি থাকে, তবে এআই-কে সেটা মনে করিয়ে দেওয়া হবে
+        const aiMessages = [...formattedMessages];
+        if (memoryContext) {
+          aiMessages[aiMessages.length - 1].content +=
+            `\n\n[System Note: Recall these past memories about the user if relevant: ${memoryContext}]`;
+        }
+
+        const providerResponse = await activeProvider.generateChat(aiMessages);
         finalResponseContent = providerResponse.content;
         providerMetadata = providerResponse.provider;
       }
 
       // ---------------------------------------------------------
-      // STEP 4: ORBIS BACKGROUND OBSERVER & ANALYZER (No Await)
+      // STEP 4: ORBIS BACKGROUND LEARNING ENGINE (ডেটাবেসে সেভ করা)
       // ---------------------------------------------------------
-      // এটি ব্যাকগ্রাউন্ডে রান করবে যাতে ইউজারের রেসপন্স মিলি-সেকেন্ডেও স্লো না হয়
-      this._runOrbisObserver(
-        lastUserMessage,
-        finalResponseContent,
-        providerMetadata.name,
-      ).catch((err) =>
-        console.warn(
-          "[ORBIS_OBSERVER] Background analysis failed:",
-          err.message,
-        ),
+      this._runOrbisLearningEngine(lastUserMessage).catch((err) =>
+        console.warn("[ORBIS_LEARNING] Background save failed:", err.message),
       );
 
       return {
@@ -147,35 +163,59 @@ class AIChatService {
   }
 
   // ---------------------------------------------------------
-  // THE OBSERVER: ORBIS-এর নিজস্ব চিন্তাধারা এবং প্যাটার্ন অ্যানালিসিস ইঞ্জিন
+  // THE COGNITIVE LEARNING ENGINE (ডেটাবেসে অটোমেটিক রাইট করবে)
   // ---------------------------------------------------------
-  async _runOrbisObserver(userMessage, responseContent, providerName) {
-    console.log(
-      `[ORBIS_OBSERVER] Observing interaction with provider: ${providerName}`,
-    );
+  async _runOrbisLearningEngine(userMessage) {
+    // ছোট শব্দ বা সাধারণ "হ্যালো" সেভ করবে না, শুধুমাত্র বড় তথ্য সেভ করবে
+    if (prisma && userMessage.length > 10) {
+      console.log(
+        `[ORBIS_LEARNING] Analyzing user input for memory storage...`,
+      );
 
-    // ORBIS ব্যাকগ্রাউন্ডে চেক করছে যে উত্তরটি ঠিকঠাক জেনারেট হলো কি না
-    const wordCount = responseContent.split(" ").length;
-    let analysisTag = "neutral_pattern";
-
-    if (providerName.includes("Web") && wordCount > 10) {
-      analysisTag = "live_data_extracted";
-    } else if (
-      providerName.includes("Ollama") ||
-      providerName.includes("Gemini")
-    ) {
-      analysisTag = "independent_ai_generation";
-    }
-
-    if (prisma) {
       try {
-        // ভবিষ্যতে এই জায়গাটিতে আমরা ইউজারের কনটেক্সট এবং মেমোরি ডেটাবেসে পুশ করব
-        // আপাতত এটি টার্মিনালে নিজের অ্যানালিসিস লগ করছে
-        console.log(
-          `[ORBIS_OBSERVER] Analysis Complete: Pattern=[${analysisTag}], Query Length=[${userMessage.length}]`,
-        );
+        const activeProvider = providerManager.getActiveProvider();
+
+        // এআই-কে দিয়ে ইউজারের কথা থেকে ফ্যাক্ট (Fact) বের করে নিচ্ছে
+        const extractionPrompt = [
+          {
+            role: "system",
+            content:
+              "You are a memory extractor. If the user's message contains personal facts, names, locations, or clear preferences, extract them into a short, factual sentence. If not, reply ONLY with the word 'NONE'.",
+          },
+          { role: "user", content: userMessage },
+        ];
+
+        const extraction = await activeProvider.generateChat(extractionPrompt);
+        const learnedFact = extraction.content
+          ? extraction.content.trim()
+          : "NONE";
+
+        // যদি কোনো তথ্য পায় এবং সেটা NONE না হয়, তবে ডেটাবেসে সেভ করবে
+        if (
+          learnedFact !== "NONE" &&
+          !learnedFact.includes("NONE") &&
+          learnedFact.length > 5
+        ) {
+          // ডুপ্লিকেট সেভ এড়ানোর জন্য আগে চেক করছে
+          const existing = await prisma.foundationBrainKnowledge.findFirst({
+            where: { content: learnedFact },
+          });
+
+          if (!existing) {
+            await prisma.foundationBrainKnowledge.create({
+              data: {
+                content: learnedFact,
+                tags: "auto_learned, user_memory",
+                isActive: true,
+              },
+            });
+            console.log(
+              `[ORBIS_LEARNING] SUCCESS! New memory saved to Database: ${learnedFact}`,
+            );
+          }
+        }
       } catch (e) {
-        // সাইলেন্ট ফেল-সেফ
+        console.warn("[ORBIS_LEARNING] Database write failed:", e.message);
       }
     }
   }
