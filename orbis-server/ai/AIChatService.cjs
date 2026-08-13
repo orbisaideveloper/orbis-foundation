@@ -48,7 +48,7 @@ class AIChatService {
         };
       }
 
-      // ২. ORBIS Brain Web Search (Tavily) - Ollama-কে ডাকবে না!
+      // ২. ORBIS Brain Web Search (Tavily)
       const searchKeywords = [
         "latest",
         "update",
@@ -72,7 +72,6 @@ class AIChatService {
 
       if (needsSearch) {
         const searchResult = await tavilySearch.search(lastUserMessage);
-        // Tavily উত্তর দিতে পারলে ORBIS নিজেই সেটা ফ্রন্টএন্ডে পাঠিয়ে দেবে
         if (searchResult) {
           return {
             message: { role: "assistant", content: searchResult },
@@ -81,8 +80,9 @@ class AIChatService {
         }
       }
 
-      // ৩. External Independent AI (Ollama/Gemini) - যখন ORBIS পারল না
-      const provider = providerManager.getDefaultProvider();
+      // ৩. External Independent AI (Ollama/Gemini)
+      // ⚠️ ফিক্স: এখানে getActiveProvider() হবে
+      const provider = providerManager.getActiveProvider();
       const providerResponse = await provider.generateChat(formattedMessages);
 
       return {
