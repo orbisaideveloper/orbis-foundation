@@ -19,7 +19,6 @@ import {
 interface FullscreenChatViewProps {
   onClose: () => void;
 }
-
 type ChatRole = "user" | "assistant";
 
 interface ChatMessage {
@@ -29,55 +28,12 @@ interface ChatMessage {
   providerName?: string;
 }
 
-interface ChatApiMessage {
-  role: ChatRole;
-  content: string;
-}
-
-interface ChatApiResponse {
-  message?: ChatApiMessage;
-  provider?: {
-    name?: string;
-    type?: string;
-    model?: string;
-  };
-  error?: string;
-}
-
-interface SpeechRecognitionResultEventLike {
-  results: {
-    length: number;
-    [index: number]: {
-      [index: number]: {
-        transcript: string;
-      };
-    };
-  };
-}
-
-interface SpeechRecognitionLike {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  start: () => void;
-  stop: () => void;
-  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-}
-
-interface SpeechRecognitionWindow {
-  SpeechRecognition?: new () => SpeechRecognitionLike;
-  webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-}
-
 const INITIAL_MESSAGE: ChatMessage = {
   id: 1,
   role: "assistant",
   content: "নমস্কার দাদা! ORBIS Brain প্রস্তুত। আপনি কী জানতে বা করতে চান?",
   providerName: "ORBIS",
 };
-
 const CONVERSATION_ID = "default-chat-v1";
 
 export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
@@ -88,15 +44,12 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isDbReady, setIsDbReady] = useState(false);
-
-  // 🚀 New State for Attachments
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const recognitionRef = useRef<any>(null);
   const voiceTranscriptRef = useRef("");
   const initialized = useRef(false);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
@@ -112,7 +65,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
-
     const initChat = async () => {
       try {
         await chatStorage.init();
@@ -121,13 +73,9 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
             CONVERSATION_ID,
             "My Orbis Chat",
           );
-        } catch (e) {
-          // Ignore
-        }
-
+        } catch (e) {}
         const history =
           await chatStorage.getMessagesByConversation(CONVERSATION_ID);
-
         if (history && history.length > 0) {
           setMessages(
             history.map((msg) => ({
@@ -140,22 +88,17 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         } else {
           setMessages([INITIAL_MESSAGE]);
           await chatStorage.saveMessage({
-            id: INITIAL_MESSAGE.id,
+            ...INITIAL_MESSAGE,
             conversationId: CONVERSATION_ID,
-            role: INITIAL_MESSAGE.role,
-            content: INITIAL_MESSAGE.content,
             createdAt: Date.now(),
-            providerName: INITIAL_MESSAGE.providerName,
           });
         }
         setIsDbReady(true);
       } catch (error) {
-        console.error("Local storage DB load failed:", error);
         setMessages([INITIAL_MESSAGE]);
         setIsDbReady(true);
       }
     };
-
     initChat();
   }, []);
 
@@ -168,23 +111,18 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       try {
         indexedDB.deleteDatabase("OrbisChatDB");
         window.location.reload();
-      } catch (e) {
-        console.error("Failed to clear DB", e);
-      }
+      } catch (e) {}
     }
   };
 
-  // 🚀 Process Selected Files and show in Preview
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-
     const newAttachments: PendingAttachment[] = Array.from(files).map(
       (file) => {
         const id = Math.random().toString(36).substring(7);
         let type: PendingAttachment["type"] = "other";
         let previewUrl: string | undefined;
-
         if (file.type.startsWith("image/")) {
           type = "image";
           previewUrl = URL.createObjectURL(file);
@@ -201,16 +139,13 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         ) {
           type = "spreadsheet";
         }
-
         return { id, file, type, previewUrl };
       },
     );
-
     setAttachments((prev) => [...prev, ...newAttachments]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // 🚀 Remove specific file from preview
   const handleRemoveAttachment = (id: string) => {
     setAttachments((prev) => {
       const filtered = prev.filter((att) => att.id !== id);
@@ -222,35 +157,11 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
 
   const sendMessage = async (messageOverride?: string) => {
     const message = (messageOverride ?? inputText).trim();
-    // Allow sending if there's either text or attachments
     if ((!message && attachments.length === 0) || isSending || !isDbReady)
       return;
 
-    if (
-      message.includes("ডিলিট") ||
-      message.toLowerCase().includes("clear") ||
-      message.toLowerCase().includes("delete")
-    ) {
-      const warningMsg: ChatMessage = {
-        id: Date.now(),
-        role: "assistant",
-        content:
-          "আমি আপনার নির্দেশ বুঝতে পেরেছি। তবে ভুলবশত সব চ্যাট একসাথে মুছে যাওয়া এড়াতে আমি সরাসরি ডিলিট করছি না। নির্দিষ্ট তারিখ অনুযায়ী (Date-wise) বা অপ্রয়োজনীয় চ্যাট বেছে মোছার ফিচারটি ডেভেলপাররা যুক্ত করছেন। সম্পূর্ণ হিস্ট্রি মুছতে চাইলে উপরের লাল 'Trash' আইকনটি ব্যবহার করতে পারেন।",
-        providerName: "System",
-      };
-      setMessages((current) => [
-        ...current,
-        { id: Date.now() - 1, role: "user", content: message },
-        warningMsg,
-      ]);
-      setInputText("");
-      return;
-    }
-
     const userMsgId = Date.now();
     let finalMessageContent = message;
-
-    // Temporary logic to show that files were "sent" in UI
     if (attachments.length > 0) {
       const fileNames = attachments.map((a) => a.file.name).join(", ");
       finalMessageContent += `\n[অ্যাটাচমেন্ট: ${fileNames}]`;
@@ -261,17 +172,13 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       role: "user",
       content: finalMessageContent.trim(),
     };
-
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
     setInputText("");
-
-    // Clear attachments after sending
     attachments.forEach((att) => {
       if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
     });
     setAttachments([]);
-
     setIsSending(true);
 
     try {
@@ -282,9 +189,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         content: finalMessageContent.trim(),
         createdAt: Date.now(),
       });
-    } catch (e) {
-      console.error("Failed to save user msg", e);
-    }
+    } catch (e) {}
 
     try {
       const response = await fetch("/api/chat", {
@@ -297,18 +202,12 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           })),
         }),
       });
-
-      const data = (await response.json()) as ChatApiResponse;
-
-      if (!response.ok) {
+      const data = await response.json();
+      if (!response.ok)
         throw new Error(data.error || `API error: ${response.status}`);
-      }
-
       const assistantContent = data.message?.content?.trim();
       if (!assistantContent) throw new Error("AI কোনো response দেয়নি।");
-
       const providerName = data.provider?.name || "ORBIS";
-
       const astMsgId = Date.now() + 1;
       const astMessage: ChatMessage = {
         id: astMsgId,
@@ -316,9 +215,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         content: assistantContent,
         providerName: providerName,
       };
-
       setMessages((current) => [...current, astMessage]);
-
       try {
         await chatStorage.saveMessage({
           id: astMsgId,
@@ -328,17 +225,12 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           createdAt: Date.now(),
           providerName: providerName,
         });
-      } catch (e) {
-        console.error("Failed to save assistant msg", e);
-      }
+      } catch (e) {}
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      const errorMsgId = Date.now() + 1;
       const errorMsg: ChatMessage = {
-        id: errorMsgId,
+        id: Date.now() + 1,
         role: "assistant",
-        content: `দুঃখিত, সংযোগ করা যাচ্ছে fix করা যাচ্ছে না।\n\n${errorMessage}`,
+        content: `দুঃখিত, সংযোগ করা যাচ্ছে না।`,
         providerName: "System",
       };
       setMessages((current) => [...current, errorMsg]);
@@ -352,10 +244,9 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       recognitionRef.current.stop();
       return;
     }
-    const speechWindow = window as Window & SpeechRecognitionWindow;
+    const speechWindow = window as any;
     const SpeechRecognition =
       speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
-
     if (!SpeechRecognition) {
       setMessages((current) => [
         ...current,
@@ -368,14 +259,12 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       ]);
       return;
     }
-
     const recognition = new SpeechRecognition();
     recognition.lang = "bn-IN";
     recognition.continuous = false;
     recognition.interimResults = true;
     voiceTranscriptRef.current = "";
-
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: any) => {
       let transcript = "";
       for (let index = 0; index < event.results.length; index += 1) {
         transcript += event.results[index][0].transcript;
@@ -383,7 +272,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       voiceTranscriptRef.current = transcript.trim();
       setInputText(transcript);
     };
-
     recognition.onend = () => {
       const transcript = voiceTranscriptRef.current.trim();
       setIsListening(false);
@@ -391,21 +279,10 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       voiceTranscriptRef.current = "";
       if (transcript) void sendMessage(transcript);
     };
-
     recognition.onerror = () => {
       setIsListening(false);
       recognitionRef.current = null;
-      setMessages((current) => [
-        ...current,
-        {
-          id: Date.now(),
-          role: "assistant",
-          content: "Voice Input চালু করা যায়নি।",
-          providerName: "System",
-        },
-      ]);
     };
-
     recognitionRef.current = recognition;
     setIsListening(true);
     recognition.start();
@@ -441,7 +318,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
             </div>
           </div>
         </div>
-
         <div className="flex items-center gap-1">
           <button
             onClick={handleClearHistory}
@@ -463,9 +339,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`mx-auto flex w-full max-w-4xl gap-3 ${
-              message.role === "user" ? "justify-end" : ""
-            }`}
+            className={`mx-auto flex w-full max-w-4xl gap-3 ${message.role === "user" ? "justify-end" : ""}`}
           >
             {message.role === "assistant" && (
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-100 to-orange-200 shadow-sm border border-orange-200/50 mt-5 dark:from-orange-900/50 dark:to-orange-800/50">
@@ -473,9 +347,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               </div>
             )}
             <div
-              className={`flex max-w-[85%] flex-col gap-1 pt-1 ${
-                message.role === "user" ? "items-end" : ""
-              }`}
+              className={`flex max-w-[85%] flex-col gap-1 pt-1 ${message.role === "user" ? "items-end" : ""}`}
             >
               <span className="text-[12px] font-bold text-gray-500 tracking-wide dark:text-gray-400 px-1">
                 {message.role === "user"
@@ -483,30 +355,30 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                   : message.providerName || "ORBIS Core"}
               </span>
               <div
-                className={`whitespace-pre-wrap px-4 py-3 shadow-sm text-[15px] leading-[1.7] tracking-[0.2px] ${
-                  message.role === "user"
-                    ? "rounded-[20px] rounded-tr-[4px] border border-emerald-200/60 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium dark:border-emerald-800/30 dark:from-emerald-800 dark:to-emerald-900"
-                    : "rounded-[20px] rounded-tl-[4px] border border-gray-200/60 bg-white text-gray-800 font-normal dark:border-gray-700/50 dark:bg-gray-800/90 dark:text-gray-200"
-                }`}
+                className={`whitespace-pre-wrap px-4 py-3 shadow-sm text-[15px] leading-[1.7] tracking-[0.2px] ${message.role === "user" ? "rounded-[20px] rounded-tr-[4px] border border-emerald-200/60 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium dark:border-emerald-800/30 dark:from-emerald-800 dark:to-emerald-900" : "rounded-[20px] rounded-tl-[4px] border border-gray-200/60 bg-white text-gray-800 font-normal dark:border-gray-700/50 dark:bg-gray-800/90 dark:text-gray-200"}`}
               >
                 {message.content}
               </div>
             </div>
           </div>
         ))}
+
+        {/* 🚀 The NEW Unique "Quantum Pulse" Animation (No Text) */}
         {isSending && (
           <div className="mx-auto flex w-full max-w-4xl gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-100 border border-orange-200/50 mt-2 dark:bg-orange-900/40">
-              <Bot className="h-5 w-5 text-orange-600" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-50 to-orange-50 border border-emerald-100/50 mt-2 dark:from-emerald-900/20 dark:to-orange-900/20 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+              <Bot className="h-5 w-5 text-emerald-500 animate-pulse" />
             </div>
-            <div className="mt-2 rounded-[20px] rounded-tl-[4px] bg-white/80 px-5 py-3 shadow-sm border border-gray-200/50 dark:bg-gray-800/80 flex items-center gap-2.5">
-              <span className="text-[14px] font-medium text-gray-500 dark:text-gray-400">
-                ORBIS ভাবছে
-              </span>
-              <div className="flex space-x-1.5 mt-1">
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.3s]"></div>
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.15s]"></div>
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-bounce"></div>
+            <div className="mt-2 rounded-[20px] rounded-tl-[4px] bg-white/90 px-4 py-2.5 shadow-[0_4px_20px_-4px_rgba(16,185,129,0.15)] border border-emerald-100/50 dark:bg-gray-800/90 dark:border-emerald-900/30 flex items-center gap-3.5 w-fit">
+              <div className="relative flex h-6 w-6 items-center justify-center">
+                <span className="absolute inline-flex h-full w-full animate-[ping_1.5s_cubic-bezier(0,0,0.2,1)_infinite] rounded-full bg-emerald-400 opacity-40"></span>
+                <span className="absolute inline-flex h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent border-l-transparent"></span>
+                <Sparkles className="relative h-2.5 w-2.5 text-orange-500 animate-pulse" />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-1.5 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-500 animate-[bounce_1s_infinite_-0.3s]"></span>
+                <span className="h-3.5 w-1.5 rounded-full bg-gradient-to-b from-orange-400 to-amber-500 animate-[bounce_1s_infinite_-0.15s]"></span>
+                <span className="h-2 w-1.5 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-500 animate-[bounce_1s_infinite]"></span>
               </div>
             </div>
           </div>
@@ -514,11 +386,9 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         <div ref={messagesEndRef} className="h-2" />
       </div>
 
-      {/* 🚀 Unified Box Area */}
       <div className="bg-transparent p-4 pb-6 z-10 w-full relative">
         <div className="mx-auto max-w-4xl">
           <div className="flex flex-col rounded-[28px] border border-gray-300/60 bg-white shadow-lg p-1.5 transition-all focus-within:border-emerald-500/50 focus-within:ring-4 focus-within:ring-emerald-500/10 dark:border-gray-700 dark:bg-[#1E293B]">
-            {/* 🚀 Attachment Preview Container */}
             {attachments.length > 0 && (
               <div className="pt-2">
                 <AttachmentPreview
@@ -527,17 +397,16 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                 />
               </div>
             )}
-
             <div className="flex items-end gap-2 w-full">
+              {/* 🚀 Changed accept attribute to any file to force generic File Picker on Android */}
               <input
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 className="hidden"
                 multiple
-                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                accept="*/*"
               />
-
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -545,7 +414,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               >
                 <Plus className="h-6 w-6" />
               </button>
-
               <textarea
                 rows={1}
                 value={inputText}
@@ -560,17 +428,12 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                 disabled={isSending || !isDbReady}
                 className="max-h-32 min-h-[44px] w-full flex-1 resize-none bg-transparent py-3 px-1 text-[15.5px] text-gray-800 outline-none disabled:opacity-60 dark:text-white dark:placeholder-gray-400"
               />
-
               <div className="flex shrink-0 items-center gap-1 pb-0.5 pr-0.5">
                 <button
                   type="button"
                   onClick={toggleVoiceInput}
                   disabled={isSending || !isDbReady}
-                  className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300 ${
-                    isListening
-                      ? "bg-red-100 text-red-600 animate-pulse dark:bg-red-900/40 dark:text-red-400"
-                      : "text-gray-400 hover:bg-gray-100 hover:text-emerald-500 dark:hover:bg-gray-800 dark:hover:text-emerald-400"
-                  }`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300 ${isListening ? "bg-red-100 text-red-600 animate-pulse dark:bg-red-900/40 dark:text-red-400" : "text-gray-400 hover:bg-gray-100 hover:text-emerald-500 dark:hover:bg-gray-800 dark:hover:text-emerald-400"}`}
                 >
                   {isListening ? (
                     <Square className="h-5 w-5" />
@@ -578,7 +441,6 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                     <Mic className="h-5 w-5" />
                   )}
                 </button>
-
                 <button
                   type="button"
                   onClick={() => void sendMessage()}
