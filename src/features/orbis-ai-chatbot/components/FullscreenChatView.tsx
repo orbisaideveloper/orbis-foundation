@@ -7,6 +7,8 @@ import {
   Sparkles,
   Square,
   Trash2,
+  Plus,
+  MoreVertical,
 } from "lucide-react";
 import { chatStorage } from "../storage/ChatStorageManager";
 
@@ -83,14 +85,11 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isDbReady, setIsDbReady] = useState(false);
 
-  // 🚀 অটো-স্ক্রল করার জন্য নতুন রেফারেন্স
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceTranscriptRef = useRef("");
   const initialized = useRef(false);
 
-  // 🚀 যখনই মেসেজ আসবে, স্ক্রিন অটোমেটিক নিচে চলে যাবে
   const scrollToBottom = () => {
     if (typeof messagesEndRef.current?.scrollIntoView === "function") {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -341,54 +340,70 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-gradient-to-br from-orange-50/90 via-white/95 to-green-50/90 backdrop-blur-xl dark:from-orange-950/40 dark:via-gray-950/95 dark:to-emerald-950/40 font-sans">
-      <header className="flex items-center justify-between border-b border-gray-200/50 bg-white/30 px-6 py-4 backdrop-blur-md dark:border-white/10 dark:bg-black/30 shadow-sm z-10">
+    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#F8FAFC] font-sans dark:bg-[#0B1120]">
+      {/* 🚀 Advanced Header with 3-Dots */}
+      <header className="flex items-center justify-between border-b border-gray-200/60 bg-white/80 px-6 py-4 backdrop-blur-xl dark:border-white/10 dark:bg-black/40 shadow-sm z-10">
         <div className="flex items-center gap-4">
           <button
             type="button"
             onClick={onClose}
             aria-label="Back"
-            className="rounded-full p-2 text-gray-600 transition-colors hover:bg-gray-200/50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
+            className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
           >
-            <ArrowLeft className="h-5 w-5" />
+            <ArrowLeft className="h-6 w-6" />
           </button>
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-orange-400 to-amber-500 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-amber-500 shadow-md">
               <Sparkles className="h-4 w-4 text-white" />
             </div>
-            <h2 className="text-xl font-bold tracking-wide text-gray-800 dark:text-white">
-              ORBIS Brain{" "}
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-100/50 px-2 py-0.5 rounded-full dark:text-emerald-400">
+            <div>
+              <h2 className="text-[17px] font-bold tracking-wide text-gray-800 dark:text-white leading-tight">
+                ORBIS Brain
+              </h2>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1.5 dark:text-emerald-400">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
                 Online
               </span>
-            </h2>
+            </div>
           </div>
         </div>
 
-        <button
-          onClick={handleClearHistory}
-          title="চ্যাট হিস্ট্রি মুছুন"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100 hover:text-red-600 dark:bg-red-950/50 dark:hover:bg-red-900/80 shadow-sm"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleClearHistory}
+            title="Clear Chat"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/50"
+          >
+            <Trash2 className="h-5 w-5" />
+          </button>
+          <button
+            title="More Options"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-white"
+          >
+            <MoreVertical className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
-      <div className="flex-1 space-y-6 overflow-y-auto p-4 md:p-8 scroll-smooth">
+      {/* Chat Messages */}
+      <div className="flex-1 space-y-6 overflow-y-auto p-4 md:p-8 scroll-smooth bg-[url('/noise.png')] bg-opacity-5">
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`mx-auto flex w-full max-w-4xl gap-4 ${
+            className={`mx-auto flex w-full max-w-4xl gap-3 ${
               message.role === "user" ? "justify-end" : ""
             }`}
           >
             {message.role === "assistant" && (
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-100 to-orange-200 shadow-sm border border-orange-200/50 mt-4 dark:from-orange-900/50 dark:to-orange-800/50">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-100 to-orange-200 shadow-sm border border-orange-200/50 mt-5 dark:from-orange-900/50 dark:to-orange-800/50">
                 <Bot className="h-5 w-5 text-orange-600 dark:text-orange-400" />
               </div>
             )}
             <div
-              className={`flex max-w-[85%] flex-col gap-1.5 pt-1 ${
+              className={`flex max-w-[85%] flex-col gap-1 pt-1 ${
                 message.role === "user" ? "items-end" : ""
               }`}
             >
@@ -398,10 +413,10 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                   : message.providerName || "ORBIS Core"}
               </span>
               <div
-                className={`whitespace-pre-wrap px-5 py-3.5 shadow-sm backdrop-blur-sm text-[15.5px] leading-[1.75] tracking-[0.2px] ${
+                className={`whitespace-pre-wrap px-4 py-3 shadow-sm text-[15px] leading-[1.7] tracking-[0.2px] ${
                   message.role === "user"
                     ? "rounded-[20px] rounded-tr-[4px] border border-emerald-200/60 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium dark:border-emerald-800/30 dark:from-emerald-800 dark:to-emerald-900"
-                    : "rounded-[20px] rounded-tl-[4px] border border-gray-200/60 bg-white/90 text-gray-800 font-normal dark:border-gray-700/50 dark:bg-gray-800/90 dark:text-gray-200"
+                    : "rounded-[20px] rounded-tl-[4px] border border-gray-200/60 bg-white text-gray-800 font-normal dark:border-gray-700/50 dark:bg-gray-800/90 dark:text-gray-200"
                 }`}
               >
                 {message.content}
@@ -410,22 +425,31 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           </div>
         ))}
         {isSending && (
-          <div className="mx-auto flex w-full max-w-4xl gap-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 border border-orange-200/50 mt-4 dark:bg-orange-900/40">
+          <div className="mx-auto flex w-full max-w-4xl gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-100 border border-orange-200/50 mt-5 dark:bg-orange-900/40">
               <Bot className="h-5 w-5 text-orange-600" />
             </div>
-            <div className="mt-5 rounded-[20px] rounded-tl-[4px] bg-white/80 px-5 py-3.5 text-[14px] font-medium text-gray-500 shadow-sm border border-gray-200/50 dark:bg-gray-800/80 animate-pulse">
+            <div className="mt-5 rounded-[20px] rounded-tl-[4px] bg-white/80 px-5 py-3 text-[14px] font-medium text-gray-500 shadow-sm border border-gray-200/50 dark:bg-gray-800/80 animate-pulse">
               ORBIS ভাবছে...
             </div>
           </div>
         )}
-        {/* 🚀 অটো-স্ক্রল নোঙর */}
         <div ref={messagesEndRef} className="h-2" />
       </div>
 
-      <div className="border-t border-gray-200/50 bg-white/60 p-4 backdrop-blur-xl dark:border-white/10 dark:bg-black/60 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.05)] z-10">
-        <div className="mx-auto flex max-w-4xl items-end gap-3">
-          <div className="relative flex-1">
+      {/* 🚀 Unified Single Box Input Area (ChatGPT Style) */}
+      <div className="bg-transparent p-4 pb-6 z-10 w-full relative">
+        <div className="mx-auto max-w-4xl">
+          <div className="flex items-end gap-2 rounded-[28px] border border-gray-300/60 bg-white shadow-lg p-1.5 transition-all focus-within:border-emerald-500/50 focus-within:ring-4 focus-within:ring-emerald-500/10 dark:border-gray-700 dark:bg-[#1E293B]">
+            {/* Left Plus Button */}
+            <button
+              type="button"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-emerald-600 dark:text-gray-400 dark:hover:bg-gray-800"
+            >
+              <Plus className="h-6 w-6" />
+            </button>
+
+            {/* Middle Text Area */}
             <textarea
               rows={1}
               value={inputText}
@@ -438,35 +462,44 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               }}
               placeholder="ORBIS-কে নির্দেশ দিন..."
               disabled={isSending || !isDbReady}
-              className="max-h-32 min-h-[56px] w-full resize-none rounded-[24px] border border-gray-300/60 bg-white/80 py-4 pl-6 pr-14 text-[15px] font-medium text-gray-800 shadow-inner outline-none backdrop-blur-md transition-all focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white disabled:opacity-60 dark:border-white/10 dark:bg-black/50 dark:text-white dark:placeholder-gray-400"
+              className="max-h-32 min-h-[44px] w-full flex-1 resize-none bg-transparent py-3 px-1 text-[15.5px] text-gray-800 outline-none disabled:opacity-60 dark:text-white dark:placeholder-gray-400"
             />
-            <button
-              type="button"
-              onClick={toggleVoiceInput}
-              disabled={isSending || !isDbReady}
-              aria-label={isListening ? "Stop voice input" : "Voice input"}
-              className={`absolute bottom-2.5 right-2.5 rounded-full p-2.5 transition-all duration-300 ${
-                isListening
-                  ? "bg-red-100 text-red-600 animate-pulse dark:bg-red-900/40 dark:text-red-400"
-                  : "text-gray-400 hover:bg-gray-100 hover:text-emerald-500 dark:hover:bg-gray-800 dark:hover:text-emerald-400"
-              }`}
-            >
-              {isListening ? (
-                <Square className="h-5 w-5" />
-              ) : (
-                <Mic className="h-5 w-5" />
-              )}
-            </button>
+
+            {/* Right Actions (Mic & Send - Inside the Box) */}
+            <div className="flex shrink-0 items-center gap-1 pb-0.5 pr-0.5">
+              <button
+                type="button"
+                onClick={toggleVoiceInput}
+                disabled={isSending || !isDbReady}
+                className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300 ${
+                  isListening
+                    ? "bg-red-100 text-red-600 animate-pulse dark:bg-red-900/40 dark:text-red-400"
+                    : "text-gray-400 hover:bg-gray-100 hover:text-emerald-500 dark:hover:bg-gray-800 dark:hover:text-emerald-400"
+                }`}
+              >
+                {isListening ? (
+                  <Square className="h-5 w-5" />
+                ) : (
+                  <Mic className="h-5 w-5" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void sendMessage()}
+                aria-label="Send message"
+                disabled={!inputText.trim() || isSending || !isDbReady}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md transition-all hover:scale-105 hover:bg-emerald-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 dark:bg-emerald-600"
+              >
+                <Send className="ml-0.5 h-4 w-4" />
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => void sendMessage()}
-            disabled={!inputText.trim() || isSending || !isDbReady}
-            aria-label="Send message"
-            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/30 transition-all hover:scale-105 hover:from-emerald-400 hover:to-emerald-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
-          >
-            <Send className="ml-1 h-5 w-5" />
-          </button>
+          <div className="text-center mt-2">
+            <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium tracking-wide">
+              ORBIS can make mistakes. Consider verifying important information.
+            </span>
+          </div>
         </div>
       </div>
     </div>
