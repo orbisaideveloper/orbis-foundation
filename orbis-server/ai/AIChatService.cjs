@@ -38,92 +38,145 @@ class AIChatService {
     }));
     const lastUserMessage =
       formattedMessages[formattedMessages.length - 1].content;
+    const lowerCaseMessage = lastUserMessage.toLowerCase();
 
-    // ১. ORBIS Brain (Local Database Check) - ISOLATED & FAIL-SAFE
-    let brainKnowledge = null;
-    if (prisma) {
-      try {
-        brainKnowledge = await prisma.foundationBrainKnowledge.findFirst({
-          where: {
-            isActive: true,
-            OR: [
-              { content: { contains: lastUserMessage.toLowerCase() } },
-              { tags: { contains: lastUserMessage.toLowerCase() } },
-            ],
-          },
-        });
-      } catch (dbError) {
-        console.warn(
-          "[AI_BRAIN_MEMORY] Optional lookup skipped:",
-          dbError.message,
-        );
-      }
-    }
-
-    if (brainKnowledge) {
-      return {
-        message: { role: "assistant", content: brainKnowledge.content },
-        provider: { name: "ORBIS Brain", type: "INTERNAL_MEMORY" },
-      };
-    }
-
-    // Main Chat Orchestration with Autonomous Agentic Router & Exact Error Reporting
     try {
-      const activeProvider = providerManager.getActiveProvider();
-
-      // ২. Autonomous Agentic Router (এআই নিজে ডিসিশন নেবে ইন্টারনেট লাগবে কি না)
-      let searchContext = "";
-      try {
-        const routerMessages = [
-          {
-            role: "system",
-            content:
-              "You are an AI decision router. Analyze the user's latest query. Does it require real-time current news, live prices, or live web search to answer accurately? Answer ONLY with 'YES' or 'NO'.",
-          },
-          {
-            role: "user",
-            content: lastUserMessage,
-          },
-        ];
-
-        const routerResponse =
-          await activeProvider.generateChat(routerMessages);
-        const decision = routerResponse.content
-          ? routerResponse.content.trim().toUpperCase()
-          : "NO";
-
-        if (decision.includes("YES")) {
-          const searchResult = await tavilySearch.search(lastUserMessage);
-          if (searchResult) {
-            searchContext = `\n\n[Real-time Web Context Retrieved via Tavily]:\n${searchResult}\n\n`;
-          }
+      // ---------------------------------------------------------
+      // STEP 1: ORBIS FIRST (Local Memory Check)
+      // ---------------------------------------------------------
+      let brainKnowledge = null;
+      if (prisma) {
+        try {
+          brainKnowledge = await prisma.foundationBrainKnowledge.findFirst({
+            where: {
+              isActive: true,
+              OR: [
+                { content: { contains: lowerCaseMessage } },
+                { tags: { contains: lowerCaseMessage } },
+              ],
+            },
+          });
+        } catch (dbError) {
+          console.warn(
+            "[AI_BRAIN_MEMORY] Optional lookup skipped:",
+            dbError.message,
+          );
         }
-      } catch (routerError) {
+      }
+
+      if (brainKnowledge) {
+        return {
+          message: { role: "assistant", content: brainKnowledge.content },
+          provider: { name: "ORBIS Brain", type: "INTERNAL_MEMORY" },
+        };
+      }
+
+      // ---------------------------------------------------------
+      // STEP 2: FAST HEURISTIC ROUTING (ORBIS + TAVILY DIRECT)
+      // ---------------------------------------------------------
+      const temporalWords = [
+        "latest",
+        "update",
+        "news",
+        "price",
+        "current",
+        "today",
+        "weather",
+        "খবর",
+        "বর্তমান",
+        "আজকের",
+        "এখন",
+        "সর্বশেষ",
+        "আবহাওয়া",
+        "দাম",
+      ];
+      const needsWebSearch = temporalWords.some((kw) =>
+        lowerCaseMessage.includes(kw),
+      );
+
+      let finalResponseContent = "";
+      let providerMetadata = {};
+
+      if (needsWebSearch) {
+        const searchResult = await tavilySearch.search(lastUserMessage);
+        if (searchResult) {
+          // ORBIS নিজেই Tavily এর ডেটা প্রসেস করে দিচ্ছে (No Ollama)
+          finalResponseContent = `[ORBIS Web Analysis]:\n${searchResult}`;
+          providerMetadata = { name: "ORBIS Brain (Web)", type: "WEB_SEARCH" };
+        }
+      }
+
+      // ---------------------------------------------------------
+      // STEP 3: INDEPENDENT OLLAMA (No Web, Pure AI)
+      // ---------------------------------------------------------
+      if (!finalResponseContent) {
+        const activeProvider = providerManager.getActiveProvider();
+        const providerResponse =
+          await activeProvider.generateChat(formattedMessages);
+
+        finalResponseContent = providerResponse.content;
+        providerMetadata = providerResponse.provider;
+      }
+
+      // ---------------------------------------------------------
+      // STEP 4: ORBIS BACKGROUND OBSERVER & ANALYZER (No Await)
+      // ---------------------------------------------------------
+      // এটি ব্যাকগ্রাউন্ডে রান করবে যাতে ইউজারের রেসপন্স মিলি-সেকেন্ডেও স্লো না হয়
+      this._runOrbisObserver(
+        lastUserMessage,
+        finalResponseContent,
+        providerMetadata.name,
+      ).catch((err) =>
         console.warn(
-          "[AGENTIC_ROUTER] Router evaluation skipped:",
-          routerError.message,
-        );
-      }
-
-      // ৩. Final Prompt Construction with Dynamic Web Context
-      const finalMessages = [...formattedMessages];
-      if (searchContext) {
-        finalMessages[finalMessages.length - 1].content += searchContext;
-      }
-
-      const providerResponse = await activeProvider.generateChat(finalMessages);
+          "[ORBIS_OBSERVER] Background analysis failed:",
+          err.message,
+        ),
+      );
 
       return {
-        message: { role: "assistant", content: providerResponse.content },
-        provider: providerResponse.provider,
+        message: { role: "assistant", content: finalResponseContent },
+        provider: providerMetadata,
       };
     } catch (error) {
-      // ⚠️ এক্সাক্ট এরর মেসেজটি লগ এবং ফ্রন্টএন্ড রেসপন্সে পাঠানোর ব্যবস্থা
       console.error(
         "[AI_CHAT_SERVICE] Detailed Request failed:",
         error.message || error,
       );
       throw new Error(`Chat backend request failed: ${error.message || error}`);
+    }
+  }
+
+  // ---------------------------------------------------------
+  // THE OBSERVER: ORBIS-এর নিজস্ব চিন্তাধারা এবং প্যাটার্ন অ্যানালিসিস ইঞ্জিন
+  // ---------------------------------------------------------
+  async _runOrbisObserver(userMessage, responseContent, providerName) {
+    console.log(
+      `[ORBIS_OBSERVER] Observing interaction with provider: ${providerName}`,
+    );
+
+    // ORBIS ব্যাকগ্রাউন্ডে চেক করছে যে উত্তরটি ঠিকঠাক জেনারেট হলো কি না
+    const wordCount = responseContent.split(" ").length;
+    let analysisTag = "neutral_pattern";
+
+    if (providerName.includes("Web") && wordCount > 10) {
+      analysisTag = "live_data_extracted";
+    } else if (
+      providerName.includes("Ollama") ||
+      providerName.includes("Gemini")
+    ) {
+      analysisTag = "independent_ai_generation";
+    }
+
+    if (prisma) {
+      try {
+        // ভবিষ্যতে এই জায়গাটিতে আমরা ইউজারের কনটেক্সট এবং মেমোরি ডেটাবেসে পুশ করব
+        // আপাতত এটি টার্মিনালে নিজের অ্যানালিসিস লগ করছে
+        console.log(
+          `[ORBIS_OBSERVER] Analysis Complete: Pattern=[${analysisTag}], Query Length=[${userMessage.length}]`,
+        );
+      } catch (e) {
+        // সাইলেন্ট ফেল-সেফ
+      }
     }
   }
 }
