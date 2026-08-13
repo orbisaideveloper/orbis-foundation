@@ -1,42 +1,32 @@
-const { PrismaClient } = require("@prisma/client");
 const { Pool } = require("pg");
-const { PrismaPg } = require("@prisma/adapter-pg");
+const crypto = require("crypto");
 const providerManager = require("../AIProviderManager.cjs");
 
 const connectionString = process.env.DATABASE_URL;
-let prisma;
-
-try {
-  if (connectionString) {
-    const pool = new Pool({ connectionString });
-    const adapter = new PrismaPg({ pool });
-    prisma = new PrismaClient({ adapter });
-  } else {
-    prisma = new PrismaClient();
-  }
-} catch (initError) {
-  console.error("[PRISMA_INIT_ERROR] Failed to initialize Prisma:", initError.message);
+let pool;
+if (connectionString) {
+  pool = new Pool({ connectionString });
 }
 
 class MemoryEngine {
   async retrieveMemory(lowerCaseMessage) {
-    if (!prisma) return { brainKnowledge: null, memoryContext: "" };
+    if (!pool) return { brainKnowledge: null, memoryContext: "" };
 
     try {
-      const memories = await prisma.foundationBrainKnowledge.findMany({
-        where: {
-          isActive: true,
-          OR: [
-            { content: { contains: lowerCaseMessage } },
-            { tags: { contains: "auto_learned" } },
-          ],
-        },
-        take: 3,
-      });
+      // Prisma-র findMany (contains) এর বদলে SQL ILIKE ব্যবহার করা হলো
+      const query = `
+        SELECT * FROM "FoundationBrainKnowledge"
+        WHERE "isActive" = true
+        AND ("content" ILIKE $1 OR "tags" ILIKE $2)
+        LIMIT 3
+      `;
+      const values = [`%${lowerCaseMessage}%`, `%auto_learned%`];
+      const dbResult = await pool.query(query, values);
+      const memories = dbResult.rows;
 
       if (memories && memories.length > 0) {
         const memoryContext = memories.map((m) => m.content).join(" | ");
-        const exactMatch = memories.find((m) => m.content === lowerCaseMessage);
+        const exactMatch = memories.find((m) => m.content && m.content.toLowerCase() === lowerCaseMessage.toLowerCase());
         return { brainKnowledge: exactMatch || null, memoryContext };
       }
     } catch (dbError) {
@@ -46,7 +36,7 @@ class MemoryEngine {
   }
 
   async learnFromUser(userMessage) {
-    if (!prisma || userMessage.length <= 10) return;
+    if (!pool || !userMessage || userMessage.length <= 10) return;
 
     console.log(`[MEMORY_ENGINE_TRACE] Analyzing input for memory extraction: "${userMessage}"`);
 
@@ -56,6 +46,7 @@ class MemoryEngine {
         throw new Error("No active AI provider configured for extraction.");
       }
 
+      // আগের প্রম্পট একদম অক্ষত রাখা হয়েছে
       const extractionPrompt = [
         {
           role: "system",
@@ -70,27 +61,27 @@ class MemoryEngine {
       if (learnedFact !== "NONE" && !learnedFact.includes("NONE") && learnedFact.length > 5) {
         console.log(`[MEMORY_ENGINE_TRACE] Extracted Fact: "${learnedFact}". Checking database...`);
 
-        const existing = await prisma.foundationBrainKnowledge.findFirst({
-          where: { content: learnedFact },
-        });
+        // Prisma findFirst এর বদলে Direct SQL 
+        const checkQuery = `SELECT id FROM "FoundationBrainKnowledge" WHERE "content" = $1 LIMIT 1`;
+        const existingResult = await pool.query(checkQuery, [learnedFact]);
 
-        if (!existing) {
-          // ⚠️ BUG FIX: 'category' ফিল্ডটি অ্যাড করা হয়েছে
-          await prisma.foundationBrainKnowledge.create({
-            data: {
-              category: "USER_MEMORY", 
-              content: learnedFact,
-              tags: "auto_learned, user_memory",
-              isActive: true,
-            },
-          });
+        if (existingResult.rows.length === 0) {
+          // Prisma নিজে id বানাতো, এখন আমরা বানাচ্ছি
+          const id = crypto.randomUUID(); 
+          const insertQuery = `
+            INSERT INTO "FoundationBrainKnowledge" (id, category, content, tags, "isActive", "updatedAt")
+            VALUES ($1, $2, $3, $4, $5, NOW())
+          `;
+          const insertValues = [id, "USER_MEMORY", learnedFact, "auto_learned, user_memory", true];
+          
+          await pool.query(insertQuery, insertValues);
           console.log(`[MEMORY_ENGINE_SUCCESS] New memory successfully saved to database: ${learnedFact}`);
         } else {
           console.log(`[MEMORY_ENGINE_TRACE] Memory already exists. Skipping.`);
         }
       }
     } catch (e) {
-      // ⚠️ DEEP LOGGING FIX: এরর হলে বিস্তারিত রিপোর্ট দেখাবে
+      // আগের ডিপ লগিং ঠিক রাখা হয়েছে
       console.error("\n==========================================");
       console.error("[MEMORY_ENGINE_FATAL] Fact Save Failed!");
       console.error("Reason:", e.message);
