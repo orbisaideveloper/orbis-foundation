@@ -38,7 +38,6 @@ class AIChatService {
     }));
     const lastUserMessage =
       formattedMessages[formattedMessages.length - 1].content;
-    const lowerCaseMessage = lastUserMessage.toLowerCase();
 
     // ১. ORBIS Brain (Local Database Check) - ISOLATED & FAIL-SAFE
     let brainKnowledge = null;
@@ -48,8 +47,8 @@ class AIChatService {
           where: {
             isActive: true,
             OR: [
-              { content: { contains: lowerCaseMessage } },
-              { tags: { contains: lowerCaseMessage } },
+              { content: { contains: lastUserMessage.toLowerCase() } },
+              { tags: { contains: lastUserMessage.toLowerCase() } },
             ],
           },
         });
@@ -68,51 +67,63 @@ class AIChatService {
       };
     }
 
-    // Main Chat Orchestration
+    // Main Chat Orchestration with Autonomous Agentic Router & Exact Error Reporting
     try {
-      // ২. ORBIS Brain Web Search (Tavily)
-      const searchKeywords = [
-        "latest",
-        "update",
-        "news",
-        "price",
-        "recent",
-        "current",
-        "today",
-        "weather",
-        "খবর",
-        "বর্তমান",
-        "আজকের",
-        "এখন",
-        "সর্বশেষ",
-        "আবহাওয়া",
-        "দাম",
-      ];
-      const needsSearch = searchKeywords.some((kw) =>
-        lowerCaseMessage.includes(kw),
-      );
+      const activeProvider = providerManager.getActiveProvider();
 
-      if (needsSearch) {
-        const searchResult = await tavilySearch.search(lastUserMessage);
-        if (searchResult) {
-          return {
-            message: { role: "assistant", content: searchResult },
-            provider: { name: "ORBIS Brain (Web)", type: "WEB_SEARCH" },
-          };
+      // ২. Autonomous Agentic Router (এআই নিজে ডিসিশন নেবে ইন্টারনেট লাগবে কি না)
+      let searchContext = "";
+      try {
+        const routerMessages = [
+          {
+            role: "system",
+            content:
+              "You are an AI decision router. Analyze the user's latest query. Does it require real-time current news, live prices, or live web search to answer accurately? Answer ONLY with 'YES' or 'NO'.",
+          },
+          {
+            role: "user",
+            content: lastUserMessage,
+          },
+        ];
+
+        const routerResponse =
+          await activeProvider.generateChat(routerMessages);
+        const decision = routerResponse.content
+          ? routerResponse.content.trim().toUpperCase()
+          : "NO";
+
+        if (decision.includes("YES")) {
+          const searchResult = await tavilySearch.search(lastUserMessage);
+          if (searchResult) {
+            searchContext = `\n\n[Real-time Web Context Retrieved via Tavily]:\n${searchResult}\n\n`;
+          }
         }
+      } catch (routerError) {
+        console.warn(
+          "[AGENTIC_ROUTER] Router evaluation skipped:",
+          routerError.message,
+        );
       }
 
-      // ৩. External Independent AI (Ollama/Gemini)
-      const provider = providerManager.getActiveProvider();
-      const providerResponse = await provider.generateChat(formattedMessages);
+      // ৩. Final Prompt Construction with Dynamic Web Context
+      const finalMessages = [...formattedMessages];
+      if (searchContext) {
+        finalMessages[finalMessages.length - 1].content += searchContext;
+      }
+
+      const providerResponse = await activeProvider.generateChat(finalMessages);
 
       return {
         message: { role: "assistant", content: providerResponse.content },
         provider: providerResponse.provider,
       };
     } catch (error) {
-      console.error("[AI_CHAT_SERVICE] Request failed:", error.message);
-      throw new Error("Chat backend request failed.");
+      // ⚠️ এক্সাক্ট এরর মেসেজটি লগ এবং ফ্রন্টএন্ড রেসপন্সে পাঠানোর ব্যবস্থা
+      console.error(
+        "[AI_CHAT_SERVICE] Detailed Request failed:",
+        error.message || error,
+      );
+      throw new Error(`Chat backend request failed: ${error.message || error}`);
     }
   }
 }
