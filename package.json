@@ -18,7 +18,7 @@
     "check:circular": "madge --circular --extensions ts,tsx,cjs --exclude '^src/generated/.*' ./src ./orbis-server",
     "check:duplicates": "jscpd ./src ./orbis-server",
     "check:deadcode": "knip",
-    "test:coverage": "vitest run --coverage --coverage.thresholds.lines=41 --coverage.thresholds.functions=41 --coverage.thresholds.branches=41 --coverage.thresholds.statements=41"
+    "test:coverage": "vitest run --coverage --coverage.thresholds.lines=44 --coverage.thresholds.functions=44 --coverage.thresholds.branches=44 --coverage.thresholds.statements=44"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
@@ -29,11 +29,13 @@
     "express": "^5.2.1",
     "framer-motion": "^12.43.0",
     "lucide-react": "^1.27.0",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.23.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.2",
-    "serve": "^14.2.6"
+    "serve": "^14.2.6",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
