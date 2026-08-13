@@ -1,4 +1,3 @@
-const fs = require("node:fs");
 const readline = require("node:readline");
 
 const rl = readline.createInterface({

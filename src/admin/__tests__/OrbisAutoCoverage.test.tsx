@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import AdminDashboard from "../dashboard/AdminDashboard";
+import { render } from "@testing-library/react";
 import App from "../../App";
 
 describe("Orbis Auto-Coverage Booster Suite", () => {

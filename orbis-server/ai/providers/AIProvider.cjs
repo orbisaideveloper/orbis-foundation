@@ -6,6 +6,8 @@ class AIProvider {
   }
 
   async generateChat(messages) {
+    void messages;
+
     throw new Error(
       "Method 'generateChat()' must be implemented by the provider.",
     );

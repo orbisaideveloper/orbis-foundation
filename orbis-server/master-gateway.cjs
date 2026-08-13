@@ -84,7 +84,7 @@ const gateway = http.createServer((req, res) => {
   });
 });
 
-gateway.on("upgrade", (req, socket, head) => {
+gateway.on("upgrade", (req, socket) => {
   const proxyReq = http.request({
     hostname: "127.0.0.1",
     port: BRIDGE_PORT,

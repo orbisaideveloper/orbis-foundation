@@ -3,7 +3,7 @@ const tavilySearch = require("./tools/TavilySearch.cjs");
 const memoryEngine = require("./brain/MemoryEngine.cjs");
 
 class AIChatService {
-  async processChatRequest(rawMessages, sessionId = "default-user") {
+  async processChatRequest(rawMessages) {
     if (!Array.isArray(rawMessages)) throw new Error("Invalid chat format.");
 
     const validMessages = rawMessages

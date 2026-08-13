@@ -2,7 +2,6 @@ import React from "react";
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AppHeader } from "../layout/AppHeader";
-import { AppLayout } from "../layout/AppLayout";
 import { GlassCard } from "../components/GlassCard";
 import { JsonViewer } from "../components/JsonViewer";
 

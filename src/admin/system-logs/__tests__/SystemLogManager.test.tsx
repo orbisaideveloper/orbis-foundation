@@ -247,8 +247,9 @@ describe("SystemLogManager", () => {
 
     expect(screen.getByText(MONITOR_TITLE)).toBeInTheDocument();
 
-    const buttons = screen.getAllByRole("button");
-    fireEvent.click(buttons[buttons.length - 1]);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close system monitor" }),
+    );
 
     expect(screen.queryByText(MONITOR_TITLE)).not.toBeInTheDocument();
   });

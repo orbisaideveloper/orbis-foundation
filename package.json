@@ -18,7 +18,7 @@
     "check:circular": "madge --circular --extensions ts,tsx,cjs --exclude '^src/generated/.*' ./src ./orbis-server",
     "check:duplicates": "jscpd ./src ./orbis-server",
     "check:deadcode": "knip",
-    "test:coverage": "vitest run --coverage --coverage.thresholds.lines=38 --coverage.thresholds.functions=38 --coverage.thresholds.branches=38 --coverage.thresholds.statements=38"
+    "test:coverage": "vitest run --coverage --coverage.thresholds.lines=40 --coverage.thresholds.functions=40 --coverage.thresholds.branches=40 --coverage.thresholds.statements=40"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

@@ -18,7 +18,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const [user, setUser] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("GUEST");
 
-  const login = useCallback((token: string) => {
+  const login = useCallback(() => {
     setUser("sys-admin");
     setRole("ADMIN");
   }, []);

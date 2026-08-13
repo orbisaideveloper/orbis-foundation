@@ -144,75 +144,83 @@ export default function SystemLogManager() {
     return filterNodes(treeData);
   }, [treeData, searchQuery]);
 
-  const renderTree = (items: any[]) => {
-    return items.map((item, index) => {
-      if (item.type === "directory") {
-        const folderHasError =
-          errorStatus.hasError &&
-          typeof errorStatus.file === "string" &&
-          errorStatus.file.startsWith(item.path);
-        return (
-          <div key={`log-entry-${index}`} className="ml-2 my-1">
-            <div
-              className={`flex items-center gap-2 py-1 px-2 rounded font-medium text-xs transition-colors ${
-                folderHasError
-                  ? "bg-red-500/10 text-red-400 border border-red-500/30"
-                  : "text-slate-300"
-              }`}
-            >
-              <Folder
-                size={14}
-                className={folderHasError ? "text-red-400" : "text-blue-400"}
-              />
-              <span>{item.name}</span>
-            </div>
-            <div className="pl-3 border-l border-slate-700/50 ml-1 mt-1">
-              {item.children && renderTree(item.children)}
-            </div>
-          </div>
-        );
-      } else {
-        const isErrorFile =
-          errorStatus.hasError && errorStatus.file === item.path;
-        const isLatestUpdate =
-          !isErrorFile && item.mtime >= latestUpdateTime - 60000;
-        return (
-          <div
-            key={`log-entry-${index}`}
-            onClick={() => handleFileClick(item.path)}
-            className={`flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer text-xs my-0.5 transition-all ${
-              isErrorFile
-                ? "bg-red-500/20 text-red-400 border border-red-500/50 font-bold animate-pulse"
-                : isLatestUpdate
-                  ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 font-semibold"
-                  : "text-slate-300 hover:bg-slate-800/50"
-            }`}
-          >
-            <FileCode
-              size={14}
-              className={
-                isErrorFile
-                  ? "text-red-400"
-                  : isLatestUpdate
-                    ? "text-yellow-400"
-                    : "text-slate-400"
-              }
-            />
-            <span className="truncate">{item.name}</span>
-            {isLatestUpdate && (
-              <span className="ml-auto text-[9px] bg-yellow-500/20 px-1 rounded text-yellow-500">
-                Updated
-              </span>
-            )}
-          </div>
-        );
-      }
-    });
+  const renderFile = (item: any, index: number) => {
+    const isErrorFile = errorStatus.hasError && errorStatus.file === item.path;
+    const isLatestUpdate =
+      !isErrorFile && item.mtime >= latestUpdateTime - 60000;
+
+    return (
+      <button
+        type="button"
+        key={`log-entry-${index}`}
+        onClick={() => handleFileClick(item.path)}
+        className={`w-full text-left flex items-center gap-2 py-1.5 px-2 rounded text-xs my-0.5 transition-all ${
+          isErrorFile
+            ? "bg-red-500/20 text-red-400 border border-red-500/50 font-bold animate-pulse"
+            : isLatestUpdate
+              ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 font-semibold"
+              : "text-slate-300 hover:bg-slate-800/50"
+        }`}
+      >
+        <FileCode
+          size={14}
+          className={
+            isErrorFile
+              ? "text-red-400"
+              : isLatestUpdate
+                ? "text-yellow-400"
+                : "text-slate-400"
+          }
+        />
+        <span className="truncate">{item.name}</span>
+        {isLatestUpdate && (
+          <span className="ml-auto text-[9px] bg-yellow-500/20 px-1 rounded text-yellow-500">
+            Updated
+          </span>
+        )}
+      </button>
+    );
   };
+
+  const renderDirectory = (item: any, index: number) => {
+    const folderHasError =
+      errorStatus.hasError &&
+      typeof errorStatus.file === "string" &&
+      errorStatus.file.startsWith(item.path);
+
+    return (
+      <div key={`log-entry-${index}`} className="ml-2 my-1">
+        <div
+          className={`flex items-center gap-2 py-1 px-2 rounded font-medium text-xs transition-colors ${
+            folderHasError
+              ? "bg-red-500/10 text-red-400 border border-red-500/30"
+              : "text-slate-300"
+          }`}
+        >
+          <Folder
+            size={14}
+            className={folderHasError ? "text-red-400" : "text-blue-400"}
+          />
+          <span>{item.name}</span>
+        </div>
+        <div className="pl-3 border-l border-slate-700/50 ml-1 mt-1">
+          {item.children && renderTree(item.children)}
+        </div>
+      </div>
+    );
+  };
+
+  const renderTree = (items: any[]) =>
+    items.map((item, index) =>
+      item.type === "directory"
+        ? renderDirectory(item, index)
+        : renderFile(item, index),
+    );
 
   return (
     <>
-      <div
+      <button
+        type="button"
         onClick={() => setIsOpen(true)}
         className="p-4 rounded-2xl border backdrop-blur-md cursor-pointer transition-all duration-300 bg-[#0f172a]/80 border-slate-700 hover:border-blue-500/50 shadow-lg"
       >
@@ -224,7 +232,7 @@ export default function SystemLogManager() {
         <p className="text-xs text-slate-400 mt-1">
           Real-time repository explorer & logs
         </p>
-      </div>
+      </button>
 
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
@@ -258,6 +266,7 @@ export default function SystemLogManager() {
                     setActiveView("cards");
                     setSearchQuery("");
                   }}
+                  aria-label="Close system monitor"
                   className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800"
                 >
                   <X size={20} />
@@ -292,7 +301,8 @@ export default function SystemLogManager() {
                     </p>
                   </div>
 
-                  <div
+                  <button
+                    type="button"
                     onClick={() => setActiveView("source")}
                     className="p-5 rounded-xl border border-slate-700 bg-slate-800/50 hover:bg-slate-800 cursor-pointer transition-colors shadow-lg"
                   >
@@ -305,9 +315,10 @@ export default function SystemLogManager() {
                     <p className="text-xs text-slate-400">
                       Browse live repository & view source code
                     </p>
-                  </div>
+                  </button>
 
-                  <div
+                  <button
+                    type="button"
                     onClick={() => setActiveView("time_machine")}
                     className="p-5 rounded-xl border border-slate-700 bg-slate-800/50 hover:bg-slate-800 cursor-pointer transition-colors shadow-lg"
                   >
@@ -320,7 +331,7 @@ export default function SystemLogManager() {
                     <p className="text-xs text-slate-400">
                       History & code revisions
                     </p>
-                  </div>
+                  </button>
                 </div>
               )}
 

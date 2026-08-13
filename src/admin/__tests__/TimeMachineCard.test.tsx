@@ -1,3 +1,4 @@
+/* eslint-disable sonarjs/no-duplicate-string */
 /**
  * ORBIS TimeMachineCard Coverage Tests
  * TEST-ONLY — DO NOT MODIFY APPLICATION SOURCE

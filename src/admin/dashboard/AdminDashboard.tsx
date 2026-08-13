@@ -6,38 +6,6 @@ import { GlassChatCard } from "../../features/orbis-ai-chatbot/components/GlassC
 const SOURCE_TREE_NAME = "Source Tree";
 const MASTER_NODE_NAME = "Master Node";
 
-const getLogContent = (cardName: string | null) => {
-  if (!cardName) return "";
-  const time =
-    new Date().toLocaleString("en-IN", {
-      timeZone: "Asia/Kolkata",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    }) + " (IST)";
-  const details: Record<string, string> = {
-    "System Phase":
-      "> Phase 04 active.\n> Core modules synced... [OK]\n> No phase anomalies detected.",
-    Architecture:
-      "> Modular structure integrity... [STABLE]\n> Dependency tree optimized.",
-    Microservices:
-      "> Pinging 14 active services...\n> Auth, Data, Storage... [ALL ONLINE]\n> Cluster latency: 8ms.",
-    MASTER_NODE_NAME:
-      "> Master Node Health: 100%\n> CPU: 12% | RAM: 45%\n> Node synchronization complete.",
-    "API Gateway":
-      "> Traffic routing... Active\n> Request rate: 450 req/s\n> Gateway firewall: SECURE.",
-    "Avg Load":
-      "> Current Server Load: 12.4%\n> Traffic distribution optimal.\n> Auto-scaling standby... [READY].",
-    SOURCE_TREE_NAME:
-      "> Scanning directory structure...\n\n📦 src/\n ┣ 📂 admin/\n ┃ ┣ 📂 dashboard/\n ┃ ┃ ┗ 📜 AdminDashboard.tsx\n ┃ ┗ 📂 __tests__/\n ┣ 📂 core/\n ┃ ┣ 📂 events/\n ┃ ┗ 📂 managers/\n ┣ 📜 App.tsx\n ┗ 📜 main.tsx\n\n> System tree mapped successfully.",
-  };
-  return `[SYSTEM LOG] - ${time}\nTarget: ${cardName}\nStatus: ACTIVE / SECURE\n\nFetching real-time encrypted telemetry...\n${details[cardName] || "> Systems normal."}\n\nData stream is ready for copying.`;
-};
-
 const LiveStatusText = () => {
   const [status, setStatus] = React.useState(
     "আপনার সিস্টেমের প্রতিটি মডিউল সফলভাবে সিঙ্ক হয়েছে। ORBIS Foundation-এর কোর ইঞ্জিন এখন অপটিমাল পারফরম্যান্সে চলছে।",
@@ -51,7 +19,7 @@ const LiveStatusText = () => {
             `[ লাইভ ] ${d.gitStatus} | Bridge: ${d.bridge.bridgeStatus}`,
           );
       })
-      .catch((e) => {});
+      .catch(() => {});
   }, []);
   return (
     <p className="text-[12px] text-slate-600 leading-relaxed font-bold mt-1 bg-green-100/50 p-1.5 rounded-md border border-green-200 inline-block">
@@ -86,7 +54,7 @@ export function AdminDashboard() {
 
   const [showOutput, setShowOutput] = useState(false);
   const [viewMode, setViewMode] = useState("diagnostic");
-  const [outputData, setOutputData] = useState("");
+  const [outputData] = useState("");
   const [liveTree, setLiveTree] = useState(
     "অপেক্ষা করুন, রেন্ডার সার্ভার থেকে লাইভ ট্রি আনা হচ্ছে...",
   );

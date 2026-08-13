@@ -1,4 +1,3 @@
-const crypto = require("node:crypto");
 const os = require("node:os");
 const { execSync } = require("node:child_process");
 
