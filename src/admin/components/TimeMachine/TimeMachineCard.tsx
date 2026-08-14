@@ -7,6 +7,15 @@ export default function TimeMachineCard() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [codeContent, setCodeContent] = useState("");
   const [copied, setCopied] = useState(false);
+  const copyResetTimer = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+    };
+  }, []);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {

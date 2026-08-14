@@ -1,23 +1,10 @@
-# ORBIS FOUNDATION
+# ORBIS Termux / Android / Offline Intelligence Observatory
 
-**STATUS:** ACTIVE (CONTROLLED DEVELOPMENT)  
-**PRIORITY:** CRITICAL  
-**ENVIRONMENT:** MOBILE-FIRST HYBRID ENGINEERING (Spck Editor)
+FIXED installer package.
 
-## 🚀 Mission Overview
-This repository is the **ONLY** production source code repository for the ORBIS platform. 
-It is being built as an enterprise-grade hybrid application with a clean, high-tech architecture from the very first commit. History is being made: this entire platform is engineered and coded entirely on mobile devices.
+Run in Termux:
+cd ~/orbis-foundation
+unzip -o ORBIS-Termux-Observatory-Installer-FIXED.zip
+bash install.sh
 
-## ⚠️ Strict Development Directives
-- **No Duplication:** Zero duplicate files, folders, or logic.
-- **Separation of Concerns:** 
-  - `ORBIS Foundation` = Source Code ONLY.
-  - `ORBIS Legacy` = Documentation, Architecture, Branding, and Audit Reports ONLY.
-- **Quality Gates:** Every commit must pass Build, TypeScript, ESLint, SonarCloud, and Security checks.
-
-## 📱 Architecture Note
-The file structure and component architecture are heavily optimized for mobile-based development workflows, ensuring high readability, extreme modularity, and lightning-fast GitHub sync operations.
-
----
-*Built strictly under ORBIS Master Implementation Directive v1.0*
- 
+The installer creates a safety backup, installs the observatory, adds the repository-backed API, documents the workflow, runs type-check/tests/build, commits, and pushes main.

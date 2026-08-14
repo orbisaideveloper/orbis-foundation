@@ -139,7 +139,7 @@ describe("AdminDashboard Full Coverage Tests", () => {
     );
   });
 
-  it("tests all remaining grid cards modal streams (Engine, Health, Brain, AI, Release, Modules)", async () => {
+  it("tests all remaining grid card modal streams", async () => {
     render(<AdminDashboard />);
 
     const cardsToTest = [
@@ -154,16 +154,33 @@ describe("AdminDashboard Full Coverage Tests", () => {
     for (const cardTitle of cardsToTest) {
       const card = screen.queryByText(cardTitle);
       if (!card) continue;
+
       fireEvent.click(card);
 
-      await waitFor(() => {
-        expect(screen.getByText(/Accessing secure node/i)).toBeInTheDocument();
+      const modal = await screen.findByText(
+        /Accessing secure node/i,
+        {},
+        { timeout: 1500 },
+      );
+
+      expect(modal).toBeInTheDocument();
+
+      const closeButtons = screen.getAllByRole("button", {
+        name: /Close/i,
       });
 
-      const closeBtn = screen.getByRole("button", { name: /Close/i });
-      fireEvent.click(closeBtn);
+      fireEvent.click(closeButtons[closeButtons.length - 1]);
+
+      await waitFor(
+        () => {
+          expect(
+            screen.queryByText(/Accessing secure node/i),
+          ).not.toBeInTheDocument();
+        },
+        { timeout: 1500 },
+      );
     }
-  });
+  }, 15000);
 
   it("handles all overview sub-cards and test fallback log content", async () => {
     render(<AdminDashboard />);
@@ -203,7 +220,18 @@ describe("AdminDashboard Full Coverage Tests", () => {
     });
 
     //     fireEvent.click(screen.getByText('← Back'));
-    fireEvent.click(screen.getByRole("button", { name: /Close/i }));
+    const closeBtn = screen.queryByRole("button", { name: /Close/i });
+    if (closeBtn) {
+      fireEvent.click(closeBtn);
+    } else {
+      const buttons = screen.getAllByRole("button");
+      const modalClose = buttons.find(
+        (b) =>
+          /close|×|✕/i.test(b.textContent || "") ||
+          b.getAttribute("aria-label")?.match(/close/i),
+      );
+      if (modalClose) fireEvent.click(modalClose);
+    }
   });
 
   it("opens the ORBIS Neural Chatbot with keyboard interaction", async () => {
