@@ -1,6 +1,7 @@
 const express = require("express");
 const { Pool } = require("pg");
 const crypto = require("node:crypto");
+
 const router = express.Router();
 
 const pool = new Pool({
@@ -11,13 +12,16 @@ const pool = new Pool({
 async function ensureSchema() {
   try {
     await pool.query(`
-            ALTER TABLE "FoundationTimeMachine"
-            ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'SUCCESS',
-            ADD COLUMN IF NOT EXISTS "errorMessage" TEXT DEFAULT '';
-        `);
-  } catch (e) {}
+      ALTER TABLE "FoundationTimeMachine"
+      ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'SUCCESS',
+      ADD COLUMN IF NOT EXISTS "errorMessage" TEXT DEFAULT '';
+    `);
+  } catch (e) {
+    console.error("[TimeMachine] Schema check:", e.message);
+  }
 }
-ensureSchema();
+
+void ensureSchema();
 
 async function saveToTimeMachine(
   filePath,
@@ -39,50 +43,58 @@ async function saveToTimeMachine(
 
     await pool.query(
       `
-            DELETE FROM "FoundationTimeMachine"
-            WHERE id IN (
-                SELECT id FROM "FoundationTimeMachine"
-                WHERE "filePath" = $1
-                ORDER BY "createdAt" DESC
-                OFFSET 100
-            )
-        `,
+        DELETE FROM "FoundationTimeMachine"
+        WHERE id IN (
+          SELECT id
+          FROM "FoundationTimeMachine"
+          WHERE "filePath" = $1
+          ORDER BY "createdAt" DESC
+          OFFSET 100
+        )
+      `,
       [filePath],
     );
   } catch (err) {
-    console.error("❌ [TimeMachine Module] Save Error:", err.message);
+    console.error("[TimeMachine] Save Error:", err.message);
   }
 }
 
 router.post("/sync", async (req, res) => {
   try {
     const { filePath, content, commitId, status, errorMessage } = req.body;
+
     if (!filePath || !content) {
-      return res
-        .status(400)
-        .json({ success: false, message: "filePath and content required" });
+      return res.status(400).json({
+        success: false,
+        message: "filePath and content required",
+      });
     }
 
     await saveToTimeMachine(filePath, content, commitId, status, errorMessage);
-    res.json({
+
+    return res.json({
       success: true,
       message: "TimeMachine record synced successfully",
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
-router.get("/history", async (req, res) => {
+router.get("/history", async (_req, res) => {
   try {
-    const queryStr =
-      'SELECT "commitId", "filePath", "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 500';
-    const { rows } = await pool.query(queryStr);
+    const { rows } = await pool.query(
+      'SELECT "commitId", "filePath", "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" ORDER BY "createdAt" DESC LIMIT 500',
+    );
 
-    // 🚀 হারানো গ্রুপিং লজিক ফিরিয়ে আনা হলো
     const commitMap = {};
-    (rows || []).forEach((row) => {
+
+    for (const row of rows || []) {
       const cid = row.commitId || "legacy-commit";
+
       if (!commitMap[cid]) {
         commitMap[cid] = {
           commitId: cid,
@@ -92,31 +104,45 @@ router.get("/history", async (req, res) => {
           files: [],
         };
       }
+
       if (
         row.filePath &&
-        !commitMap[cid].files.some((f) => f.filePath === row.filePath)
+        !commitMap[cid].files.some((file) => file.filePath === row.filePath)
       ) {
-        commitMap[cid].files.push({ filePath: row.filePath });
+        commitMap[cid].files.push({
+          filePath: row.filePath,
+        });
       }
+
       if (row.status === "FAILED") {
         commitMap[cid].status = "FAILED";
-        if (row.errorMessage) commitMap[cid].errorMessage = row.errorMessage;
+        if (row.errorMessage) {
+          commitMap[cid].errorMessage = row.errorMessage;
+        }
       }
-    });
+    }
 
-    res.json({ success: true, history: Object.values(commitMap) });
+    return res.json({
+      success: true,
+      history: Object.values(commitMap),
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
 router.get("/version", async (req, res) => {
   try {
     const { commitId, filePath } = req.query;
+
     if (!commitId || !filePath) {
-      return res
-        .status(400)
-        .json({ success: false, message: "commitId and filePath required" });
+      return res.status(400).json({
+        success: false,
+        message: "commitId and filePath required",
+      });
     }
 
     const { rows } = await pool.query(
@@ -124,15 +150,26 @@ router.get("/version", async (req, res) => {
       [commitId, filePath],
     );
 
-    if (!rows || rows.length === 0)
-      return res
-        .status(404)
-        .json({ success: false, message: "Version not found" });
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Version not found",
+      });
+    }
 
-    res.json({ success: true, data: rows[0] });
+    return res.json({
+      success: true,
+      data: rows[0],
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
-module.exports = { router, saveToTimeMachine };
+module.exports = {
+  router,
+  saveToTimeMachine,
+};

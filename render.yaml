@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: orbis-foundation
+    runtime: node
+    buildCommand: npm ci && npm run build
+    startCommand: node orbis-server/bridge.cjs
+    healthCheckPath: /api/system-stats
+    autoDeploy: true

@@ -4,7 +4,6 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { Pool } = require("pg");
 
-// টাইম মেশিন রাউট ও সেভ ফাংশন ইমপোর্ট
 const {
   router: timeMachineRouter,
   saveToTimeMachine,
@@ -12,7 +11,6 @@ const {
 
 const router = express.Router();
 
-// রাউট মাউন্ট করা হলো যাতে /api/system/time-machine কাজ করে
 router.use("/time-machine", timeMachineRouter);
 
 const pool = new Pool({
@@ -26,8 +24,10 @@ function getHash(content) {
 
 function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
   const result = [];
+
   try {
     const items = fs.readdirSync(dirPath, { withFileTypes: true });
+
     for (const item of items) {
       if (
         [
@@ -39,17 +39,20 @@ function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
           "dist",
           "build",
         ].includes(item.name)
-      )
+      ) {
         continue;
+      }
 
       const fullPath = path.join(dirPath, item.name);
       const relativePath = path
         .relative(path.join(__dirname, ".."), fullPath)
         .replace(/\\/g, "/");
+
       const stats = fs.statSync(fullPath);
 
       if (item.isDirectory()) {
         const children = getDirTreeSync(fullPath, dbMap, updatesToPerform);
+
         if (children.length > 0) {
           result.push({
             name: item.name,
@@ -60,7 +63,14 @@ function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
           });
         }
       } else {
-        const content = fs.readFileSync(fullPath, "utf8");
+        let content;
+
+        try {
+          content = fs.readFileSync(fullPath, "utf8");
+        } catch {
+          continue;
+        }
+
         const hash = getHash(content);
         let fileMtime = stats.mtimeMs;
         const dbRecord = dbMap[relativePath];
@@ -70,9 +80,10 @@ function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
             fileMtime = new Date(dbRecord.updatedAt).getTime();
           } else {
             fileMtime = Date.now();
+
             updatesToPerform.push({
               filePath: relativePath,
-              content: content,
+              content,
               versionHash: hash,
               isNew: false,
               id: dbRecord.id,
@@ -80,9 +91,10 @@ function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
           }
         } else {
           fileMtime = Date.now();
+
           updatesToPerform.push({
             filePath: relativePath,
-            content: content,
+            content,
             versionHash: hash,
             isNew: true,
           });
@@ -97,12 +109,13 @@ function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
       }
     }
   } catch (error) {
-    console.error("Error reading directory:", error.message);
+    console.error("[SourceExplorer] Tree error:", error.message);
   }
+
   return result;
 }
 
-router.get("/tree", async (req, res) => {
+router.get("/tree", async (_req, res) => {
   try {
     const rootPath = path.join(__dirname, "..");
 
@@ -111,6 +124,7 @@ router.get("/tree", async (req, res) => {
     );
 
     const dbMap = {};
+
     for (const record of rows) {
       dbMap[record.filePath] = record;
     }
@@ -139,50 +153,81 @@ router.get("/tree", async (req, res) => {
               );
             }
 
-            // 🔥 মোমেন্ট অব ট্রুথ: কোড চেঞ্জ হলেই সরাসরি টাইম মেশিনের টেবিলে ইনসার্ট হবে!
             await saveToTimeMachine(update.filePath, update.content);
-          } catch (e) {
-            console.error(`DB Sync Error for ${update.filePath}:`, e.message);
+          } catch (error) {
+            console.error(
+              `[SourceExplorer] DB sync ${update.filePath}:`,
+              error.message,
+            );
           }
         }
       }, 100);
     }
 
-    res.json({ success: true, tree });
+    return res.json({
+      success: true,
+      tree,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
 router.get("/file", (req, res) => {
   try {
     const requestedPath = req.query.path;
-    if (!requestedPath)
-      return res
-        .status(400)
-        .json({ success: false, message: "File path is required" });
 
-    const rootPath = path.join(__dirname, "..");
-    const resolvedPath = path.join(rootPath, requestedPath);
+    if (!requestedPath) {
+      return res.status(400).json({
+        success: false,
+        message: "File path is required",
+      });
+    }
 
-    if (!resolvedPath.startsWith(rootPath) || !fs.existsSync(resolvedPath)) {
-      return res
-        .status(404)
-        .json({ success: false, message: "File not found or access denied" });
+    const rootPath = path.resolve(path.join(__dirname, ".."));
+    const resolvedPath = path.resolve(path.join(rootPath, requestedPath));
+
+    if (
+      !resolvedPath.startsWith(`${rootPath}${path.sep}`) &&
+      resolvedPath !== rootPath
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    if (!fs.existsSync(resolvedPath)) {
+      return res.status(404).json({
+        success: false,
+        message: "File not found",
+      });
     }
 
     const content = fs.readFileSync(resolvedPath, "utf8");
-    res.json({ success: true, content });
+
+    return res.json({
+      success: true,
+      content,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
-router.get("/status", (req, res) => {
+router.get("/status", (_req, res) => {
   try {
     const crashReportPath = path.join(__dirname, "..", "crash-report.json");
+
     if (fs.existsSync(crashReportPath)) {
       const crashData = JSON.parse(fs.readFileSync(crashReportPath, "utf8"));
+
       return res.json({
         success: true,
         hasError: true,
@@ -190,9 +235,18 @@ router.get("/status", (req, res) => {
         errorLine: crashData.line,
       });
     }
-    res.json({ success: true, hasError: false, file: null, errorLine: null });
-  } catch (error) {
-    res.json({ success: true, hasError: false });
+
+    return res.json({
+      success: true,
+      hasError: false,
+      file: null,
+      errorLine: null,
+    });
+  } catch {
+    return res.json({
+      success: true,
+      hasError: false,
+    });
   }
 });
 

@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const aiChatService = require("./ai/AIChatService.cjs");
 const providerManager = require("./ai/AIProviderManager.cjs");
+const sourceApi = require("./source-api.cjs");
 
 const PORT = process.env.PORT || 3000;
 
@@ -63,6 +64,10 @@ async function handleOllamaStream(prompt, res) {
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ORBIS LEGACY DISPLAY RESTORE:
+// Source Explorer + Time Machine remain real backend APIs.
+app.use("/api/system", sourceApi);
 
 function getDirectoryTree(dirPath, indent = "", changedFiles = []) {
   let result = "";
