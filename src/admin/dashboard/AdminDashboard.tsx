@@ -626,9 +626,6 @@ export function AdminDashboard() {
         </motion.div>
 
         <SystemLogManager />
-        <div className="col-span-1 md:col-span-2 w-full">
-          <LocalRuntime />
-        </div>
 
         <motion.div
           whileTap={{ scale: 0.96 }}
@@ -724,6 +721,10 @@ export function AdminDashboard() {
             </p>
           </div>
         </motion.div>
+      </div>
+
+      <div className="px-5 mt-4 w-full">
+        <LocalRuntime />
       </div>
 
       <AnimatePresence>

@@ -60,3 +60,4 @@ coverage/
 .parcel-cache
 
 /src/generated/prisma
+.orbis-backups/
