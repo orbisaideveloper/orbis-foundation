@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import SystemLogManager from "../system-logs/SystemLogManager";
 import { GlassChatCard } from "../../features/orbis-ai-chatbot/components/GlassChatCard";
+import { LocalRuntime } from "./sections/LocalRuntime";
 
 const SOURCE_TREE_NAME = "Source Tree";
 const MASTER_NODE_NAME = "Master Node";
@@ -625,6 +626,7 @@ export function AdminDashboard() {
         </motion.div>
 
         <SystemLogManager />
+        <LocalRuntime />
 
         <motion.div
           whileTap={{ scale: 0.96 }}

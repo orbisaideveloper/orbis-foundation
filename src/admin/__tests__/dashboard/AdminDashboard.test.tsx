@@ -57,7 +57,7 @@ describe("AdminDashboard Full Coverage Tests", () => {
       )[0],
     ).toBeInTheDocument();
     expect(screen.getAllByText(/Overview/i)[0]).toBeInTheDocument();
-    expect(screen.getByText(/Runtime/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Runtime/i)[0]).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText(NEURAL_COCKPIT_TITLE)).toBeInTheDocument();
@@ -250,7 +250,7 @@ describe("AdminDashboard Full Coverage Tests", () => {
 
   it("handles browser popstate event listener", async () => {
     render(<AdminDashboard />);
-    const runtimeCard = screen.getByText(/Runtime/i);
+    const runtimeCard = screen.getByText("Runtime", { selector: "h3" });
     fireEvent.click(runtimeCard);
 
     await waitFor(() => {
