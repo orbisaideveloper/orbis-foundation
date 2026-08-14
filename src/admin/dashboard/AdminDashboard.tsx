@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import SystemLogManager from "../system-logs/SystemLogManager";
 import { GlassChatCard } from "../../features/orbis-ai-chatbot/components/GlassChatCard";
-import { LocalRuntime } from "./sections/LocalRuntime";
+import { TermuxObservatory } from "./sections/TermuxObservatory";
 
 const SOURCE_TREE_NAME = "Source Tree";
 const MASTER_NODE_NAME = "Master Node";
@@ -724,7 +724,7 @@ export function AdminDashboard() {
       </div>
 
       <div className="px-5 mt-4 w-full">
-        <LocalRuntime />
+        <TermuxObservatory />
       </div>
 
       <AnimatePresence>

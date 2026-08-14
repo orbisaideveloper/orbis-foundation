@@ -166,6 +166,51 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+// TERMUX / ANDROID / OFFLINE INTELLIGENCE OBSERVATORY
+app.get("/api/termux-observatory", (req, res) => {
+  try {
+    const auditDir = path.join(__dirname, "../docs/AUDIT_REPORTS");
+    const files = fs.existsSync(auditDir)
+      ? fs
+          .readdirSync(auditDir)
+          .filter((n) => /^\d+_.*\.md$/.test(n))
+          .sort()
+      : [];
+    const tasks = files.map((file) => {
+      const c = fs.readFileSync(path.join(auditDir, file), "utf8");
+      const task =
+        c.match(/Task ID\s*:\s*(TASK-\d+)/i)?.[1] ||
+        c.match(/\*\*Task ID:\*\*\s*(TASK-\d+)/i)?.[1] ||
+        "UNKNOWN";
+      const status =
+        c.match(/(?:Final )?Status\s*:\s*([^\n]+)/i)?.[1]?.trim() || "UNKNOWN";
+      const commit =
+        c.match(/Implementation Commit\s*:\s*([0-9a-f]+)/i)?.[1] || "UNKNOWN";
+      const objective =
+        c.match(/Objective\s*:\s*([^\n]+)/i)?.[1]?.trim() ||
+        "Recorded implementation objective";
+      const tests =
+        c.match(/Tests?\s*:\s*([^\n]+)/i)?.[1]?.trim() || "Recorded in audit";
+      return { task, status, commit, objective, tests, auditFile: file };
+    });
+    const completed = tasks.filter((t) => /PASS/i.test(t.status)).length;
+    res.json({
+      initiative: "Termux + Android + Offline Intelligence",
+      description:
+        "Repository-backed observability for the controlled local-execution capability track.",
+      updatedAt: new Date().toISOString(),
+      completed,
+      auditedTasks: tasks.length,
+      progress: tasks.length ? Math.round((completed / tasks.length) * 100) : 0,
+      tasks,
+      next: "Future tasks appear after their implementation audit is committed.",
+    });
+  } catch (e) {
+    console.error("[OBSERVATORY]", e);
+    res.status(500).json({ error: "Observatory data unavailable" });
+  }
+});
+
 app.post("/api/orbis-command", async (req, res) => {
   let rawCommand = req.body.command || "";
   let cleanCommand = rawCommand.replace(/^.*?ai:\s*/i, "").trim();
