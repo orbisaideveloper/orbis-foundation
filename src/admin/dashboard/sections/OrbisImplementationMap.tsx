@@ -1,17 +1,32 @@
 import React, { useState } from "react";
 
-type Task = {
+export type Task = {
   id: string;
   title: string;
-  status: "COMPLETED";
+  status: string;
   purpose: string;
   logic: string;
   dependency: string;
   files: string[];
+  testsCoverage: string;
+  buildTypeCheck: string;
+  securityArchitecture: string;
+  realOutput: string;
+  commit: string;
   auditFile: string;
 };
 
-const TASKS: Task[] = [
+const AUDIT_FALLBACK = "Recorded in audit";
+
+const defaultOldTaskData = {
+  testsCoverage: AUDIT_FALLBACK,
+  buildTypeCheck: AUDIT_FALLBACK,
+  securityArchitecture: AUDIT_FALLBACK,
+  realOutput: AUDIT_FALLBACK,
+  commit: AUDIT_FALLBACK,
+};
+
+export const TASKS: Task[] = [
   {
     id: "TASK-001",
     title: "Local Execution Abstraction",
@@ -26,6 +41,7 @@ const TASKS: Task[] = [
       "src/core/execution/interfaces/IExecutionRuntime.ts",
     ],
     auditFile: "docs/AUDIT_REPORTS/001_2026-08-13_23-18-27.md",
+    ...defaultOldTaskData,
   },
   {
     id: "TASK-002",
@@ -42,6 +58,7 @@ const TASKS: Task[] = [
       "src/core/execution/policy/ExecutionPolicyEngine.ts",
     ],
     auditFile: "docs/AUDIT_REPORTS/002_2026-08-14_00-33-15.md",
+    ...defaultOldTaskData,
   },
   {
     id: "TASK-003",
@@ -56,6 +73,7 @@ const TASKS: Task[] = [
       "src/core/execution/lifecycle/RuntimeLifecycleManager.ts",
     ],
     auditFile: "docs/AUDIT_REPORTS/003_2026-08-14_00-43-42.md",
+    ...defaultOldTaskData,
   },
   {
     id: "TASK-004",
@@ -69,6 +87,7 @@ const TASKS: Task[] = [
       "src/core/execution/authorization/SecureExecutionAuthorizationGate.ts",
     ],
     auditFile: "docs/AUDIT_REPORTS/004_2026-08-14_08-39-23.md",
+    ...defaultOldTaskData,
   },
   {
     id: "TASK-005",
@@ -83,6 +102,7 @@ const TASKS: Task[] = [
       "src/admin/dashboard/sections/LocalRuntime.tsx",
     ],
     auditFile: "docs/AUDIT_REPORTS/005_2026-08-14_12-08-43.md",
+    ...defaultOldTaskData,
   },
   {
     id: "TASK-006",
@@ -99,24 +119,45 @@ const TASKS: Task[] = [
       "orbis-server/bridge.cjs",
     ],
     auditFile: "docs/AUDIT_REPORTS/006_2026-08-15_10-50-00.md",
+    ...defaultOldTaskData,
   },
   {
     id: "TASK-007",
     title: "Controlled Termux Capability Execution + Real Output",
     status: "COMPLETED",
     purpose:
-      "Invoke explicitly authorized capabilities safely and receive real structured runtime results.",
+      "Invoke explicitly authorized Termux capabilities safely and receive real structured runtime results.",
     logic:
-      "Executes termux.system.info capability via strict execution policy without shell/spawn access.",
+      "Controlled execution of termux.system.info through the registered runtime, ExecutionPolicyEngine and SecureExecutionAuthorizationGate, returning structured runtime output without shell/spawn execution.",
     dependency: "TASK-006",
     files: [
       "src/core/execution/runtimes/TermuxRuntime.ts",
       "src/core/execution/runtimes/TermuxRuntimeService.ts",
       "orbis-server/bridge.cjs",
     ],
-    auditFile: "docs/AUDIT_REPORTS/007_2026-08-15_13-36-41.md",
+    testsCoverage: AUDIT_FALLBACK,
+    buildTypeCheck: AUDIT_FALLBACK,
+    securityArchitecture: AUDIT_FALLBACK,
+    realOutput: AUDIT_FALLBACK,
+    commit: "7100abd",
+    auditFile: "docs/AUDIT_REPORTS/007_2026-08-15_14-31-00.md",
   },
 ];
+
+const ExpandableCard = ({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) => (
+  <details className="group mt-2 rounded-lg border border-white/10 bg-black/20">
+    <summary className="cursor-pointer px-4 py-2 text-xs font-semibold uppercase opacity-70 transition-colors group-open:border-b group-open:border-white/10 hover:bg-white/5">
+      {title}
+    </summary>
+    <div className="p-4 text-sm opacity-90">{children}</div>
+  </details>
+);
 
 export default function OrbisImplementationMap() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -130,8 +171,13 @@ STATUS: ${task.status}
 PURPOSE: ${task.purpose}
 CORE LOGIC: ${task.logic}
 DEPENDENCY: ${task.dependency}
-FILES:
+SOURCE FILES:
 ${task.files.map((f) => `- ${f}`).join("\n")}
+TESTS & COVERAGE: ${task.testsCoverage}
+BUILD & TYPE CHECK: ${task.buildTypeCheck}
+SECURITY & ARCHITECTURE: ${task.securityArchitecture}
+REAL OUTPUT / RESULT: ${task.realOutput}
+COMMIT: ${task.commit}
 AUDIT FILE: ${task.auditFile}
     `.trim();
 
@@ -168,7 +214,7 @@ AUDIT FILE: ${task.auditFile}
               onClick={() => handleCopyDetails(selectedTask)}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium hover:bg-blue-500"
             >
-              {copied ? "COPIED!" : "COPY TASK DETAIL"}
+              {copied ? "COPIED!" : "COPY"}
             </button>
           </div>
 
@@ -179,105 +225,80 @@ AUDIT FILE: ${task.auditFile}
             {selectedTask.status}
           </span>
 
-          <div className="mt-4 space-y-3 text-sm">
-            <div>
-              <div className="text-xs uppercase opacity-50 font-semibold">
-                Purpose
+          <div className="mt-6">
+            <div className="mb-4 rounded-lg bg-black/30 p-4">
+              <div className="mb-1 text-xs font-semibold uppercase opacity-50">
+                Core Logic / Summary
               </div>
-              <p>{selectedTask.purpose}</p>
+              <p className="text-sm">{selectedTask.logic}</p>
             </div>
-            <div>
-              <div className="text-xs uppercase opacity-50 font-semibold">
-                Core Logic
-              </div>
-              <p>{selectedTask.logic}</p>
-            </div>
-            <div>
-              <div className="text-xs uppercase opacity-50 font-semibold">
-                Dependency
-              </div>
+
+            <ExpandableCard title="Dependency">
               <p>{selectedTask.dependency}</p>
-            </div>
-            <div>
-              <div className="text-xs uppercase opacity-50 font-semibold">
-                Source Files
-              </div>
-              <ul className="mt-1 space-y-1">
+            </ExpandableCard>
+
+            <ExpandableCard title="Source Files">
+              <ul className="space-y-1 font-mono text-xs">
                 {selectedTask.files.map((file) => (
-                  <li key={file} className="font-mono text-xs opacity-80">
-                    {file}
-                  </li>
+                  <li key={file}>- {file}</li>
                 ))}
               </ul>
-            </div>
-            <div>
-              <div className="text-xs uppercase opacity-50 font-semibold">
-                Audit File
-              </div>
-              <p className="font-mono text-xs opacity-80">
-                {selectedTask.auditFile}
+            </ExpandableCard>
+
+            <ExpandableCard title="Tests & Coverage">
+              <p>{selectedTask.testsCoverage}</p>
+            </ExpandableCard>
+
+            <ExpandableCard title="Build & Type Check">
+              <p>{selectedTask.buildTypeCheck}</p>
+            </ExpandableCard>
+
+            <ExpandableCard title="Security & Architecture">
+              <p>{selectedTask.securityArchitecture}</p>
+            </ExpandableCard>
+
+            <ExpandableCard title="Real Output / Result">
+              <p>{selectedTask.realOutput}</p>
+            </ExpandableCard>
+
+            <ExpandableCard title="Commit & Audit Info">
+              <p>
+                <strong>Commit:</strong> {selectedTask.commit}
               </p>
-            </div>
+              <p>
+                <strong>Audit File:</strong>{" "}
+                <span className="font-mono text-xs">
+                  {selectedTask.auditFile}
+                </span>
+              </p>
+            </ExpandableCard>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
           {TASKS.map((task, index) => (
-            <div
-              key={task.id}
-              data-testid={`task-${task.id}`}
-              onClick={() => setSelectedTask(task)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setSelectedTask(task);
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              className="cursor-pointer text-left block w-full rounded-xl border border-white/10 p-4 transition-all hover:border-white/30 hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-white/50"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
+            <div key={task.id}>
+              <div
+                data-testid={`task-${task.id}`}
+                onClick={() => setSelectedTask(task)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedTask(task);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                className="flex cursor-pointer items-center justify-between rounded-xl border border-white/10 p-4 transition-all hover:border-white/30 hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-white/50"
+              >
                 <div>
                   <span className="font-semibold">{task.id}</span>
-                  <span className="ml-2 opacity-80">{task.title}</span>
+                  <span className="ml-3 opacity-80">{task.title}</span>
                 </div>
-
                 <span className="rounded-full border border-green-500/30 px-2 py-1 text-xs text-green-400">
                   {task.status}
                 </span>
               </div>
-
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <div>
-                  <div className="text-xs uppercase opacity-50">Purpose</div>
-                  <div className="text-sm">{task.purpose}</div>
-                </div>
-
-                <div>
-                  <div className="text-xs uppercase opacity-50">Core Logic</div>
-                  <div className="text-sm">{task.logic}</div>
-                </div>
-
-                <div>
-                  <div className="text-xs uppercase opacity-50">Dependency</div>
-                  <div className="text-sm">{task.dependency}</div>
-                </div>
-
-                <div>
-                  <div className="text-xs uppercase opacity-50">
-                    Source Files
-                  </div>
-                  <div className="mt-1 space-y-1 text-sm">
-                    {task.files.map((file) => (
-                      <div key={file} className="break-all opacity-80">
-                        {file}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
               {index < TASKS.length - 1 && (
                 <div className="mt-3 text-center text-xs opacity-30">↓</div>
               )}
@@ -288,9 +309,8 @@ AUDIT FILE: ${task.auditFile}
 
       <div className="mt-5 rounded-xl border border-white/10 p-4">
         <div className="text-xs uppercase opacity-50">Implementation Chain</div>
-        <div className="mt-2 text-sm font-medium">
-          TASK-001 → TASK-002 → TASK-003 → TASK-004 → TASK-005 → TASK-006 →
-          TASK-007
+        <div className="mt-2 text-sm font-medium opacity-80">
+          {TASKS.map((t) => t.id).join(" → ")}
         </div>
       </div>
     </section>
