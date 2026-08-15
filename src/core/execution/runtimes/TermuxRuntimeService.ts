@@ -4,6 +4,14 @@ import { RuntimeLifecycleManager } from "../lifecycle/RuntimeLifecycleManager";
 import { LifecycleState } from "../lifecycle/LifecycleState";
 import { IExecutionRequest } from "../interfaces/IExecutionRequest";
 import { IExecutionResult } from "../interfaces/IExecutionResult";
+import { ExecutionPolicyEngine } from "../policy/ExecutionPolicyEngine";
+import {
+  SecureExecutionAuthorizationGate,
+  IGateRegistryDeps,
+  IGateLifecycleDeps,
+  IGatePolicyDeps,
+  AuthorizationResult,
+} from "../authorization/SecureExecutionAuthorizationGate";
 
 export interface TermuxRuntimeStatus {
   registered: boolean;
@@ -20,11 +28,22 @@ export interface TermuxRuntimeStatus {
 
 export class TermuxRuntimeService {
   private readonly runtime = new TermuxRuntime();
-  private readonly registry = new RuntimeRegistry();
-  private readonly lifecycle = new RuntimeLifecycleManager();
+  private readonly registry: RuntimeRegistry;
+  private readonly lifecycle: RuntimeLifecycleManager;
+  private readonly policyEngine: ExecutionPolicyEngine;
+
+  constructor(
+    registry: RuntimeRegistry = new RuntimeRegistry(),
+    lifecycle: RuntimeLifecycleManager = new RuntimeLifecycleManager(),
+  ) {
+    this.registry = registry;
+    this.lifecycle = lifecycle;
+    this.policyEngine = new ExecutionPolicyEngine(this.registry);
+  }
 
   public async check(): Promise<TermuxRuntimeStatus> {
     const name = this.runtime.getName();
+
     if (!this.registry.getRuntime(name)) {
       this.registry.registerRuntime(this.runtime, [
         {
@@ -37,6 +56,7 @@ export class TermuxRuntimeService {
           runtime: name,
         },
       ]);
+
       this.lifecycle.register(
         name,
         this.runtime.getVersion(),
@@ -88,6 +108,7 @@ export class TermuxRuntimeService {
     request: IExecutionRequest,
   ): Promise<IExecutionResult> {
     const status = await this.check();
+
     if (!status.connected) {
       return {
         success: false,
@@ -99,7 +120,78 @@ export class TermuxRuntimeService {
       };
     }
 
+    const runtimeId = this.runtime.getName();
+    const authResult = this.authorizeRequest(request, runtimeId);
+
+    if (!authResult.authorized) {
+      return {
+        success: false,
+        requestId: request.requestId,
+        runtime: runtimeId,
+        error: `AUTHORIZATION_${authResult.decision}: ${authResult.reason}`,
+        durationMs: 0,
+      };
+    }
+
     return this.runtime.execute(request);
+  }
+
+  private authorizeRequest(
+    request: IExecutionRequest,
+    runtimeId: string,
+  ): AuthorizationResult {
+    const registryDeps: IGateRegistryDeps = {
+      hasRuntime: (id) => !!this.registry.getRuntime(id),
+
+      hasCapability: (id, capabilityId) => {
+        const cap = this.registry.getCapability(capabilityId);
+        return !!cap && cap.runtime === id;
+      },
+
+      isCapabilityEnabled: (capabilityId) => {
+        const cap = this.registry.getCapability(capabilityId);
+        return cap?.enabled === true;
+      },
+
+      getCapabilityRiskLevel: (capabilityId) => {
+        const cap = this.registry.getCapability(capabilityId);
+        return cap?.riskLevel ?? "PRIVILEGED";
+      },
+    };
+
+    const lifecycleDeps: IGateLifecycleDeps = {
+      isReady: (id) => {
+        try {
+          return this.lifecycle.getHealth(id).ready === true;
+        } catch {
+          return false;
+        }
+      },
+
+      isHealthy: (id) => {
+        try {
+          return this.lifecycle.getHealth(id).healthy === true;
+        } catch {
+          return false;
+        }
+      },
+    };
+
+    const policyDeps: IGatePolicyDeps = {
+      evaluate: () => this.policyEngine.evaluate(request),
+    };
+
+    const gate = new SecureExecutionAuthorizationGate(
+      registryDeps,
+      lifecycleDeps,
+      policyDeps,
+    );
+
+    return gate.authorize({
+      runtimeId,
+      capabilityId: request.capability,
+      parameters: request.input,
+    });
   }
 }
 
