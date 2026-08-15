@@ -255,7 +255,10 @@ app.get("/api/termux-observatory", (req, res) => {
     const tasks = files
       .map((file) => {
         const c = readText(path.join(auditDir, file));
-        const task = first(c, [/(?:\*\*)?Task ID(?:\*\*)?\s*:\s*(TASK-\d+)/i]);
+        const taskMatch = file.match(/^0*(\d+)_.*\.md$/i);
+        const task = taskMatch
+          ? `TASK-${String(taskMatch[1]).padStart(3, "0")}`
+          : "UNKNOWN";
         if (task === "UNKNOWN") return null;
         const status = clean(
           first(c, [
