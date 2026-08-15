@@ -197,7 +197,7 @@ app.get("/api/termux-observatory", (req, res) => {
         const e = h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const m = t.match(
           new RegExp(
-            `(?:^|\\n)#{1,4}\\s*${e}\\s*\\n([\\s\\S]*?)(?=\\n#{1,4}\\s|$)`,
+            `(?:^|\\n)#{1,4}\\s*(?:\\d+\\.\\s*)?${e}\\s*\\n([\\s\\S]*?)(?=\\n#{1,4}\\s|$)`,
             "i",
           ),
         );
@@ -266,15 +266,14 @@ app.get("/api/termux-observatory", (req, res) => {
             /(?:\*\*)?Status(?:\*\*)?\s*:\s*([^\n]+)/i,
           ]),
         );
-        const commit = first(c, [
-          /Implementation Commit(?:\*\*)?\s*:\s*([0-9a-f]{7,40})/i,
-        ]);
+        const commit = first(c, [/Commit.*?:\s*([0-9a-f]{7,40})/i]);
         const objective = clean(
-          first(
-            c,
-            [/(?:\*\*)?Objective(?:\*\*)?\s*:\s*([^\n]+)/i],
-            "Recorded implementation objective",
-          ),
+          section(c, ["Objective"]) ||
+            first(
+              c,
+              [/(?:\*\*)?Objective(?:\*\*)?\s*:\s*([^\n]+)/i],
+              "Recorded implementation objective",
+            ),
         );
         const changed = [
           ...new Set([
