@@ -266,7 +266,8 @@ app.get("/api/termux-observatory", (req, res) => {
             /(?:\*\*)?Status(?:\*\*)?\s*:\s*([^\n]+)/i,
           ]),
         );
-        const commit = first(c, [/Commit.*?:\s*([0-9a-f]{7,40})/i]);
+        const commitMatch = c.match(/Commit[^a-zA-Z0-9]*([0-9a-f]{7,40})/i);
+        const commit = commitMatch ? commitMatch[1] : "UNKNOWN";
         const objective = clean(
           section(c, ["Objective"]) ||
             first(
