@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import SystemLogManager from "../system-logs/SystemLogManager";
 import { GlassChatCard } from "../../features/orbis-ai-chatbot/components/GlassChatCard";
 import { TermuxObservatory } from "./sections/TermuxObservatory";
+import OrbisImplementationMap from "./sections/OrbisImplementationMap";
 
 const SOURCE_TREE_NAME = "Source Tree";
 const MASTER_NODE_NAME = "Master Node";
@@ -725,6 +726,7 @@ export function AdminDashboard() {
 
       <div className="px-5 mt-4 w-full">
         <TermuxObservatory />
+        <OrbisImplementationMap />
       </div>
 
       <AnimatePresence>
