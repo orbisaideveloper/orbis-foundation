@@ -17,6 +17,8 @@ export type Task = {
 };
 
 const AUDIT_FALLBACK = "Recorded in audit";
+const FILE_TERMUX_RUNTIME_SERVICE =
+  "src/core/execution/runtimes/TermuxRuntimeService.ts";
 
 const defaultOldTaskData = {
   testsCoverage: AUDIT_FALLBACK,
@@ -115,7 +117,7 @@ export const TASKS: Task[] = [
     dependency: "TASK-005",
     files: [
       "src/core/execution/runtimes/TermuxRuntime.ts",
-      "src/core/execution/runtimes/TermuxRuntimeService.ts",
+      FILE_TERMUX_RUNTIME_SERVICE,
       "orbis-server/bridge.cjs",
     ],
     auditFile: "docs/AUDIT_REPORTS/006_2026-08-15_10-50-00.md",
@@ -132,7 +134,7 @@ export const TASKS: Task[] = [
     dependency: "TASK-006",
     files: [
       "src/core/execution/runtimes/TermuxRuntime.ts",
-      "src/core/execution/runtimes/TermuxRuntimeService.ts",
+      FILE_TERMUX_RUNTIME_SERVICE,
       "orbis-server/bridge.cjs",
     ],
     testsCoverage: AUDIT_FALLBACK,
@@ -141,6 +143,26 @@ export const TASKS: Task[] = [
     realOutput: AUDIT_FALLBACK,
     commit: "7100abd",
     auditFile: "docs/AUDIT_REPORTS/007_2026-08-15_14-31-00.md",
+  },
+  {
+    id: "TASK-008",
+    title: "Brain <-> Local Termux Capability Discovery Integration",
+    status: "COMPLETED",
+    purpose:
+      "Give the ORBIS Brain a provider-independent boundary to ask what local capabilities are currently available, without knowing about Termux HTTP endpoints.",
+    logic:
+      "LocalCapabilityDiscovery wraps the existing TermuxRuntimeService.check() (TASK-006/TASK-007 handshake) and returns a structured, deterministic CapabilityDiscoveryResult. Discovery only — no capability execution, no new Termux bridge, no direct HTTP access from the Brain layer.",
+    dependency: "TASK-007",
+    files: [
+      "src/core/brain/LocalCapabilityDiscovery.ts",
+      FILE_TERMUX_RUNTIME_SERVICE,
+    ],
+    testsCoverage: AUDIT_FALLBACK,
+    buildTypeCheck: AUDIT_FALLBACK,
+    securityArchitecture: AUDIT_FALLBACK,
+    realOutput: AUDIT_FALLBACK,
+    commit: AUDIT_FALLBACK,
+    auditFile: "docs/AUDIT_REPORTS/008_PENDING_LOCAL_VERIFICATION.md",
   },
 ];
 
