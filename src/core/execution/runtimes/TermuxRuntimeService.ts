@@ -11,6 +11,8 @@ export interface TermuxRuntimeStatus {
   state: LifecycleState;
   runtime: string;
   version: string;
+  capabilities: string[];
+  bridgeStatus: string;
   checkedAt: number;
 }
 
@@ -21,10 +23,8 @@ export class TermuxRuntimeService {
 
   public async check(): Promise<TermuxRuntimeStatus> {
     const name = this.runtime.getName();
-
     if (!this.registry.getRuntime(name)) {
       this.registry.registerRuntime(this.runtime, []);
-
       this.lifecycle.register(
         name,
         this.runtime.getVersion(),
@@ -32,11 +32,12 @@ export class TermuxRuntimeService {
       );
     }
 
+    const handshake = await this.runtime.performHandshake();
     const healthy = await this.runtime.healthCheck();
 
     let health = this.lifecycle.getHealth(name);
 
-    if (healthy) {
+    if (healthy && handshake.identityValid) {
       if (
         health.state === LifecycleState.REGISTERED ||
         health.state === LifecycleState.FAILED
@@ -49,7 +50,10 @@ export class TermuxRuntimeService {
       health.state !== LifecycleState.STOPPED &&
       health.state !== LifecycleState.UNREGISTERED
     ) {
-      this.lifecycle.setFailed(name, "Termux bridge is unreachable.");
+      this.lifecycle.setFailed(
+        name,
+        "Termux bridge unreachable or identity invalid.",
+      );
     }
 
     health = this.lifecycle.getHealth(name);
@@ -58,10 +62,12 @@ export class TermuxRuntimeService {
       registered: !!this.registry.getRuntime(name),
       healthy,
       ready: health.ready,
-      connected: healthy && health.ready && health.healthy,
+      connected: healthy && health.ready && handshake.identityValid,
       state: health.state,
       runtime: name,
       version: this.runtime.getVersion(),
+      capabilities: handshake.capabilities,
+      bridgeStatus: handshake.status,
       checkedAt: health.lastChecked,
     };
   }

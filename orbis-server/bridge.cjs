@@ -33,7 +33,6 @@ async function handleOllamaStream(prompt, res) {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -65,8 +64,49 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ORBIS LEGACY DISPLAY RESTORE:
-// Source Explorer + Time Machine remain real backend APIs.
+// ============================================================
+// TASK-006: REAL TERMUX RUNTIME BRIDGE & HANDSHAKE ENDPOINTS
+// ============================================================
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    runtime: "TermuxRuntime",
+    platform: "android-termux",
+    version: "0.1.0",
+    status: "BRIDGE_REACHABLE",
+    timestamp: Date.now(),
+  });
+});
+
+app.get("/api/termux/handshake", (req, res) => {
+  res.json({
+    ok: true,
+    runtime: "TermuxRuntime",
+    platform: "android-termux",
+    version: "0.1.0",
+    identity: {
+      valid: true,
+      runtimeId: "termux-local-01",
+      signature: "orbis-termux-v1",
+    },
+    capabilities: [
+      {
+        id: "termux.system.info",
+        name: "System Info",
+        riskLevel: "SAFE",
+        enabled: true,
+      },
+      {
+        id: "termux.file.read",
+        name: "Read Local Storage",
+        riskLevel: "SENSITIVE",
+        enabled: true,
+      },
+    ],
+    status: "CAPABILITIES_VERIFIED",
+  });
+});
+
 app.use("/api/system", sourceApi);
 
 function getDirectoryTree(dirPath, indent = "", changedFiles = []) {
@@ -128,9 +168,6 @@ app.get("/api/system-stats", (req, res) => {
   });
 });
 
-// ============================================================
-// NEW: Admin AI Providers Status API
-// ============================================================
 app.get("/api/ai/providers/status", (req, res) => {
   try {
     const active = providerManager.getActiveProvider();
@@ -145,9 +182,6 @@ app.get("/api/ai/providers/status", (req, res) => {
   }
 });
 
-// ============================================================
-// ORBIS CHAT API
-// ============================================================
 app.post("/api/chat", async (req, res) => {
   try {
     const rawMessages = req.body?.messages;
@@ -166,8 +200,6 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// TERMUX / ANDROID / OFFLINE INTELLIGENCE OBSERVATORY
-// TERMUX / ANDROID / OFFLINE INTELLIGENCE OBSERVATORY
 app.get("/api/termux-observatory", (req, res) => {
   try {
     const auditDir = path.join(__dirname, "../docs/AUDIT_REPORTS");
@@ -213,7 +245,6 @@ app.get("/api/termux-observatory", (req, res) => {
         );
         if (matches.length > 0) return matches;
       }
-      // Universal Fallback: হেডিং না পেলে পুরো ফাইলের যেখানেই পাথ থাকুক, টেনে বের করবে!
       return [
         ...t.matchAll(/(?:src|docs|orbis-server)\/[a-zA-Z0-9_\.\/-]+/g),
       ].map((m) => m[0]);
@@ -233,6 +264,7 @@ app.get("/api/termux-observatory", (req, res) => {
       if (p.startsWith("docs/")) return "audit";
       return "other";
     };
+
     const resolveImport = (from, imp) => {
       if (!imp.startsWith(".")) return null;
       const base = path.resolve(path.dirname(from), imp);
@@ -249,6 +281,7 @@ app.get("/api/termux-observatory", (req, res) => {
       const found = cs.find((p) => fs.existsSync(p));
       return found ? path.relative(repoRoot, found).replace(/\\/g, "/") : null;
     };
+
     const imports = (file) => {
       const abs = path.resolve(repoRoot, file);
       if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return [];
@@ -260,6 +293,7 @@ app.get("/api/termux-observatory", (req, res) => {
       }
       return [...new Set(out)];
     };
+
     const tasks = files
       .map((file) => {
         const c = readText(path.join(auditDir, file));
@@ -354,12 +388,14 @@ app.get("/api/termux-observatory", (req, res) => {
         };
       })
       .filter(Boolean);
+
     tasks.sort(
       (a, b) =>
         Number(a.task.replace(/\D/g, "")) - Number(b.task.replace(/\D/g, "")),
     );
-    const completed = tasks.filter((t) => t.passed).length,
-      auditedTasks = tasks.length;
+
+    const completed = tasks.filter((t) => t.passed).length;
+    const auditedTasks = tasks.length;
     const progress = auditedTasks
       ? Math.round((completed / auditedTasks) * 100)
       : 0;
@@ -367,6 +403,7 @@ app.get("/api/termux-observatory", (req, res) => {
       ? Math.max(...tasks.map((t) => Number(t.task.replace(/\D/g, ""))))
       : 0;
     const next = `TASK-${String(last + 1).padStart(3, "0")}`;
+
     res.json({
       initiative: "Termux / Android / Offline-AI",
       title: "TERMUX / ANDROID OBSERVATORY",
@@ -405,7 +442,6 @@ app.post("/api/orbis-command", async (req, res) => {
   let rawCommand = req.body.command || "";
   let cleanCommand = rawCommand.replace(/^.*?ai:\s*/i, "").trim();
 
-  // (Keeping existing command logic intact...)
   if (cleanCommand.includes("ট্রি") || cleanCommand.includes("tree")) {
     const rootPath = path.join(__dirname, "../");
     return res.json({
