@@ -80,10 +80,6 @@ const TASKS: Task[] = [
   },
 ];
 
-function fileExists(path: string) {
-  return true;
-}
-
 export default function OrbisImplementationMap() {
   return (
     <section
