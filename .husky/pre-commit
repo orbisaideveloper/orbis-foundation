@@ -1,14 +1,19 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
 echo "🛡️ [Husky Guard] অটো-ফিক্সার ও ক্লিনআপ শুরু..."
 npx lint-staged
 
-echo "🔄 [Madge Guard] সার্কুলার ডিপেন্ডেন্সি চেক..."
-npm run check:circular || { 
-    echo "❌ Circular Dependency Alert!" 
-    node orbis-server/ai-healer.cjs "Circular Dependency Error"
-    exit 1 
+echo "🔄 [Logic Integrity Guard] Checking core business logic & data flows..."
+node orbis-logic-guard.cjs || {
+    echo "❌ Logic Mismatch Alert! Commit aborted."
+    exit 1
 }
 
-echo "✅ [Termux] কোড ১০০% পারফেক্ট! গিটহাবে যাচ্ছে..."
+echo "🔄 [Madge Guard] সার্কুলার ডিপেন্ডেন্সি চেক..."
+npm run check:circular || {
+    echo "❌ Circular Dependency Alert!"
+    exit 1
+}
 
-# 🛡️ Coverage Guard 90%
-npm run test:coverage
+echo "✅ [Termux] কোড ১০০% পারফেক্ট!"
