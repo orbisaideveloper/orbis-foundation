@@ -207,10 +207,18 @@ app.get("/api/termux-observatory", (req, res) => {
     };
     const listFiles = (t, hs) => {
       const b = section(t, hs);
-      return b
-        ? [...b.matchAll(/^\s*[-*]\s+`([^`]+)`\s*$/gm)].map((m) => m[1])
-        : [];
+      if (b) {
+        let matches = [...b.matchAll(/^\s*[-*]\s+`?([^`\s]+)`?\s*$/gm)].map(
+          (m) => m[1],
+        );
+        if (matches.length > 0) return matches;
+      }
+      // Universal Fallback: হেডিং না পেলে পুরো ফাইলের যেখানেই পাথ থাকুক, টেনে বের করবে!
+      return [
+        ...t.matchAll(/(?:src|docs|orbis-server)\/[a-zA-Z0-9_\.\/-]+/g),
+      ].map((m) => m[0]);
     };
+
     const classify = (f) => {
       const p = f.replace(/\\/g, "/");
       if (
@@ -319,6 +327,8 @@ app.get("/api/termux-observatory", (req, res) => {
               "Implementation Summary",
               "Implementation Result",
               "Core Implementation Result",
+              "Summary",
+              "Architecture Impact",
             ]) || "Recorded in audit",
           ),
           changedFiles: changed,
