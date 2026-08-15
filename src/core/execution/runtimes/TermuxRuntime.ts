@@ -15,7 +15,8 @@ export class TermuxRuntime implements IExecutionRuntime {
   private readonly version = "0.1.0";
   private readonly healthUrl = "http://127.0.0.1:8765/health";
   private readonly handshakeUrl = "http://127.0.0.1:8765/api/termux/handshake";
-  private discoveredCapabilities: string[] = [];
+  private readonly executeUrl = "http://127.0.0.1:8765/api/termux/capability";
+  private discoveredCapabilities: string[] = ["termux.system.info"];
 
   public getName(): string {
     return this.name;
@@ -70,7 +71,7 @@ export class TermuxRuntime implements IExecutionRuntime {
       const identityValid = data?.identity?.valid === true;
       const capabilities = Array.isArray(data?.capabilities)
         ? data.capabilities.map((c: { id: string }) => c.id)
-        : [];
+        : ["termux.system.info"];
 
       if (identityValid) {
         this.discoveredCapabilities = capabilities;
@@ -95,13 +96,64 @@ export class TermuxRuntime implements IExecutionRuntime {
   }
 
   public async execute(request: IExecutionRequest): Promise<IExecutionResult> {
-    return {
-      success: false,
-      requestId: request.requestId,
-      runtime: this.name,
-      error: "Controlled execution capability is restricted under policy.",
-      durationMs: 0,
-    };
+    const startTime = Date.now();
+
+    if (!request || !request.capability) {
+      return {
+        success: false,
+        requestId: request?.requestId || "unknown",
+        runtime: this.name,
+        error: "CAPABILITY_NOT_FOUND: Missing capability identifier.",
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    if (!this.discoveredCapabilities.includes(request.capability)) {
+      return {
+        success: false,
+        requestId: request.requestId,
+        runtime: this.name,
+        error: `CAPABILITY_NOT_FOUND: Capability '${request.capability}' is not supported.`,
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    try {
+      const response = await fetch(this.executeUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ capability: request.capability }),
+      });
+
+      const resultData = await response.json();
+
+      if (!response.ok || !resultData.success) {
+        return {
+          success: false,
+          requestId: request.requestId,
+          runtime: this.name,
+          error: resultData.error || "EXECUTION_FAILED",
+          durationMs: Date.now() - startTime,
+        };
+      }
+
+      return {
+        success: true,
+        requestId: request.requestId,
+        runtime: this.name,
+        output: resultData.data,
+        durationMs: Date.now() - startTime,
+      };
+    } catch {
+      return {
+        success: false,
+        requestId: request.requestId,
+        runtime: this.name,
+        error:
+          "BRIDGE_UNREACHABLE: Failed to connect to Termux runtime bridge.",
+        durationMs: Date.now() - startTime,
+      };
+    }
   }
 
   public async shutdown(): Promise<void> {

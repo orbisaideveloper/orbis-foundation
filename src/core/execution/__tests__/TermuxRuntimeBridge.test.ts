@@ -2,7 +2,9 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 import { TermuxRuntime } from "../runtimes/TermuxRuntime";
 import { TermuxRuntimeService } from "../runtimes/TermuxRuntimeService";
 
-describe("TASK-006: Termux Runtime Bridge & Capability Handshake", () => {
+const CAP_SYS_INFO = "termux.system.info";
+
+describe("TASK-006 & TASK-007: Termux Runtime Bridge & Controlled Execution", () => {
   let runtime: TermuxRuntime;
   let service: TermuxRuntimeService;
 
@@ -48,7 +50,7 @@ describe("TASK-006: Termux Runtime Bridge & Capability Handshake", () => {
               Promise.resolve({
                 ok: true,
                 identity: { valid: true },
-                capabilities: [{ id: "termux.system.info" }],
+                capabilities: [{ id: CAP_SYS_INFO }],
                 status: "CAPABILITIES_VERIFIED",
               }),
           });
@@ -63,7 +65,7 @@ describe("TASK-006: Termux Runtime Bridge & Capability Handshake", () => {
     const handshake = await runtime.performHandshake();
     expect(handshake.reachable).toBe(true);
     expect(handshake.identityValid).toBe(true);
-    expect(handshake.capabilities).toContain("termux.system.info");
+    expect(handshake.capabilities).toContain(CAP_SYS_INFO);
 
     const status = await service.check();
     expect(status.healthy).toBe(true);
@@ -95,13 +97,48 @@ describe("TASK-006: Termux Runtime Bridge & Capability Handshake", () => {
     expect(handshake.status).toBe("IDENTITY_INVALID");
   });
 
-  test("4. Unrestricted command execution is strictly denied", async () => {
+  test("4. Unsupported capability is rejected cleanly", async () => {
     const result = await runtime.execute({
       requestId: "req-01",
-      capability: "raw.shell",
+      capability: "unsupported.cap",
       input: {},
     });
     expect(result.success).toBe(false);
-    expect(result.error).toContain("restricted under policy");
+    expect(result.error).toContain("is not supported");
+  });
+
+  test("5. Successful system info capability execution returns structured result", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/capability")) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                success: true,
+                capability: CAP_SYS_INFO,
+                runtime: "TermuxRuntime",
+                data: {
+                  platform: "ANDROID-TERMUX",
+                  architecture: "arm64",
+                  nodeVersion: "v18.0.0",
+                },
+              }),
+          });
+        }
+        return Promise.resolve({ ok: true });
+      }),
+    );
+
+    const result = await runtime.execute({
+      requestId: "req-02",
+      capability: CAP_SYS_INFO,
+      input: {},
+    });
+    expect(result.success).toBe(true);
+    expect(result.requestId).toBe("req-02");
+    expect(result.output).toBeDefined();
+    expect(result.output?.platform).toBe("ANDROID-TERMUX");
   });
 });

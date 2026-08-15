@@ -2,6 +2,8 @@ import { TermuxRuntime } from "./TermuxRuntime";
 import { RuntimeRegistry } from "../registry/RuntimeRegistry";
 import { RuntimeLifecycleManager } from "../lifecycle/RuntimeLifecycleManager";
 import { LifecycleState } from "../lifecycle/LifecycleState";
+import { IExecutionRequest } from "../interfaces/IExecutionRequest";
+import { IExecutionResult } from "../interfaces/IExecutionResult";
 
 export interface TermuxRuntimeStatus {
   registered: boolean;
@@ -24,7 +26,17 @@ export class TermuxRuntimeService {
   public async check(): Promise<TermuxRuntimeStatus> {
     const name = this.runtime.getName();
     if (!this.registry.getRuntime(name)) {
-      this.registry.registerRuntime(this.runtime, []);
+      this.registry.registerRuntime(this.runtime, [
+        {
+          id: "termux.system.info",
+          name: "System Info",
+          description: "Get structured system info",
+          riskLevel: "SAFE",
+          requiresApproval: false,
+          enabled: true,
+          runtime: name,
+        },
+      ]);
       this.lifecycle.register(
         name,
         this.runtime.getVersion(),
@@ -70,6 +82,24 @@ export class TermuxRuntimeService {
       bridgeStatus: handshake.status,
       checkedAt: health.lastChecked,
     };
+  }
+
+  public async executeCapability(
+    request: IExecutionRequest,
+  ): Promise<IExecutionResult> {
+    const status = await this.check();
+    if (!status.connected) {
+      return {
+        success: false,
+        requestId: request.requestId,
+        runtime: this.runtime.getName(),
+        error:
+          "BRIDGE_UNREACHABLE: Cannot execute capability when bridge is disconnected.",
+        durationMs: 0,
+      };
+    }
+
+    return this.runtime.execute(request);
   }
 }
 

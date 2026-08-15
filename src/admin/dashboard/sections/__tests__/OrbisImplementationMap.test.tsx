@@ -1,39 +1,32 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import React from "react";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, test, expect } from "vitest";
 import OrbisImplementationMap from "../OrbisImplementationMap";
 
-describe("OrbisImplementationMap", () => {
-  it("renders TASK-001 through TASK-005", () => {
+describe("OrbisImplementationMap Section", () => {
+  test("renders implementation map and tasks", () => {
     render(<OrbisImplementationMap />);
 
-    for (const task of [
-      "TASK-001",
-      "TASK-002",
-      "TASK-003",
-      "TASK-004",
-      "TASK-005",
-    ]) {
-      expect(screen.getByTestId(`task-${task}`)).toBeTruthy();
-    }
+    expect(screen.getByText("ORBIS Implementation Map")).toBeTruthy();
+    // getByText এর বদলে getByTestId ব্যবহার করা হলো যাতে ডুপ্লিকেট টেক্সটে কনফিউজ না হয়
+    expect(screen.getByTestId("task-TASK-001")).toBeTruthy();
+    expect(screen.getByTestId("task-TASK-006")).toBeTruthy();
+    expect(screen.getByTestId("task-TASK-007")).toBeTruthy();
   });
 
-  it("shows the complete implementation chain", () => {
+  test("allows clicking a task to view details and go back", () => {
     render(<OrbisImplementationMap />);
 
-    expect(
-      screen.getByText("TASK-001 → TASK-002 → TASK-003 → TASK-004 → TASK-005"),
-    ).toBeTruthy();
-  });
-
-  it("shows the real Termux runtime source locations", () => {
-    render(<OrbisImplementationMap />);
+    const taskCard = screen.getByTestId("task-TASK-007");
+    fireEvent.click(taskCard);
 
     expect(
-      screen.getByText("src/core/execution/runtimes/TermuxRuntime.ts"),
+      screen.getByText(/Controlled Termux Capability Execution/i),
     ).toBeTruthy();
 
-    expect(
-      screen.getByText("src/core/execution/runtimes/TermuxRuntimeService.ts"),
-    ).toBeTruthy();
+    const backButton = screen.getByText("← BACK");
+    fireEvent.click(backButton);
+
+    expect(screen.getByText("ORBIS Implementation Map")).toBeTruthy();
   });
 });

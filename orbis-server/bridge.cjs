@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 
 const aiChatService = require("./ai/AIChatService.cjs");
 const providerManager = require("./ai/AIProviderManager.cjs");
@@ -65,7 +66,7 @@ app.use(cors());
 app.use(express.json());
 
 // ============================================================
-// TASK-006: REAL TERMUX RUNTIME BRIDGE & HANDSHAKE ENDPOINTS
+// TASK-006 & TASK-007: REAL TERMUX RUNTIME BRIDGE & CAPABILITY EXECUTION
 // ============================================================
 app.get("/health", (req, res) => {
   res.json({
@@ -107,6 +108,54 @@ app.get("/api/termux/handshake", (req, res) => {
   });
 });
 
+// TASK-007: Controlled Capability Execution Endpoint
+app.post("/api/termux/capability", (req, res) => {
+  const { capability } = req.body || {};
+
+  if (!capability || typeof capability !== "string") {
+    return res.status(400).json({
+      success: false,
+      error: "CAPABILITY_NOT_FOUND",
+      message: "Missing or invalid capability identifier.",
+    });
+  }
+
+  // Reject shell execution / command execution attempts
+  if (req.body.command || req.body.exec || req.body.shell || req.body.args) {
+    return res.status(403).json({
+      success: false,
+      error: "CAPABILITY_NOT_AUTHORIZED",
+      message: "Arbitrary command execution is strictly forbidden.",
+    });
+  }
+
+  // Explicit Handler for termux.system.info
+  if (capability === "termux.system.info") {
+    return res.json({
+      success: true,
+      capability: "termux.system.info",
+      runtime: "TermuxRuntime",
+      platform: "android-termux",
+      data: {
+        platform: os.platform().toUpperCase(),
+        architecture: os.arch(),
+        nodeVersion: process.version,
+        termuxVersion: "0.118.0",
+        runtimeId: "termux-local-01",
+        cpuCores: os.cpus().length,
+        memoryFreeGB: (os.freemem() / (1024 * 1024 * 1024)).toFixed(2),
+        memoryTotalGB: (os.totalmem() / (1024 * 1024 * 1024)).toFixed(2),
+      },
+    });
+  }
+
+  return res.status(400).json({
+    success: false,
+    error: "CAPABILITY_NOT_FOUND",
+    message: `Unsupported capability identifier: ${capability}`,
+  });
+});
+
 app.use("/api/system", sourceApi);
 
 function getDirectoryTree(dirPath, indent = "", changedFiles = []) {
@@ -133,7 +182,6 @@ function getDirectoryTree(dirPath, indent = "", changedFiles = []) {
 }
 
 app.get("/api/system-stats", (req, res) => {
-  const os = require("node:os");
   const totalMem = (os.totalmem() / (1024 * 1024 * 1024)).toFixed(2);
   const freeMem = (os.freemem() / (1024 * 1024 * 1024)).toFixed(2);
   const usedMem = (totalMem - freeMem).toFixed(2);
