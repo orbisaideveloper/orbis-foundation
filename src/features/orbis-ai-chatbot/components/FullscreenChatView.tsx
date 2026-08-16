@@ -16,18 +16,22 @@ import {
   PendingAttachment,
 } from "./attachments/AttachmentPreview";
 import { FileProcessorManager } from "./attachments/FileProcessorManager";
+import { ChatMessageBubble, ChatMessageBubbleData } from "./ChatMessageBubble";
+import {
+  MessageActionMenu,
+  MessageActionMenuPosition,
+} from "./MessageActionMenu";
+import {
+  copyMessageContent,
+  isShareSupported,
+  shareMessageContent,
+} from "../utils/messageActions";
 
 interface FullscreenChatViewProps {
   onClose: () => void;
 }
 type ChatRole = "user" | "assistant";
-
-interface ChatMessage {
-  id: number;
-  role: ChatRole;
-  content: string;
-  providerName?: string;
-}
+type ChatMessage = ChatMessageBubbleData;
 
 const INITIAL_MESSAGE: ChatMessage = {
   id: 1,
@@ -46,6 +50,10 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isDbReady, setIsDbReady] = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [activeMenu, setActiveMenu] = useState<{
+    message: ChatMessage;
+    position: MessageActionMenuPosition;
+  } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -256,6 +264,25 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     }
   };
 
+  const handleActivateMessageMenu = (
+    message: ChatMessage,
+    position: MessageActionMenuPosition,
+  ) => {
+    setActiveMenu({ message, position });
+  };
+
+  const handleCloseMessageMenu = () => setActiveMenu(null);
+
+  const handleCopyActiveMessage = () => {
+    if (!activeMenu) return;
+    void copyMessageContent(activeMenu.message.content);
+  };
+
+  const handleShareActiveMessage = () => {
+    if (!activeMenu) return;
+    void shareMessageContent(activeMenu.message.content);
+  };
+
   const toggleVoiceInput = () => {
     if (isListening && recognitionRef.current) {
       recognitionRef.current.stop();
@@ -354,30 +381,12 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
 
       <div className="flex-1 space-y-6 overflow-y-auto p-4 md:p-8 scroll-smooth bg-[url('/noise.png')] bg-opacity-5">
         {messages.map((message) => (
-          <div
+          <ChatMessageBubble
             key={message.id}
-            className={`mx-auto flex w-full max-w-4xl gap-3 ${message.role === "user" ? "justify-end" : ""}`}
-          >
-            {message.role === "assistant" && (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-100 to-orange-200 shadow-sm border border-orange-200/50 mt-5 dark:from-orange-900/50 dark:to-orange-800/50">
-                <Bot className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-              </div>
-            )}
-            <div
-              className={`flex max-w-[85%] flex-col gap-1 pt-1 ${message.role === "user" ? "items-end" : ""}`}
-            >
-              <span className="text-[12px] font-bold text-gray-500 tracking-wide dark:text-gray-400 px-1">
-                {message.role === "user"
-                  ? "You"
-                  : message.providerName || "ORBIS Core"}
-              </span>
-              <div
-                className={`whitespace-pre-wrap px-4 py-3 shadow-sm text-[15px] leading-[1.7] tracking-[0.2px] ${message.role === "user" ? "rounded-[20px] rounded-tr-[4px] border border-emerald-200/60 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium dark:border-emerald-800/30 dark:from-emerald-800 dark:to-emerald-900" : "rounded-[20px] rounded-tl-[4px] border border-gray-200/60 bg-white text-gray-800 font-normal dark:border-gray-700/50 dark:bg-gray-800/90 dark:text-gray-200"}`}
-              >
-                {message.content}
-              </div>
-            </div>
-          </div>
+            message={message}
+            onActivate={handleActivateMessageMenu}
+            isMenuOpen={activeMenu?.message.id === message.id}
+          />
         ))}
 
         {isSending && (
@@ -401,6 +410,16 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         )}
         <div ref={messagesEndRef} className="h-2" />
       </div>
+
+      {activeMenu && (
+        <MessageActionMenu
+          position={activeMenu.position}
+          canShare={isShareSupported()}
+          onCopy={handleCopyActiveMessage}
+          onShare={handleShareActiveMessage}
+          onClose={handleCloseMessageMenu}
+        />
+      )}
 
       <div className="bg-transparent p-4 pb-6 z-10 w-full relative">
         <div className="mx-auto max-w-4xl">
