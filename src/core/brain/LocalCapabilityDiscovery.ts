@@ -3,6 +3,8 @@ import {
   TermuxRuntimeStatus,
   termuxRuntimeService,
 } from "../execution/runtimes/TermuxRuntimeService";
+import { Logger } from "../logging/Logger";
+import { BRAIN_MODULE_NAMES } from "./BrainConfig";
 
 /**
  * TASK-008 — Brain ↔ Local Termux Capability Discovery Integration
@@ -65,6 +67,12 @@ export class LocalCapabilityDiscovery implements ILocalCapabilityDiscovery {
       const status = await this.termuxService.check();
 
       if (!status.connected) {
+        const unavailableReason = describeUnavailable(status);
+        Logger.getInstance().warn(
+          BRAIN_MODULE_NAMES.capabilityDiscovery,
+          "Local capability discovery unavailable",
+          { runtime: status.runtime, unavailableReason },
+        );
         return {
           runtime: status.runtime,
           connected: false,
@@ -72,7 +80,7 @@ export class LocalCapabilityDiscovery implements ILocalCapabilityDiscovery {
           bridgeStatus: status.bridgeStatus,
           capabilities: [],
           checkedAt: status.checkedAt,
-          unavailableReason: describeUnavailable(status),
+          unavailableReason,
         };
       }
 
@@ -81,6 +89,12 @@ export class LocalCapabilityDiscovery implements ILocalCapabilityDiscovery {
           id,
           available: true,
         }),
+      );
+
+      Logger.getInstance().debug(
+        BRAIN_MODULE_NAMES.capabilityDiscovery,
+        "Local capability discovery succeeded",
+        { runtime: status.runtime, capabilityCount: capabilities.length },
       );
 
       return {
@@ -92,6 +106,13 @@ export class LocalCapabilityDiscovery implements ILocalCapabilityDiscovery {
         checkedAt: status.checkedAt,
       };
     } catch (error) {
+      const message = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+      Logger.getInstance().error(
+        BRAIN_MODULE_NAMES.capabilityDiscovery,
+        "Local capability discovery threw an error",
+        error instanceof Error ? error : undefined,
+        { message },
+      );
       // TASK-008 rule: never throw an uncontrolled error into the Brain.
       return {
         runtime: "unknown",
@@ -100,8 +121,7 @@ export class LocalCapabilityDiscovery implements ILocalCapabilityDiscovery {
         bridgeStatus: "DISCOVERY_FAILED",
         capabilities: [],
         checkedAt: Date.now(),
-        unavailableReason:
-          error instanceof Error ? error.message : "UNKNOWN_ERROR",
+        unavailableReason: message,
       };
     }
   }

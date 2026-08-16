@@ -439,7 +439,35 @@ function extractField(content, label) {
   return value || null;
 }
 
-/** Extract the first paragraph under a heading like "## Objective" / "## 1. Objective". */
+// TASK-015 (Part 1A): a "label line" like "Modified source:" or
+// "No changes were made to:" — short, colon-terminated, introduces a
+// file/component list rather than describing what/why. An indented
+// block (4+ leading spaces or a tab on every line) is a code/path
+// listing, not prose. Both are skipped when looking for a real summary
+// paragraph, instead of being mistaken for one (this was the exact
+// TASK-014 Observatory bug: "CORE LOGIC / SUMMARY: Modified source:").
+function isLabelLikeParagraph(paragraph) {
+  const trimmed = paragraph.trim();
+  if (!trimmed) return true;
+  if (/:$/.test(trimmed) && trimmed.split(/\s+/).length <= 6) return true;
+  if (
+    paragraph
+      .split("\n")
+      .every((line) => /^(?: {4,}|\t)/.test(line) || !line.trim())
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Extract the first genuine prose paragraph under a heading like
+ * "## Objective" / "## 1. Objective" / "# 4. IMPLEMENTATION", skipping
+ * short "Label:" lines and indented code/path blocks that historically
+ * appear first in some report sections (see isLabelLikeParagraph).
+ * Also requires a minimum length so a short trailing sentence fragment
+ * (e.g. "from that bridgePort.") isn't mistaken for the summary either.
+ */
 function extractHeadingParagraph(content, headingNames) {
   for (const name of headingNames) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -451,14 +479,75 @@ function extractHeadingParagraph(content, headingNames) {
     if (!headingMatch) continue;
 
     const after = content.slice(headingMatch.index + headingMatch[0].length);
-    // Non-multiline $ here means "end of string" only, so a blank line or
-    // the next heading is what actually terminates the paragraph capture.
-    const paragraphMatch = after.match(
-      /^\s*\n+([\s\S]*?)(?:\n[ \t]*\n|\n#+[ \t]|$)/,
-    );
-    if (paragraphMatch && paragraphMatch[1] && paragraphMatch[1].trim()) {
-      return paragraphMatch[1].replace(/\n+/g, " ").trim();
+    const nextHeadingIdx = after.search(/\n#+[ \t]/);
+    const section =
+      nextHeadingIdx === -1 ? after : after.slice(0, nextHeadingIdx);
+
+    const paragraphs = section.split(/\n[ \t]*\n/);
+    for (const para of paragraphs) {
+      if (!para.trim()) continue;
+      if (isLabelLikeParagraph(para)) continue;
+      const candidate = para.replace(/\n+/g, " ").trim();
+      if (candidate.length < 30) continue;
+      return candidate;
     }
+  }
+  return null;
+}
+
+// TASK-015 (Part 1A): headings that historically introduce a file-change
+// list. Matched the same tolerant way as extractHeadingParagraph.
+const SOURCE_FILE_HEADINGS = [
+  "File Change Scope",
+  "Files Changed",
+  "Changed Files",
+  "Modified Files",
+  "Source Files",
+  "Source File",
+];
+
+/**
+ * Extract real implementation source file paths from a section like
+ * "# 6. FILE CHANGE SCOPE". Only lines that look like an actual path
+ * (contain a "/" or end in a known file extension) are kept, so a
+ * following "No changes were made to: <bare component names>" list in
+ * the same section is naturally excluded. The audit report's own
+ * filename — and any other audit report filename — is always excluded,
+ * so the report can never be listed as its own implementation source
+ * (the exact TASK-014 Observatory bug this fixes).
+ */
+function extractSourceFiles(content, auditFileName) {
+  for (const name of SOURCE_FILE_HEADINGS) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const headingRe = new RegExp(
+      String.raw`^#+\s*(?:\d+\.\s*)?${escaped}\s*$`,
+      "im",
+    );
+    const headingMatch = headingRe.exec(content);
+    if (!headingMatch) continue;
+
+    const after = content.slice(headingMatch.index + headingMatch[0].length);
+    const nextHeadingIdx = after.search(/\n#+[ \t]/);
+    const section =
+      nextHeadingIdx === -1 ? after : after.slice(0, nextHeadingIdx);
+    // Stop before an "untouched components" list that sometimes shares
+    // the same section (bare names, not file paths — see TASK-014).
+    const body = section.split(
+      /\n[ \t]*No changes? (?:were|was) made to:?/i,
+    )[0];
+
+    const fileLineRe =
+      /^[ \t]*(?:\d+[.)]|[-*])?[ \t]*([A-Za-z0-9_.\-/]+\.[A-Za-z0-9]+)[ \t]*$/;
+    const files = [];
+    for (const line of body.split("\n")) {
+      const m = line.match(fileLineRe);
+      if (!m) continue;
+      const candidate = m[1].trim();
+      if (candidate === auditFileName) continue;
+      if (/AUDIT_REPORT/i.test(candidate)) continue;
+      files.push(candidate);
+    }
+    if (files.length) return files;
   }
   return null;
 }
@@ -610,7 +699,20 @@ function buildTaskFromAudit(auditDir, num, file) {
       fallback?.implementationSummary ||
       "Automatically loaded via Universal Task Schema",
     dependencies: extractDependencies(content, num),
-    filesByLayer: fallback?.filesByLayer || { root: [file] },
+    // TASK-015 (Part 1A) fix: the audit report file itself must never be
+    // shown as an implementation source file. Try to parse real source
+    // paths out of the report content first (e.g. "# 6. FILE CHANGE
+    // SCOPE"); only fall back to historical per-task metadata, and only
+    // as a last resort to an explicitly empty list — never to `file`.
+    filesByLayer: (() => {
+      const parsedFiles = extractSourceFiles(content, file);
+      if (parsedFiles) return { root: parsedFiles };
+      if (fallback?.filesByLayer) return fallback.filesByLayer;
+      // Genuinely unknown — an empty object (not { root: [file] }) so the
+      // Observatory UI shows no source-files layer at all rather than
+      // ever listing the audit report as its own implementation source.
+      return {};
+    })(),
     tests: AUDIT_FALLBACK,
     coverage: AUDIT_FALLBACK,
     build: AUDIT_FALLBACK,

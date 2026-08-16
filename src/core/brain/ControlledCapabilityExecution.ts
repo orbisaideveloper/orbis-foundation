@@ -4,6 +4,8 @@ import {
 } from "../execution/runtimes/TermuxRuntimeService";
 import { IExecutionRequest } from "../execution/interfaces/IExecutionRequest";
 import { IExecutionResult } from "../execution/interfaces/IExecutionResult";
+import { Logger } from "../logging/Logger";
+import { BRAIN_MODULE_NAMES } from "./BrainConfig";
 
 /**
  * TASK-009 — Brain-Facing Controlled Capability Execution
@@ -29,7 +31,31 @@ export class ControlledCapabilityExecution implements IControlledCapabilityExecu
   ) {}
 
   public async execute(request: IExecutionRequest): Promise<IExecutionResult> {
-    return this.service.executeCapability(request);
+    // TASK-015 (Part 1B): observational logging only — this method still
+    // does nothing but delegate to TermuxRuntimeService.executeCapability(),
+    // which remains the sole authoritative security boundary.
+    Logger.getInstance().info(
+      BRAIN_MODULE_NAMES.controlledExecution,
+      "Execution start",
+      { requestId: request.requestId, capability: request.capability },
+    );
+
+    const result = await this.service.executeCapability(request);
+
+    Logger.getInstance().info(
+      BRAIN_MODULE_NAMES.controlledExecution,
+      result.success
+        ? "Execution result: success"
+        : "Execution result: failure",
+      {
+        requestId: request.requestId,
+        capability: request.capability,
+        success: result.success,
+        durationMs: result.durationMs,
+      },
+    );
+
+    return result;
   }
 }
 

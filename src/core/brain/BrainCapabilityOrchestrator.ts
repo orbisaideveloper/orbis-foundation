@@ -8,6 +8,8 @@ import {
 } from "./ControlledCapabilityExecution";
 import { IExecutionRequest } from "../execution/interfaces/IExecutionRequest";
 import { IExecutionResult } from "../execution/interfaces/IExecutionResult";
+import { Logger } from "../logging/Logger";
+import { BRAIN_MODULE_NAMES } from "./BrainConfig";
 
 export type BrainCapabilityFailureReason =
   | "CAPABILITY_ID_REQUIRED"
@@ -65,7 +67,20 @@ export class BrainCapabilityOrchestrator implements IBrainCapabilityOrchestrator
   ): Promise<IExecutionResult> {
     const requestId = options.requestId ?? generateRequestId();
 
+    // TASK-015 (Part 1B): observational logging only, added alongside the
+    // existing control flow below — no branch or return value changed.
+    Logger.getInstance().info(
+      BRAIN_MODULE_NAMES.capabilityOrchestrator,
+      "Capability request received",
+      { requestId, capabilityId },
+    );
+
     if (!capabilityId) {
+      Logger.getInstance().warn(
+        BRAIN_MODULE_NAMES.capabilityOrchestrator,
+        "Capability request rejected: capabilityId required",
+        { requestId },
+      );
       return buildUndiscoverableResult(
         requestId,
         "unknown",
@@ -76,6 +91,16 @@ export class BrainCapabilityOrchestrator implements IBrainCapabilityOrchestrator
     const discoveryResult = await this.discovery.discoverLocalCapabilities();
 
     if (!discoveryResult.connected || !discoveryResult.ready) {
+      Logger.getInstance().warn(
+        BRAIN_MODULE_NAMES.capabilityOrchestrator,
+        "Capability request denied: discovery unavailable",
+        {
+          requestId,
+          capabilityId,
+          runtime: discoveryResult.runtime,
+          unavailableReason: discoveryResult.unavailableReason,
+        },
+      );
       return buildUndiscoverableResult(
         requestId,
         discoveryResult.runtime,
@@ -89,12 +114,23 @@ export class BrainCapabilityOrchestrator implements IBrainCapabilityOrchestrator
     );
 
     if (!discovered) {
+      Logger.getInstance().warn(
+        BRAIN_MODULE_NAMES.capabilityOrchestrator,
+        "Capability request denied: capability not discoverable",
+        { requestId, capabilityId, runtime: discoveryResult.runtime },
+      );
       return buildUndiscoverableResult(
         requestId,
         discoveryResult.runtime,
         "CAPABILITY_NOT_DISCOVERABLE",
       );
     }
+
+    Logger.getInstance().info(
+      BRAIN_MODULE_NAMES.capabilityOrchestrator,
+      "Capability selected, dispatching to execution",
+      { requestId, capabilityId, runtime: discoveryResult.runtime },
+    );
 
     const request: IExecutionRequest = {
       requestId,
@@ -107,7 +143,24 @@ export class BrainCapabilityOrchestrator implements IBrainCapabilityOrchestrator
       metadata: options.metadata,
     };
 
-    return this.execution.execute(request);
+    const startedAt = Date.now();
+    const result = await this.execution.execute(request);
+
+    Logger.getInstance().info(
+      BRAIN_MODULE_NAMES.capabilityOrchestrator,
+      result.success
+        ? "Capability execution completed"
+        : "Capability execution failed",
+      {
+        requestId,
+        capabilityId,
+        runtime: discoveryResult.runtime,
+        success: result.success,
+        durationMs: Date.now() - startedAt,
+      },
+    );
+
+    return result;
   }
 }
 

@@ -4,6 +4,8 @@ import {
   brainCapabilityOrchestrator,
 } from "./BrainCapabilityOrchestrator";
 import { IExecutionResult } from "../execution/interfaces/IExecutionResult";
+import { Logger } from "../logging/Logger";
+import { BRAIN_MODULE_NAMES } from "./BrainConfig";
 
 /**
  * TASK-011 — Brain Request Gateway
@@ -102,21 +104,48 @@ export class BrainRequestGateway implements IBrainRequestGateway {
    * resulting IExecutionResult unchanged.
    */
   public async submit(request: RawBrainRequest): Promise<IExecutionResult> {
+    // TASK-015 (Part 1B): observational logging only — no branch below
+    // was added or altered by these calls, they sit alongside the
+    // existing validation control flow.
+    Logger.getInstance().info(
+      BRAIN_MODULE_NAMES.requestGateway,
+      "Brain request received",
+    );
+
     if (!isPlainObject(request)) {
+      Logger.getInstance().warn(
+        BRAIN_MODULE_NAMES.requestGateway,
+        "Brain request rejected: request is not a plain object",
+      );
       return buildValidationFailure(REASON_BRAIN_REQUEST_INVALID);
     }
 
     const { capabilityId, input, options } = request;
 
     if (capabilityId === undefined || capabilityId === null) {
+      Logger.getInstance().warn(
+        BRAIN_MODULE_NAMES.requestGateway,
+        "Brain request rejected: capabilityId missing",
+      );
       return buildValidationFailure("CAPABILITY_ID_REQUIRED");
     }
 
     if (!isNonEmptyString(capabilityId)) {
+      Logger.getInstance().warn(
+        BRAIN_MODULE_NAMES.requestGateway,
+        "Brain request rejected: capabilityId invalid",
+      );
       return buildValidationFailure("CAPABILITY_ID_INVALID");
     }
 
     if (input !== undefined && !isPlainObject(input)) {
+      // Note: input content is user-supplied and is never logged, only
+      // the capabilityId (a route identifier, not private user data).
+      Logger.getInstance().warn(
+        BRAIN_MODULE_NAMES.requestGateway,
+        "Brain request rejected: input invalid",
+        { capabilityId },
+      );
       return buildValidationFailure("INPUT_INVALID");
     }
 
@@ -131,8 +160,19 @@ export class BrainRequestGateway implements IBrainRequestGateway {
       input === undefined ? {} : (input as Record<string, any>);
 
     if (!isValidOptions(options)) {
+      Logger.getInstance().warn(
+        BRAIN_MODULE_NAMES.requestGateway,
+        "Brain request rejected: options invalid",
+        { capabilityId },
+      );
       return buildValidationFailure(REASON_BRAIN_REQUEST_INVALID);
     }
+
+    Logger.getInstance().info(
+      BRAIN_MODULE_NAMES.requestGateway,
+      "Brain request validated, forwarding to orchestrator",
+      { capabilityId },
+    );
 
     return this.orchestrator.requestCapability(
       capabilityId,
