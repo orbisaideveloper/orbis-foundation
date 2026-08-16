@@ -17,6 +17,8 @@ export type Task = {
 };
 
 const AUDIT_FALLBACK = "Recorded in audit";
+const TASK_PENDING_VERIFICATION = "Pending real Termux verification";
+
 const FILE_TERMUX_RUNTIME_SERVICE =
   "src/core/execution/runtimes/TermuxRuntimeService.ts";
 
@@ -164,6 +166,27 @@ export const TASKS: Task[] = [
     commit: AUDIT_FALLBACK,
     auditFile: "docs/AUDIT_REPORTS/008_PENDING_LOCAL_VERIFICATION.md",
   },
+  {
+    id: "TASK-010",
+    title: "Brain Controlled Capability Execution Integration",
+    status: "IMPLEMENTING",
+    purpose:
+      "Compose Brain capability discovery with the existing controlled execution boundary.",
+    logic:
+      "BrainCapabilityOrchestrator discovers current local capabilities via LocalCapabilityDiscovery, verifies the requested capability is currently discoverable, constructs the existing IExecutionRequest contract, and delegates to ControlledCapabilityExecution -> TermuxRuntimeService.executeCapability(). Orchestration only — no new policy engine, authorization gate, registry, lifecycle manager, or Termux bridge.",
+    dependency: "TASK-009",
+    files: [
+      "src/core/brain/BrainCapabilityOrchestrator.ts",
+      "src/core/brain/__tests__/BrainCapabilityOrchestrator.test.ts",
+    ],
+    testsCoverage: TASK_PENDING_VERIFICATION,
+    buildTypeCheck: TASK_PENDING_VERIFICATION,
+    securityArchitecture:
+      "Approved orchestration-only design; TASK-009 remains the authorization boundary.",
+    realOutput: TASK_PENDING_VERIFICATION,
+    commit: "Pending approval and verified commit",
+    auditFile: "docs/AUDIT_REPORTS/010_PENDING_LOCAL_VERIFICATION.md",
+  },
 ];
 
 const ExpandableCard = ({
@@ -194,7 +217,7 @@ PURPOSE: ${task.purpose}
 CORE LOGIC: ${task.logic}
 DEPENDENCY: ${task.dependency}
 SOURCE FILES:
-${task.files.map((f) => `- ${f}`).join("\n")}
+${task.files.map((file) => `- ${file}`).join("\n")}
 TESTS & COVERAGE: ${task.testsCoverage}
 BUILD & TYPE CHECK: ${task.buildTypeCheck}
 SECURITY & ARCHITECTURE: ${task.securityArchitecture}
@@ -203,7 +226,7 @@ COMMIT: ${task.commit}
 AUDIT FILE: ${task.auditFile}
     `.trim();
 
-    navigator.clipboard.writeText(details);
+    void navigator.clipboard.writeText(details);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -232,6 +255,7 @@ AUDIT FILE: ${task.auditFile}
             >
               ← BACK
             </button>
+
             <button
               onClick={() => handleCopyDetails(selectedTask)}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium hover:bg-blue-500"
@@ -243,6 +267,7 @@ AUDIT FILE: ${task.auditFile}
           <h3 className="text-xl font-bold">
             {selectedTask.id}: {selectedTask.title}
           </h3>
+
           <span className="mt-2 inline-block rounded-full border border-green-500/30 bg-green-500/10 px-2.5 py-0.5 text-xs text-green-400">
             {selectedTask.status}
           </span>
@@ -303,9 +328,9 @@ AUDIT FILE: ${task.auditFile}
               <div
                 data-testid={`task-${task.id}`}
                 onClick={() => setSelectedTask(task)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
                     setSelectedTask(task);
                   }
                 }}
@@ -317,10 +342,12 @@ AUDIT FILE: ${task.auditFile}
                   <span className="font-semibold">{task.id}</span>
                   <span className="ml-3 opacity-80">{task.title}</span>
                 </div>
+
                 <span className="rounded-full border border-green-500/30 px-2 py-1 text-xs text-green-400">
                   {task.status}
                 </span>
               </div>
+
               {index < TASKS.length - 1 && (
                 <div className="mt-3 text-center text-xs opacity-30">↓</div>
               )}
@@ -331,8 +358,9 @@ AUDIT FILE: ${task.auditFile}
 
       <div className="mt-5 rounded-xl border border-white/10 p-4">
         <div className="text-xs uppercase opacity-50">Implementation Chain</div>
+
         <div className="mt-2 text-sm font-medium opacity-80">
-          {TASKS.map((t) => t.id).join(" → ")}
+          {TASKS.map((task) => task.id).join(" → ")}
         </div>
       </div>
     </section>

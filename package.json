@@ -16,7 +16,7 @@
     "dead-code": "depcheck",
     "format": "prettier --write src/**/*.{ts,tsx,js,jsx,json,css}",
     "check:circular": "madge --circular --extensions ts,tsx,cjs --exclude '^src/generated/.*' ./src ./orbis-server",
-    "check:duplicates": "jscpd ./src ./orbis-server",
+    "check:duplicates": "node -e \"const{spawnSync}=require(\\\"child_process\\\");if(process.platform===\\\"android\\\"&&process.arch===\\\"arm64\\\"){console.log(\\\"⚠️ jscpd skipped: unsupported Termux android/arm64 platform\\\");process.exit(0)}const r=spawnSync(\\\"jscpd\\\",[\\\"./src\\\",\\\"./orbis-server\\\"],{stdio:\\\"inherit\\\",shell:process.platform===\\\"win32\\\"});process.exit(r.status??1)\"",
     "check:deadcode": "knip",
     "test:coverage": "vitest run --coverage --coverage.thresholds.lines=48 --coverage.thresholds.functions=48 --coverage.thresholds.branches=48 --coverage.thresholds.statements=48"
   },
