@@ -65,6 +65,47 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+/**
+ * TASK-012 — Canonical external Brain request entry.
+ *
+ * IMPORTANT:
+ * This route does NOT create a new Brain component.
+ * It loads the build-time CommonJS artifact generated from the
+ * existing src/core/brain/BrainRequestGateway.ts.
+ *
+ * Security/authorization remain inside TASK-009.
+ * Orchestration remains inside TASK-010.
+ * Validation/gateway responsibility remains inside TASK-011.
+ */
+app.post("/api/brain/request", async (req, res) => {
+  try {
+    const {
+      brainRequestGateway,
+    } = require("./brain-runtime/brain/BrainRequestGateway.js");
+
+    if (!brainRequestGateway) {
+      return res.status(500).json({
+        success: false,
+        error: "BRAIN_GATEWAY_UNAVAILABLE",
+      });
+    }
+
+    const result = await brainRequestGateway.submit(req.body);
+
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    console.error("[BRAIN_API] Request failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      requestId: "unassigned",
+      runtime: "unknown",
+      error: "BRAIN_REQUEST_FAILED",
+      durationMs: 0,
+    });
+  }
+});
+
 // ============================================================
 // TASK-006 & TASK-007: REAL TERMUX RUNTIME BRIDGE & CAPABILITY EXECUTION
 // ============================================================

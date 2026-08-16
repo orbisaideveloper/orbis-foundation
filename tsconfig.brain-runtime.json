@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "orbis-server/brain-runtime",
+    "rootDir": "src/core",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "declaration": false,
+    "noEmit": false,
+    "noEmitOnError": true
+  },
+  "files": [
+    "src/core/brain/BrainRequestGateway.ts"
+  ]
+}

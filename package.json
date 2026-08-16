@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && npm run build:brain-runtime && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test": "vitest run --coverage",
@@ -16,10 +16,11 @@
     "dead-code": "depcheck",
     "format": "prettier --write src/**/*.{ts,tsx,js,jsx,json,css}",
     "check:circular": "madge --circular --extensions ts,tsx,cjs --exclude '^src/generated/.*' ./src ./orbis-server",
-    "check:duplicates": "node -e \"const{spawnSync}=require(\\\"child_process\\\");if(process.platform===\\\"android\\\"&&process.arch===\\\"arm64\\\"){console.log(\\\"\u26a0\ufe0f jscpd skipped: unsupported Termux android/arm64 platform\\\");process.exit(0)}const r=spawnSync(\\\"jscpd\\\",[\\\"./src\\\",\\\"./orbis-server\\\"],{stdio:\\\"inherit\\\",shell:process.platform===\\\"win32\\\"});process.exit(r.status??1)\"",
+    "check:duplicates": "node -e \"const{spawnSync}=require(\\\"child_process\\\");if(process.platform===\\\"android\\\"&&process.arch===\\\"arm64\\\"){console.log(\\\"⚠️ jscpd skipped: unsupported Termux android/arm64 platform\\\");process.exit(0)}const r=spawnSync(\\\"jscpd\\\",[\\\"./src\\\",\\\"./orbis-server\\\"],{stdio:\\\"inherit\\\",shell:process.platform===\\\"win32\\\"});process.exit(r.status??1)\"",
     "check:deadcode": "knip",
     "test:coverage": "vitest run --coverage --coverage.thresholds.lines=48 --coverage.thresholds.functions=48 --coverage.thresholds.branches=48 --coverage.thresholds.statements=48",
-    "check:duplicates:ci": "jscpd ./src ./orbis-server"
+    "check:duplicates:ci": "jscpd ./src ./orbis-server",
+    "build:brain-runtime": "tsc -p tsconfig.brain-runtime.json"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
