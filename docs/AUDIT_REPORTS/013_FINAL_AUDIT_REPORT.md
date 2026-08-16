@@ -13,6 +13,15 @@ Last Updated: 16 August 2026
 
 ---
 
+TASK: TASK-013 — AI Chat → Brain Command Integration
+STATUS: Approved
+OBJECTIVE: Connect the existing ORBIS AI Chat service to the canonical Brain capability execution path while preserving all existing memory, web-search, Ollama, Brain, policy, authorization, and runtime boundaries.
+IMPLEMENTATION SUMMARY: Adds a deterministic capability-intent layer to AI Chat. Recognized capability phrases are routed through the existing BrainRequestGateway and therefore the existing policy, authorization, and Termux runtime chain. Unmatched conversation remains on the existing AI Chat path.
+DEPENDENCY: TASK-012
+IMPLEMENTATION COMMIT: 84fbc76
+CI FIX COMMIT: 9a09120
+AUDIT: docs/AUDIT_REPORTS/013_FINAL_AUDIT_REPORT.md
+
 ## Description
 
 This document serves as the official final completion and audit
