@@ -3,6 +3,16 @@ import {
   RequestCapabilityOptions,
   brainCapabilityOrchestrator,
 } from "./BrainCapabilityOrchestrator";
+import {
+  IDecisionEngine,
+  NormalizedBrainRequest,
+  decisionEngine,
+} from "./DecisionEngine";
+import {
+  ITaskProcessor,
+  TaskRejectionCode,
+  taskProcessor,
+} from "./TaskProcessor";
 import { IExecutionResult } from "../execution/interfaces/IExecutionResult";
 import { Logger } from "../logging/Logger";
 import { BRAIN_MODULE_NAMES } from "./BrainConfig";
@@ -56,9 +66,15 @@ const REASON_BRAIN_REQUEST_INVALID: BrainRequestValidationReason =
  * reach BrainCapabilityOrchestrator. Reuses the existing IExecutionResult
  * shape (the same contract TASK-010 already uses for its own
  * pre-execution failures) rather than inventing a second result type.
+ *
+ * TASK-015 (Part 2): also accepts a TaskRejectionCode, since a request
+ * that fails DecisionEngine/TaskProcessor classification is, from the
+ * caller's point of view, the exact same kind of pre-execution failure
+ * as a shape-validation failure — it never reached
+ * BrainCapabilityOrchestrator either.
  */
 function buildValidationFailure(
-  reason: BrainRequestValidationReason,
+  reason: BrainRequestValidationReason | TaskRejectionCode,
   detail?: string,
 ): IExecutionResult {
   return {
@@ -96,6 +112,11 @@ export interface IBrainRequestGateway {
 export class BrainRequestGateway implements IBrainRequestGateway {
   constructor(
     private readonly orchestrator: IBrainCapabilityOrchestrator = brainCapabilityOrchestrator,
+    // TASK-015 (Part 2): DecisionEngine and TaskProcessor are injectable
+    // for the same reason the orchestrator already is — deterministic
+    // unit testing without touching the shared singletons.
+    private readonly decisions: IDecisionEngine = decisionEngine,
+    private readonly tasks: ITaskProcessor = taskProcessor,
   ) {}
 
   /**
@@ -170,14 +191,64 @@ export class BrainRequestGateway implements IBrainRequestGateway {
 
     Logger.getInstance().info(
       BRAIN_MODULE_NAMES.requestGateway,
-      "Brain request validated, forwarding to orchestrator",
+      "Brain request validated, forwarding to decision layer",
       { capabilityId },
     );
 
-    return this.orchestrator.requestCapability(
+    // TASK-015 (Part 2): DecisionEngine -> TaskProcessor sit here, between
+    // the gateway's own shape validation (above) and the existing TASK-010
+    // orchestrator (below). Neither of them executes anything; they only
+    // classify and normalize the already-validated request.
+    const normalizedRequest: NormalizedBrainRequest = {
       capabilityId,
-      normalizedInput,
-      options as RequestCapabilityOptions | undefined,
+      input: normalizedInput,
+      options: options as RequestCapabilityOptions | undefined,
+      requestId: (options as RequestCapabilityOptions | undefined)?.requestId,
+    };
+
+    const decision = this.decisions.decide(normalizedRequest);
+
+    Logger.getInstance().info(
+      BRAIN_MODULE_NAMES.decisionEngine,
+      "Brain request decision generated",
+      {
+        requestId: decision.requestId,
+        capabilityId: decision.capabilityId,
+        category: decision.category,
+        decisionCode: decision.decisionCode,
+      },
+    );
+
+    const taskResult = this.tasks.process(decision, normalizedRequest);
+
+    if (!taskResult.accepted) {
+      Logger.getInstance().warn(
+        BRAIN_MODULE_NAMES.taskProcessor,
+        "Brain task rejected",
+        {
+          requestId: taskResult.requestId,
+          rejectionCode: taskResult.rejectionCode,
+        },
+      );
+      return buildValidationFailure(
+        taskResult.rejectionCode,
+        taskResult.reason,
+      );
+    }
+
+    Logger.getInstance().info(
+      BRAIN_MODULE_NAMES.taskProcessor,
+      "Brain task created, forwarding to orchestrator",
+      {
+        requestId: taskResult.task.requestId,
+        capabilityId: taskResult.task.capabilityId,
+      },
+    );
+
+    return this.orchestrator.requestCapability(
+      taskResult.task.capabilityId,
+      taskResult.task.input,
+      taskResult.task.options,
     );
   }
 }

@@ -16,7 +16,11 @@
  * the module-name identifiers used for structured logging (Part 1B).
  * Centralizing them here means every Brain file logs under one
  * consistent, typed identifier instead of re-declaring the same string
- * literal in four separate files.
+ * literal in each file.
+ *
+ * TASK-015 (Part 2) adds two more identifiers (decisionEngine,
+ * taskProcessor) for the same reason — no new configuration mechanism,
+ * just two more entries in this same constant object.
  *
  * WHAT THIS FILE IS NOT:
  * - It is NOT a second configuration system (Logger.ts remains the only
@@ -33,6 +37,8 @@ export const BRAIN_MODULE_NAMES = {
   capabilityOrchestrator: "BrainCapabilityOrchestrator",
   controlledExecution: "ControlledCapabilityExecution",
   capabilityDiscovery: "LocalCapabilityDiscovery",
+  decisionEngine: "DecisionEngine",
+  taskProcessor: "TaskProcessor",
 } as const;
 
 export type BrainModuleName =
