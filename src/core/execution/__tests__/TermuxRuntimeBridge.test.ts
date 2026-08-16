@@ -141,4 +141,59 @@ describe("TASK-006 & TASK-007: Termux Runtime Bridge & Controlled Execution", ()
     expect(result.output).toBeDefined();
     expect(result.output?.platform).toBe("ANDROID-TERMUX");
   });
+
+  test("6. TASK-014: defaults to port 3000 when PORT env var is unset", async () => {
+    const originalPort = process.env.PORT;
+    delete process.env.PORT;
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: true }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const freshRuntime = new TermuxRuntime();
+    await freshRuntime.healthCheck();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:3000/health",
+      expect.anything(),
+    );
+
+    if (originalPort === undefined) {
+      delete process.env.PORT;
+    } else {
+      process.env.PORT = originalPort;
+    }
+  });
+
+  test("7. TASK-014: uses process.env.PORT when set, matching bridge.cjs's own derivation", async () => {
+    const originalPort = process.env.PORT;
+    process.env.PORT = "3002";
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ok: true,
+          identity: { valid: true },
+          capabilities: [],
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const freshRuntime = new TermuxRuntime();
+    await freshRuntime.performHandshake();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:3002/api/termux/handshake",
+      expect.anything(),
+    );
+
+    if (originalPort === undefined) {
+      delete process.env.PORT;
+    } else {
+      process.env.PORT = originalPort;
+    }
+  });
 });

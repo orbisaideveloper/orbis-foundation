@@ -13,9 +13,16 @@ export interface TermuxHandshakeResult {
 export class TermuxRuntime implements IExecutionRuntime {
   private readonly name = "TermuxRuntime";
   private readonly version = "0.1.0";
-  private readonly healthUrl = "http://127.0.0.1:8765/health";
-  private readonly handshakeUrl = "http://127.0.0.1:8765/api/termux/handshake";
-  private readonly executeUrl = "http://127.0.0.1:8765/api/termux/capability";
+  // TASK-014: TermuxRuntime and orbis-server/bridge.cjs (which implements
+  // /health, /api/termux/handshake, /api/termux/capability) run in the
+  // same Node process. The loopback target must therefore match whatever
+  // port bridge.cjs itself is actually listening on for this run — the
+  // exact same derivation bridge.cjs uses (process.env.PORT || 3000) —
+  // rather than a fixed port nothing in the codebase ever binds to.
+  private readonly bridgePort = process.env.PORT || 3000;
+  private readonly healthUrl = `http://127.0.0.1:${this.bridgePort}/health`;
+  private readonly handshakeUrl = `http://127.0.0.1:${this.bridgePort}/api/termux/handshake`;
+  private readonly executeUrl = `http://127.0.0.1:${this.bridgePort}/api/termux/capability`;
   private discoveredCapabilities: string[] = ["termux.system.info"];
 
   public getName(): string {
