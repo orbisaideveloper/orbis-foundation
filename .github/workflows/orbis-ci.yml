@@ -32,6 +32,9 @@ jobs:
       - name: Run Tests and Generate Coverage
         run: npm run coverage
 
+      - name: JSCPD Duplication Guard
+        run: npm run check:duplicates:ci
+
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
