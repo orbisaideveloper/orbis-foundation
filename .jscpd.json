@@ -1,6 +1,6 @@
 {
   "threshold": 3,
   "reporters": ["console"],
-  "ignore": ["node_modules/**", "dist/**", "build/**", "coverage/**", "**/*.test.*", "orbis-server/time-machine-api.cjs"],
+  "ignore": ["node_modules/**", "dist/**", "build/**", "coverage/**", "**/*.test.*", "orbis-server/time-machine-api.cjs", "src/archive/**"],
   "absolute": false
 }

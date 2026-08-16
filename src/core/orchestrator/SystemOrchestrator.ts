@@ -55,20 +55,7 @@ export class SystemOrchestrator {
         snapshot,
       });
     } catch (error) {
-      this.currentStatus = "ERROR";
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      const errObj = error instanceof Error ? error : undefined;
-      Logger.getInstance().error(
-        this.MODULE_NAME,
-        "Boot sequence failed",
-        errObj,
-        { error: errorMessage },
-      );
-      EventBus.getInstance().publish({
-        type: "SYSTEM_ERROR",
-        payload: { error: errorMessage },
-      } as any);
+      this.handleLifecycleError("Boot sequence failed", error, "SYSTEM_ERROR");
       throw error;
     }
   }
@@ -94,17 +81,30 @@ export class SystemOrchestrator {
       } as any);
       Logger.getInstance().info(this.MODULE_NAME, "System stopped safely.");
     } catch (error) {
-      this.currentStatus = "ERROR";
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      const errObj = error instanceof Error ? error : undefined;
-      Logger.getInstance().error(
-        this.MODULE_NAME,
-        "Shutdown sequence failed",
-        errObj,
-        { error: errorMessage },
-      );
+      this.handleLifecycleError("Shutdown sequence failed", error);
       throw error;
+    }
+  }
+
+  private handleLifecycleError(
+    message: string,
+    error: unknown,
+    eventType?: string,
+  ): void {
+    this.currentStatus = "ERROR";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    const errObj = error instanceof Error ? error : undefined;
+
+    Logger.getInstance().error(this.MODULE_NAME, message, errObj, {
+      error: errorMessage,
+    });
+
+    if (eventType) {
+      EventBus.getInstance().publish({
+        type: eventType,
+        payload: { error: errorMessage },
+      } as any);
     }
   }
 
