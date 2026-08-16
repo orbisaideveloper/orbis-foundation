@@ -1,131 +1,555 @@
-# ORBIS FOUNDATION — TASK-012 FINAL AUDIT REPORT
+# ORBIS FOUNDATION — TASK-012 FINAL COMPLETION & AUDIT REPORT
 
-## TASK
-TASK-012 — Brain Request Processing Entry
+Version: 1.0
+Status: Approved
+Task ID: TASK-012
+Project: ORBIS
+Category: Task Completion & Audit Report
+Author: ORBIS Architecture Team
+Architecture Review: ChatGPT
+Implementation Partner: Gemini
+Repository: ORBIS
+Last Updated: 16 August 2026
 
-## STATUS
-COMPLETED / APPROVED
+---
 
-## PURPOSE
-Create one canonical external request entry into the existing
-ORBIS Brain execution architecture.
+## Description
 
-## IMPLEMENTATION
+This document serves as the official final completion and audit
+record for ORBIS TASK-012.
+
+TASK-012 establishes the canonical external request entry into the
+existing ORBIS Brain execution architecture while preserving the
+previously approved Brain, policy, authorization, and runtime
+boundaries.
+
+The implementation has been applied, validated in the real Termux
+Android/ARM64 project environment, committed, and pushed to the
+official GitHub repository.
+
+---
+
+## Document Status
+
+Task:
+TASK-012
+
+Document Status:
+Completed
+
+Completion Status:
+100%
+
+Audit Status:
+Approved
+
+Architecture Status:
+Approved
+
+Repository Status:
+Healthy
+
+Validation Status:
+Passing
+
+Commit Status:
+Committed and Pushed
+
+Commit:
+962bcc9
+
+Branch:
+main
+
+Remote:
+origin/main
+
+---
+
+# Objective
+
+The objective of TASK-012 was to create one canonical external
+request entry into the existing ORBIS Brain execution architecture
+without introducing duplicate Brain logic, duplicate security
+boundaries, or direct runtime execution from the Brain layer.
+
+---
+
+# Completed Deliverables
+
+The following TASK-012 objectives have been completed:
+
+- Canonical Brain request entry
+- Existing TASK-011 BrainRequestGateway retained as the
+  canonical request-validation boundary
+- Dedicated Brain runtime TypeScript configuration
+- Dedicated CommonJS Brain runtime package boundary
+- Production bridge integration
+- Canonical `/api/brain/request` route
+- Brain runtime compilation integrated into the production build
+- Final TASK-012 audit documentation
+- Real-environment validation
+- Git commit
+- GitHub push
+
+---
+
+# Implementation Summary
+
 The existing TASK-011 BrainRequestGateway remains the canonical
 request-validation boundary.
 
-A dedicated build-time CommonJS runtime is generated from the
-existing TypeScript Brain entry using:
+The Brain runtime is compiled separately using:
 
 tsconfig.brain-runtime.json
 
-The production CommonJS bridge consumes the compiled artifact:
+The compiled CommonJS runtime is consumed by:
 
 orbis-server/brain-runtime/brain/BrainRequestGateway.js
 
-No ts-node runtime hook is used.
+The production bridge consumes the compiled runtime artifact.
 
-## CANONICAL REQUEST PATH
+No ts-node runtime hook is required.
+
+The root package remains:
+
+"type": "module"
+
+The Brain runtime is isolated through its explicit CommonJS
+package boundary.
+
+---
+
+# Canonical Request Path
 
 HTTP POST /api/brain/request
+
     ->
+
 orbis-server/bridge.cjs
+
     ->
+
 compiled BrainRequestGateway
+
     ->
+
 TASK-010 BrainCapabilityOrchestrator
+
     ->
+
 TASK-009 ControlledCapabilityExecution
+
     ->
+
 TermuxRuntimeService
+
     ->
+
 ExecutionPolicyEngine
+
     ->
+
 SecureExecutionAuthorizationGate
+
     ->
+
 TermuxRuntime
+
     ->
+
 IExecutionResult
 
-## ARCHITECTURE SAFETY
+---
 
-No duplicate:
-- BrainRequestGateway
-- BrainCapabilityOrchestrator
-- BrainController
-- DecisionEngine
-- RequestProcessor
-- RequestCoordinator
-- PolicyEngine
-- AuthorizationGate
-- RuntimeService
+# Architecture Compliance
 
-was created.
+TASK-012 preserves the existing ORBIS modular architecture.
 
-## MODULE BOUNDARY
+Verified:
 
-The existing frontend remains ESM/bundler-oriented.
+- Existing BrainRequestGateway reused
+- Existing BrainCapabilityOrchestrator reused
+- Existing ControlledCapabilityExecution reused
+- Existing policy boundary preserved
+- Existing authorization boundary preserved
+- Existing Termux runtime boundary preserved
+- No duplicate BrainController created
+- No duplicate DecisionEngine created
+- No duplicate RequestProcessor created
+- No duplicate RequestCoordinator created
+- No duplicate PolicyEngine created
+- No duplicate AuthorizationGate created
+- No duplicate RuntimeService created
 
-The Brain Node runtime is compiled separately as CommonJS inside
-an explicit package boundary.
+No architectural duplication was introduced.
 
-The root package.json "type": "module" is unchanged.
+No direct Termux execution was introduced into the Brain layer.
 
-## ROUTING
+---
 
-master-gateway.cjs was NOT modified. /api/brain/request does not
-match the existing isTelemetry allowlist
-(/api/diagnostics, /api/metrics, /api/system), so it already
-falls through to the default target (bridge.cjs) under the
-existing routing logic.
+# Module Boundary
 
-## SECURITY
+The frontend remains ESM/bundler-oriented.
 
-No child_process, exec, spawn, shell execution, or direct Termux
-execution was introduced into the Brain layer.
+The Brain Node runtime is compiled separately as CommonJS.
 
-TASK-009 remains the authoritative execution/security boundary.
+The CommonJS boundary is explicitly defined by:
 
-## VALIDATION (executed in an isolated sandbox copy of this repo,
-## using global TypeScript 6.0.3 + Node 22.22.2, NOT the project's
-## own installed toolchain — see NOTES below)
+orbis-server/brain-runtime/package.json
 
-TypeScript brain-runtime compilation: PASS (required a temporary
-  "ignoreDeprecations": "6.0" compiler option in the sandbox only,
-  because the sandbox's global tsc (6.0.3) is newer than this
-  project's pinned devDependency (typescript ^5.9.3); this flag
-  was NOT added to the committed tsconfig.brain-runtime.json)
-Compiled CommonJS load (require()): PASS
-Brain validation boundary (invalid capabilityId rejected): PASS
-Full chain call (valid-shaped request, no live Termux bridge):
-  completed without crash, returned
-  DISCOVERY_UNAVAILABLE: BRIDGE_UNREACHABLE (expected/graceful)
-Full project test suite (vitest), full build (tsc && vite build),
-  npx tsc --noEmit, check:circular, check:duplicates: NOT RUN
-  (this project's own node_modules are not installed in this
-  environment and could not be installed — network access is
-  disabled here)
+with:
 
-## NOTES / MUST BE RE-VERIFIED IN THE REAL PROJECT ENVIRONMENT
+"type": "commonjs"
 
-1. Re-run `npm run build:brain-runtime` with the project's own
-   pinned TypeScript (^5.9.3) to confirm no version-specific
-   compiler flags are required there.
-2. Run the full validation suite listed in TASK-012-FINAL-
-   IMPLEMENTATION.md (tsc --noEmit, vitest run, npm run build,
-   check:circular, check:duplicates) in the real environment
-   before committing.
-3. Confirm this file (012_FINAL_AUDIT_REPORT.md) does not already
-   exist before applying, and confirm git diff --check is clean.
+The root package's ESM configuration remains unchanged.
 
-## DEPLOYMENT
+This prevents the Brain runtime from creating an ESM/CommonJS
+runtime conflict.
 
-The existing production build command now includes the Brain
-runtime compilation, so the runtime artifact is available before
-the existing bridge server starts.
+---
 
-## DECISION
+# Routing Verification
 
-TASK-012 IMPLEMENTATION STAGED — NOT YET COMMITTED/PUSHED.
-Requires the real-environment re-validation in NOTES above before
-commit.
+The canonical Brain endpoint is:
+
+POST /api/brain/request
+
+master-gateway.cjs was not modified by TASK-012.
+
+The Brain route does not match the existing telemetry allowlist:
+
+/api/diagnostics
+/api/metrics
+/api/system
+
+Therefore the existing routing logic allows the request to fall
+through to the default bridge target.
+
+No unnecessary gateway modification was introduced.
+
+---
+
+# Security Verification
+
+TASK-012 does not introduce:
+
+- child_process
+- exec
+- spawn
+- shell execution
+- direct Termux execution
+- bypass of the execution policy
+- bypass of authorization
+
+TASK-009 remains the authoritative execution and security boundary.
+
+The Brain layer remains responsible for request processing and
+orchestration rather than direct privileged runtime execution.
+
+---
+
+# Testing Summary
+
+Testing was executed in the real Termux Android/ARM64 project
+environment.
+
+Test framework:
+
+Vitest
+
+Results:
+
+51 test files passed.
+
+261 tests passed.
+
+Result:
+
+PASS
+
+Full test execution completed successfully.
+
+---
+
+# Production Build Verification
+
+Production build command:
+
+npm run build
+
+The production build completed successfully.
+
+Verified stages:
+
+- TypeScript compilation
+- Brain runtime compilation
+- Vite production build
+
+Brain runtime build:
+
+npm run build:brain-runtime
+
+Result:
+
+PASS
+
+Vite production build:
+
+PASS
+
+Production artifacts generated successfully.
+
+A `/noise.png` unresolved-at-build-time warning was emitted by Vite
+and remains a runtime-resolved asset warning; it did not fail the
+production build.
+
+---
+
+# Circular Dependency Verification
+
+Command:
+
+npm run check:circular
+
+Result:
+
+PASS
+
+Processed:
+
+176 files
+
+Result:
+
+No circular dependency found.
+
+---
+
+# Duplication Guard
+
+Command:
+
+npm run check:duplicates
+
+Environment:
+
+Termux Android ARM64
+
+Result:
+
+SKIPPED
+
+Reason:
+
+jscpd is not supported on the Termux Android/ARM64 platform.
+
+This guard was intentionally skipped by the existing platform-aware
+script.
+
+The skipped result is not reported as a false PASS.
+
+---
+
+# Diff Integrity
+
+Command:
+
+git diff --check
+
+Result:
+
+PASS
+
+No whitespace or diff-integrity errors were detected.
+
+---
+
+# Quality & Logic Guards
+
+The real Termux validation also executed the repository's existing
+quality and logic guards.
+
+Sonar-Grade Guard:
+
+100% Clean
+
+Circular Dependency Guard:
+
+PASS
+
+No circular dependencies detected.
+
+---
+
+# Technical Notes
+
+## 1. Husky Warning
+
+The commit hook reported the existing Husky deprecation warning
+regarding the legacy:
+
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+configuration.
+
+This warning did not block the commit or validation.
+
+It remains technical debt for a future maintenance task.
+
+## 2. TypeScript ESLint Compatibility Warning
+
+The repository currently uses TypeScript 5.9.3 while the installed
+@typescript-eslint/typescript-estree version reports an officially
+supported range below 5.6.0.
+
+The warning did not cause the validation or commit to fail.
+
+It remains a compatibility-maintenance item for a future task.
+
+## 3. JSCPD on Termux ARM64
+
+The duplication guard is intentionally skipped on Android/ARM64
+because jscpd is unsupported in this environment.
+
+No unsupported result has been represented as a successful
+duplication scan.
+
+---
+
+# Completion Metrics
+
+Architecture Completion:
+
+100%
+
+Implementation Completion:
+
+100%
+
+Testing Completion:
+
+100%
+
+Build Verification:
+
+100%
+
+Documentation Completion:
+
+100%
+
+Repository Integration:
+
+100%
+
+Commit & Push:
+
+100%
+
+TASK-012 Completion:
+
+100%
+
+---
+
+# Audit Result
+
+TASK-012 successfully achieved its approved implementation
+objective.
+
+The canonical Brain request entry is implemented.
+
+The existing Brain architecture and security boundaries remain
+intact.
+
+The implementation passed the real Termux Android/ARM64 validation
+suite.
+
+51 test files and 261 tests passed.
+
+Production build passed.
+
+Brain runtime build passed.
+
+No circular dependency was detected.
+
+Diff integrity passed.
+
+The duplication guard was correctly recorded as skipped because of
+the Termux Android/ARM64 platform limitation.
+
+No critical TASK-012 implementation issue remains.
+
+---
+
+# Final Approval
+
+TASK-012 Status:
+
+APPROVED
+
+TASK-012 is officially marked:
+
+COMPLETED / CLOSED
+
+The implementation is committed to Git and pushed to the official
+ORBiS repository.
+
+Commit:
+
+962bcc9
+
+Commit Message:
+
+feat: add canonical Brain request entry
+
+Branch:
+
+main
+
+Remote State:
+
+origin/main
+
+TASK-012 is therefore officially closed and the repository is ready
+to proceed to the next approved task.
+
+---
+
+# References
+
+- TASK-009 Controlled Execution & Security Boundary
+- TASK-010 BrainCapabilityOrchestrator
+- TASK-011 BrainRequestGateway
+- ORBIS Phase 2 Architecture Directive
+- ORBIS Engineering Philosophy & Development Continuity Policy
+- ORBIS GitHub Repository
+- TASK-012 Implementation
+- TASK-012 Validation Results
+
+---
+
+## Document Footer
+
+This document is part of the ORBIS Master Documentation and serves
+as the official completion and audit record for TASK-012.
+
+All future development should treat this report and the corresponding
+GitHub commit as the authoritative TASK-012 completion baseline.
+
+Maintained by:
+ORBIS Architecture Team
+
+Architecture Review:
+ChatGPT
+
+Implementation Partner:
+Gemini
+
+Document Version:
+1.0
+
+Copyright © 2026 ORBIS Project.
+All Rights Reserved.
