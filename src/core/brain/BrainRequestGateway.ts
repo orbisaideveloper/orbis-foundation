@@ -107,6 +107,10 @@ function isValidOptions(
 
 export interface IBrainRequestGateway {
   submit(request: RawBrainRequest): Promise<IExecutionResult>;
+  submitApproval(
+    token: string,
+    decision: "APPROVE" | "REJECT",
+  ): Promise<IExecutionResult>;
 }
 
 export class BrainRequestGateway implements IBrainRequestGateway {
@@ -118,6 +122,25 @@ export class BrainRequestGateway implements IBrainRequestGateway {
     private readonly decisions: IDecisionEngine = decisionEngine,
     private readonly tasks: ITaskProcessor = taskProcessor,
   ) {}
+
+  public async submitApproval(
+    token: string,
+    decision: "APPROVE" | "REJECT",
+  ): Promise<IExecutionResult> {
+    if (typeof token !== "string" || token.trim().length < 20) {
+      return buildValidationFailure(
+        REASON_BRAIN_REQUEST_INVALID,
+        "Invalid approval token",
+      );
+    }
+    if (decision !== "APPROVE" && decision !== "REJECT") {
+      return buildValidationFailure(
+        REASON_BRAIN_REQUEST_INVALID,
+        "Invalid approval decision",
+      );
+    }
+    return this.orchestrator.resolveApproval(token.trim(), decision);
+  }
 
   /**
    * Validate -> normalize -> forward unchanged to

@@ -23,6 +23,10 @@ import { BRAIN_MODULE_NAMES } from "./BrainConfig";
  */
 export interface IControlledCapabilityExecution {
   execute(request: IExecutionRequest): Promise<IExecutionResult>;
+  resolveApproval(
+    token: string,
+    decision: "APPROVE" | "REJECT",
+  ): Promise<IExecutionResult>;
 }
 
 export class ControlledCapabilityExecution implements IControlledCapabilityExecution {
@@ -56,6 +60,13 @@ export class ControlledCapabilityExecution implements IControlledCapabilityExecu
     );
 
     return result;
+  }
+
+  public async resolveApproval(
+    token: string,
+    decision: "APPROVE" | "REJECT",
+  ): Promise<IExecutionResult> {
+    return this.service.resolveApproval(token, decision);
   }
 }
 

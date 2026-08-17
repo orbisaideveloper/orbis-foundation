@@ -45,6 +45,10 @@ export interface IBrainCapabilityOrchestrator {
     input: Record<string, any>,
     options?: RequestCapabilityOptions,
   ): Promise<IExecutionResult>;
+  resolveApproval(
+    token: string,
+    decision: "APPROVE" | "REJECT",
+  ): Promise<IExecutionResult>;
 }
 
 let requestCounter = 0;
@@ -59,6 +63,13 @@ export class BrainCapabilityOrchestrator implements IBrainCapabilityOrchestrator
     private readonly discovery: ILocalCapabilityDiscovery = localCapabilityDiscovery,
     private readonly execution: IControlledCapabilityExecution = controlledCapabilityExecution,
   ) {}
+
+  public async resolveApproval(
+    token: string,
+    decision: "APPROVE" | "REJECT",
+  ): Promise<IExecutionResult> {
+    return this.execution.resolveApproval(token, decision);
+  }
 
   public async requestCapability(
     capabilityId: string,

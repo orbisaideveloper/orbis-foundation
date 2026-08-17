@@ -20,6 +20,8 @@ export interface IAuthorizationRequest {
   runtimeId?: string;
   capabilityId?: string;
   parameters?: Record<string, any>;
+  /** TASK-019: true only after a validated, one-time approval token is consumed. */
+  approvalGranted?: boolean;
 }
 
 export interface IGateRegistryDeps {
@@ -107,8 +109,17 @@ export class SecureExecutionAuthorizationGate {
       );
     }
 
-    // SENSITIVE capability OR Policy requires approval
+    // SENSITIVE capability OR Policy requires approval.
+    // TASK-019 does not remove the SENSITIVE gate. It only permits the
+    // already-approved, immutable request to pass after ALL checks above
+    // have been freshly evaluated again.
     if (riskLevel === "SENSITIVE" || policyDecision === "REQUIRE_APPROVAL") {
+      if (request.approvalGranted === true) {
+        return this.allow(
+          request,
+          "Authorization successful with explicit approval",
+        );
+      }
       return this.requireApproval(request, "Action requires explicit approval");
     }
 

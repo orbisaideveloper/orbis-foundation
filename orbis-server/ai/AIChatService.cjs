@@ -96,6 +96,12 @@ function formatBrainResultAsChatReply(capabilityId, result, lang) {
   const error = (result && result.error) || "UNKNOWN_ERROR";
 
   if (error.includes("REQUIRE_APPROVAL")) {
+    const token = result && result.approvalToken;
+    if (token) {
+      return bn
+        ? `এই অনুরোধের জন্য আপনার অনুমোদন প্রয়োজন।\\n\\nApproval token: ${token}\\n\\nঅনুমোদন করতে লিখুন: APPROVE ${token}`
+        : `This request requires your approval.\\n\\nApproval token: ${token}\\n\\nTo approve this exact request, reply: APPROVE ${token}`;
+    }
     return bn
       ? "এই অনুরোধের জন্য অনুমোদন প্রয়োজন, তাই এটি এখনই কার্যকর করা হয়নি।"
       : "This request requires approval, so it was not executed yet.";
@@ -130,6 +136,44 @@ function formatBrainResultAsChatReply(capabilityId, result, lang) {
   return bn
     ? `অনুরোধটি সম্পন্ন করা যায়নি: ${error}`
     : `The request could not be completed: ${error}`;
+}
+
+function formatApprovalResultAsChatReply(result, lang) {
+  const bn = lang === "bn";
+  const error = result?.error || "";
+
+  if (result?.success) {
+    const capabilityId = result?.metadata?.capabilityId || "termux.file.read";
+    return formatBrainResultAsChatReply(capabilityId, result, lang);
+  }
+
+  if (error.includes("APPROVAL_REJECTED")) {
+    return bn
+      ? "অনুরোধটি বাতিল করা হয়েছে এবং কার্যকর করা হয়নি।"
+      : "The request was rejected and was not executed.";
+  }
+
+  if (error.includes("APPROVAL_EXPIRED")) {
+    return bn
+      ? "অনুমোদনের সময় শেষ হয়ে গেছে। নতুন করে অনুরোধ করুন।"
+      : "The approval expired. Please make the request again.";
+  }
+
+  if (error.includes("APPROVAL_REPLAY")) {
+    return bn
+      ? "এই approval token ইতিমধ্যে ব্যবহার করা হয়েছে।"
+      : "This approval token has already been used.";
+  }
+
+  if (error.includes("APPROVAL_INVALID")) {
+    return bn
+      ? "Approval tokenটি বৈধ নয়।"
+      : "That approval token is not valid.";
+  }
+
+  return bn
+    ? `অনুমোদন সম্পন্ন হয়নি: ${error || "UNKNOWN_ERROR"}`
+    : `The approval flow did not complete: ${error || "UNKNOWN_ERROR"}`;
 }
 
 class AIChatService {
@@ -167,6 +211,47 @@ class AIChatService {
       }
 
       // ---------------------------------------------------------
+      // TASK-019: explicit approval resolution happens before normal
+      // capability routing. A bare "yes"/"হ্যাঁ" never authorizes anything.
+      // ---------------------------------------------------------
+      const approvalDecision =
+        capabilityIntentMatcher.matchApprovalDecision(lastUserMessage);
+
+      if (approvalDecision) {
+        const approvalGateway = loadBrainRequestGateway();
+        const lang = capabilityIntentMatcher.detectLanguage(lastUserMessage);
+
+        if (
+          !approvalGateway ||
+          typeof approvalGateway.submitApproval !== "function"
+        ) {
+          return {
+            message: {
+              role: "assistant",
+              content:
+                lang === "bn"
+                  ? "অনুমোদন সিস্টেম এই মুহূর্তে উপলব্ধ নয়।"
+                  : "The approval system is unavailable right now.",
+            },
+            provider: { name: "ORBIS Brain", type: "BRAIN_APPROVAL" },
+          };
+        }
+
+        const approvalResult = await approvalGateway.submitApproval(
+          approvalDecision.token,
+          approvalDecision.decision,
+        );
+
+        return {
+          message: {
+            role: "assistant",
+            content: formatApprovalResultAsChatReply(approvalResult, lang),
+          },
+          provider: { name: "ORBIS Brain", type: "BRAIN_APPROVAL" },
+        };
+      }
+
+      // ---------------------------------------------------------
       // STEP 1.5 (TASK-013): DETERMINISTIC BRAIN CAPABILITY REQUEST
       //
       // Only a fixed, hardcoded phrase (never AI-generated text) can
@@ -178,12 +263,26 @@ class AIChatService {
       // web search or Ollama. An unmatched message falls through
       // unchanged to STEP 2.
       // ---------------------------------------------------------
-      const matchedCapabilityId =
-        capabilityIntentMatcher.match(lastUserMessage);
+      const capabilityRequest =
+        capabilityIntentMatcher.matchRequest(lastUserMessage);
+      const matchedCapabilityId = capabilityRequest?.capabilityId ?? null;
 
       if (matchedCapabilityId) {
         const brainRequestGateway = loadBrainRequestGateway();
         const lang = capabilityIntentMatcher.detectLanguage(lastUserMessage);
+
+        if (capabilityRequest.needsInput) {
+          return {
+            message: {
+              role: "assistant",
+              content:
+                lang === "bn"
+                  ? "কোন allow-listed ফাইলটি পড়ব বলুন: package.json অথবা README.md।"
+                  : "Which allow-listed file should I read: package.json or README.md?",
+            },
+            provider: { name: "ORBIS Brain", type: "BRAIN_CAPABILITY" },
+          };
+        }
 
         if (!brainRequestGateway) {
           return {
@@ -204,7 +303,7 @@ class AIChatService {
 
         const brainResult = await brainRequestGateway.submit({
           capabilityId: matchedCapabilityId,
-          input: {},
+          input: capabilityRequest.input || {},
         });
 
         return {

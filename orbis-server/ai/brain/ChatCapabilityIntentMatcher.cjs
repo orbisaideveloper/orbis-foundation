@@ -111,6 +111,68 @@ function match(message) {
   return null;
 }
 
+function matchRequest(message) {
+  const normalized = normalize(message);
+  const capabilityId = match(normalized);
+  if (!capabilityId) return null;
+
+  if (capabilityId === "termux.file.read") {
+    // TASK-019 compatibility:
+    // Preserve TASK-018 generic file-read behavior.
+    // Generic phrases go to Brain with input:{} so the existing
+    // REQUIRE_APPROVAL flow remains intact.
+
+    if (normalized.includes("package.json")) {
+      return {
+        capabilityId,
+        input: { path: "package.json" },
+        needsInput: false,
+      };
+    }
+
+    if (normalized.includes("readme.md")) {
+      return {
+        capabilityId,
+        input: { path: "README.md" },
+        needsInput: false,
+      };
+    }
+
+    return {
+      capabilityId,
+      input: {},
+      needsInput: false,
+    };
+  }
+
+  return {
+    capabilityId,
+    input: {},
+    needsInput: false,
+  };
+}
+
+const APPROVAL_TOKEN =
+  /(?:approve|approved|confirm|confirmed|yes|reject|rejected|deny|denied|no|cancel|cancelled|approval|token|অনুমোদন|টোকেন|হ্যাঁ|ঠিক\s+আছে|না|বাতিল|প্রত্যাখ্যান)\s*[:#]?\s*([A-Za-z0-9_-]{20,})/i;
+
+function matchApprovalDecision(message) {
+  const text = String(message || "");
+  const matchResult = text.match(APPROVAL_TOKEN);
+  const token = matchResult?.[1] || null;
+  if (!token) return null;
+
+  const approve =
+    /\b(approve|approved|yes|confirm|confirmed)\b/i.test(text) ||
+    /(?:হ্যাঁ|অনুমোদন|ঠিক আছে|অনুমতি দাও)/i.test(text);
+
+  const reject =
+    /\b(reject|rejected|deny|denied|no|cancel|cancelled)\b/i.test(text) ||
+    /(?:না|বাতিল|প্রত্যাখ্যান)/i.test(text);
+
+  if (approve === reject) return null;
+  return { token, decision: approve ? "APPROVE" : "REJECT" };
+}
+
 /**
  * Lightweight language detection used only to pick which language to
  * reply in — never used for capability selection.
@@ -119,4 +181,4 @@ function detectLanguage(message) {
   return BENGALI_RANGE.test(String(message || "")) ? "bn" : "en";
 }
 
-module.exports = { match, detectLanguage };
+module.exports = { match, matchRequest, matchApprovalDecision, detectLanguage };

@@ -13,16 +13,12 @@ export interface TermuxHandshakeResult {
 export class TermuxRuntime implements IExecutionRuntime {
   private readonly name = "TermuxRuntime";
   private readonly version = "0.1.0";
-  // TASK-014: TermuxRuntime and orbis-server/bridge.cjs (which implements
-  // /health, /api/termux/handshake, /api/termux/capability) run in the
-  // same Node process. The loopback target must therefore match whatever
-  // port bridge.cjs itself is actually listening on for this run — the
-  // exact same derivation bridge.cjs uses (process.env.PORT || 3000) —
-  // rather than a fixed port nothing in the codebase ever binds to.
+
   private readonly bridgePort = process.env.PORT || 3000;
   private readonly healthUrl = `http://127.0.0.1:${this.bridgePort}/health`;
   private readonly handshakeUrl = `http://127.0.0.1:${this.bridgePort}/api/termux/handshake`;
   private readonly executeUrl = `http://127.0.0.1:${this.bridgePort}/api/termux/capability`;
+
   private discoveredCapabilities: string[] = ["termux.system.info"];
 
   public getName(): string {
@@ -47,8 +43,11 @@ export class TermuxRuntime implements IExecutionRuntime {
         method: "GET",
         cache: "no-store",
       });
+
       if (!response.ok) return false;
+
       const data = await response.json();
+
       return (
         data?.ok === true &&
         data?.runtime === this.name &&
@@ -65,6 +64,7 @@ export class TermuxRuntime implements IExecutionRuntime {
         method: "GET",
         cache: "no-store",
       });
+
       if (!response.ok) {
         return {
           reachable: false,
@@ -74,10 +74,14 @@ export class TermuxRuntime implements IExecutionRuntime {
           status: "BRIDGE_UNREACHABLE",
         };
       }
+
       const data = await response.json();
       const identityValid = data?.identity?.valid === true;
+
       const capabilities = Array.isArray(data?.capabilities)
-        ? data.capabilities.map((c: { id: string }) => c.id)
+        ? data.capabilities.map((c: { id: string } | string) =>
+            typeof c === "string" ? c : c.id,
+          )
         : ["termux.system.info"];
 
       if (identityValid) {
@@ -129,7 +133,10 @@ export class TermuxRuntime implements IExecutionRuntime {
       const response = await fetch(this.executeUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ capability: request.capability }),
+        body: JSON.stringify({
+          capability: request.capability,
+          input: request.input || {},
+        }),
       });
 
       const resultData = await response.json();

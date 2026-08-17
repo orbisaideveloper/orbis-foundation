@@ -12,6 +12,7 @@ import {
   IGatePolicyDeps,
   AuthorizationResult,
 } from "../authorization/SecureExecutionAuthorizationGate";
+import { pendingApprovalStore } from "../authorization/PendingApprovalStore";
 
 export interface TermuxRuntimeStatus {
   registered: boolean;
@@ -31,6 +32,7 @@ export class TermuxRuntimeService {
   private readonly registry: RuntimeRegistry;
   private readonly lifecycle: RuntimeLifecycleManager;
   private readonly policyEngine: ExecutionPolicyEngine;
+  private readonly approvalStore = pendingApprovalStore;
 
   constructor(
     registry: RuntimeRegistry = new RuntimeRegistry(),
@@ -55,15 +57,6 @@ export class TermuxRuntimeService {
           enabled: true,
           runtime: name,
         },
-        // TASK-018 (Section 3.A): read-only access to a fixed, hardcoded
-        // allow-list of files (enforced in orbis-server/bridge.cjs). No
-        // arbitrary path, no traversal, no shell/exec access is ever
-        // possible — see bridge.cjs POST /api/termux/capability. This
-        // capability is SENSITIVE + requiresApproval, so it is always
-        // routed to REQUIRE_APPROVAL by the existing, unmodified
-        // ExecutionPolicyEngine / SecureExecutionAuthorizationGate chain
-        // (same as any other SENSITIVE capability) — no new approval
-        // architecture was added.
         {
           id: "termux.file.read",
           name: "Read Local File (Allow-listed)",
@@ -139,10 +132,28 @@ export class TermuxRuntimeService {
       };
     }
 
-    const runtimeId = this.runtime.getName();
+    const runtimeId = request.requestedRuntime ?? this.runtime.getName();
     const authResult = this.authorizeRequest(request, runtimeId);
 
     if (!authResult.authorized) {
+      if (authResult.requiresApproval) {
+        const pending = this.approvalStore.create({
+          ...request,
+          requestedRuntime: runtimeId,
+        });
+
+        return {
+          success: false,
+          requestId: request.requestId,
+          runtime: runtimeId,
+          error: `AUTHORIZATION_REQUIRE_APPROVAL: ${authResult.reason}`,
+          approvalRequired: true,
+          approvalToken: pending.token,
+          approvalExpiresAt: pending.expiresAt,
+          durationMs: 0,
+        };
+      }
+
       return {
         success: false,
         requestId: request.requestId,
@@ -155,9 +166,79 @@ export class TermuxRuntimeService {
     return this.runtime.execute(request);
   }
 
+  public async resolveApproval(
+    token: string,
+    decision: "APPROVE" | "REJECT",
+  ): Promise<IExecutionResult> {
+    const resolved = this.approvalStore.resolve(token, decision);
+
+    if (resolved.resolution === "REJECTED") {
+      return {
+        success: false,
+        requestId: "approval-rejected",
+        runtime: this.runtime.getName(),
+        error: "APPROVAL_REJECTED",
+        durationMs: 0,
+      };
+    }
+
+    if (resolved.resolution !== "APPROVED" || !resolved.request) {
+      return {
+        success: false,
+        requestId: "approval-invalid",
+        runtime: this.runtime.getName(),
+        error: `APPROVAL_${resolved.resolution}`,
+        durationMs: 0,
+      };
+    }
+
+    const request = resolved.request;
+    const status = await this.check();
+
+    if (!status.connected) {
+      return {
+        success: false,
+        requestId: request.requestId,
+        runtime: this.runtime.getName(),
+        error:
+          "BRIDGE_UNREACHABLE: Cannot execute approved capability when bridge is disconnected.",
+        durationMs: 0,
+      };
+    }
+
+    const runtimeId = request.requestedRuntime ?? this.runtime.getName();
+
+    // The approval token only proves explicit human confirmation.
+    // Authorization is recalculated from the current registry/lifecycle/
+    // policy state immediately before execution.
+    const authResult = this.authorizeRequest(request, runtimeId, true);
+
+    if (!authResult.authorized) {
+      return {
+        success: false,
+        requestId: request.requestId,
+        runtime: runtimeId,
+        error: `AUTHORIZATION_${authResult.decision}: ${authResult.reason}`,
+        durationMs: 0,
+      };
+    }
+
+    const executionResult = await this.runtime.execute(request);
+
+    return {
+      ...executionResult,
+      metadata: {
+        ...(executionResult.metadata || {}),
+        capabilityId: request.capability,
+        approvalToken: token,
+      },
+    };
+  }
+
   private authorizeRequest(
     request: IExecutionRequest,
     runtimeId: string,
+    approvalGranted = false,
   ): AuthorizationResult {
     const registryDeps: IGateRegistryDeps = {
       hasRuntime: (id) => !!this.registry.getRuntime(id),
@@ -210,6 +291,7 @@ export class TermuxRuntimeService {
       runtimeId,
       capabilityId: request.capability,
       parameters: request.input,
+      approvalGranted,
     });
   }
 }
