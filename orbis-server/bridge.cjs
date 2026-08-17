@@ -18,6 +18,10 @@ const {
 } = require("./telemetry-module.cjs");
 
 const PORT = process.env.PORT || 3000;
+const FILE_READ_ALLOW_LIST = Object.freeze({
+  "package.json": path.join(__dirname, "..", "package.json"),
+  "README.md": path.join(__dirname, "..", "README.md"),
+});
 
 // ---------------------------------------------------------------------------
 // TASK-017: One Canonical Backend — telemetry DB connection
@@ -229,6 +233,68 @@ app.post("/api/termux/capability", (req, res) => {
         memoryTotalGB: (os.totalmem() / (1024 * 1024 * 1024)).toFixed(2),
       },
     });
+  }
+  // TASK-018 (Section 3.A): Explicit Handler for termux.file.read.
+  //
+  // Reads ONLY from FILE_READ_ALLOW_LIST above. The requested "path" value
+  // is treated purely as a lookup key, never as part of an actual
+  // filesystem path, so it cannot be used for traversal.
+  if (capability === "termux.file.read") {
+    const rawKey =
+      (req.body.input && req.body.input.path) ?? req.body.path ?? null;
+
+    if (typeof rawKey !== "string" || rawKey.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "PATH_REQUIRED",
+        message: "A 'path' identifying an allow-listed file is required.",
+      });
+    }
+
+    const looksLikeRealPath =
+      rawKey.includes("..") ||
+      rawKey.includes("/") ||
+      rawKey.includes("\\") ||
+      path.isAbsolute(rawKey);
+
+    if (looksLikeRealPath) {
+      return res.status(403).json({
+        success: false,
+        error: "PATH_NOT_ALLOWED",
+        message:
+          "Arbitrary or traversal-style file paths are strictly forbidden.",
+      });
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(FILE_READ_ALLOW_LIST, rawKey)) {
+      return res.status(403).json({
+        success: false,
+        error: "PATH_NOT_ALLOWED",
+        message: "Requested file is not in the allow-list.",
+      });
+    }
+
+    const absolutePath = FILE_READ_ALLOW_LIST[rawKey];
+
+    try {
+      const content = fs.readFileSync(absolutePath, "utf8");
+      return res.json({
+        success: true,
+        capability: "termux.file.read",
+        runtime: "TermuxRuntime",
+        data: {
+          path: rawKey,
+          content,
+          sizeBytes: Buffer.byteLength(content, "utf8"),
+        },
+      });
+    } catch (err) {
+      return res.status(500).json({
+        success: false,
+        error: "FILE_READ_FAILED",
+        message: "Unable to read the requested file.",
+      });
+    }
   }
 
   return res.status(400).json({

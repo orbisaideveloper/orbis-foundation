@@ -14,9 +14,14 @@
  * returning null.
  */
 
-// Only the currently verified-safe capability is mapped. Do not add
-// PRIVILEGED/SENSITIVE capabilities to this list without a corresponding
-// approval-flow decision in AIChatService.
+// Only capabilities with a corresponding approval-flow decision in
+// AIChatService (formatBrainResultAsChatReply) are mapped here.
+// termux.system.info (SAFE) and termux.file.read (SENSITIVE, TASK-018
+// Section 3.A) both have that: AIChatService's generic REQUIRE_APPROVAL
+// handling already covers termux.file.read, since it is SENSITIVE and is
+// always routed to REQUIRE_APPROVAL by the existing, unmodified
+// ExecutionPolicyEngine / SecureExecutionAuthorizationGate chain. No new
+// approval architecture was added.
 const CAPABILITY_PHRASES = [
   {
     capabilityId: "termux.system.info",
@@ -43,6 +48,33 @@ const CAPABILITY_PHRASES = [
       "সিস্টেম ইনফরমেশন দেখাও",
       "আমার সিস্টেম তথ্য দেখাও",
       "আমার টার্মাক্স সিস্টেম ইনফরমেশন দেখাও",
+    ],
+  },
+  {
+    // TASK-018 (Section 3.A): deterministic phrase -> capabilityId only.
+    // Which specific allow-listed file gets read is decided entirely by
+    // orbis-server/bridge.cjs's hardcoded FILE_READ_ALLOW_LIST, never by
+    // free-form chat text — this matcher never extracts a path from the
+    // user's message.
+    capabilityId: "termux.file.read",
+    phrases: [
+      // English
+      "read file",
+      "read a file",
+      "read the file",
+      "read local file",
+      "read a local file",
+      "show file contents",
+      "show the file contents",
+      "open file",
+      "open the file",
+      // Bengali
+      "ফাইল পড়",
+      "ফাইল পড়ো",
+      "ফাইল দেখাও",
+      "ফাইলের বিষয়বস্তু দেখাও",
+      "লোকাল ফাইল পড়",
+      "আমার ফাইল পড়ো",
     ],
   },
 ];

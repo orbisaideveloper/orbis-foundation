@@ -73,6 +73,21 @@ function formatBrainResultAsChatReply(capabilityId, result, lang) {
         `Memory (free/total): ${d.memoryFreeGB}GB / ${d.memoryTotalGB}GB`
       );
     }
+    // TASK-018 (Section 3.A): success-case formatting for termux.file.read.
+    // Under the current architecture this branch cannot be reached via
+    // chat yet, because termux.file.read is SENSITIVE and is always routed
+    // to REQUIRE_APPROVAL by the existing, unmodified authorization chain
+    // (see the REQUIRE_APPROVAL branch below). It is added now, matching
+    // the same allow-listed "path"/"content" output shape bridge.cjs
+    // already returns, so no further wiring is needed once an approval
+    // flow exists.
+    if (capabilityId === "termux.file.read" && result.output) {
+      const d = result.output;
+      if (bn) {
+        return `ফাইল "${d.path}" থেকে পড়া হয়েছে:\n\n${d.content}`;
+      }
+      return `Read from file "${d.path}":\n\n${d.content}`;
+    }
     return bn
       ? "অনুরোধটি সফলভাবে সম্পন্ন হয়েছে।"
       : "The request completed successfully.";

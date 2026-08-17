@@ -55,6 +55,25 @@ export class TermuxRuntimeService {
           enabled: true,
           runtime: name,
         },
+        // TASK-018 (Section 3.A): read-only access to a fixed, hardcoded
+        // allow-list of files (enforced in orbis-server/bridge.cjs). No
+        // arbitrary path, no traversal, no shell/exec access is ever
+        // possible — see bridge.cjs POST /api/termux/capability. This
+        // capability is SENSITIVE + requiresApproval, so it is always
+        // routed to REQUIRE_APPROVAL by the existing, unmodified
+        // ExecutionPolicyEngine / SecureExecutionAuthorizationGate chain
+        // (same as any other SENSITIVE capability) — no new approval
+        // architecture was added.
+        {
+          id: "termux.file.read",
+          name: "Read Local File (Allow-listed)",
+          description:
+            "Read the contents of a file selected from a fixed, hardcoded allow-list.",
+          riskLevel: "SENSITIVE",
+          requiresApproval: true,
+          enabled: true,
+          runtime: name,
+        },
       ]);
 
       this.lifecycle.register(
