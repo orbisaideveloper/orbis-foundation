@@ -1,14 +1,55 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const { Pool } = require("pg");
+const { PrismaPg } = require("@prisma/adapter-pg");
+const { PrismaClient } = require("@prisma/client");
 
 const aiChatService = require("./ai/AIChatService.cjs");
 const providerManager = require("./ai/AIProviderManager.cjs");
 const sourceApi = require("./source-api.cjs");
+const {
+  getDiagnostics,
+  addSystemLog,
+  setDbClient,
+} = require("./telemetry-module.cjs");
 
 const PORT = process.env.PORT || 3000;
+
+// ---------------------------------------------------------------------------
+// TASK-017: One Canonical Backend — telemetry DB connection
+//
+// This is the exact same Postgres/Prisma setup orbis-server/server.cjs used
+// (now retired as a standalone entrypoint). It is intentionally
+// fire-and-forget: a DB connection failure here is caught and logged, and
+// must never crash this process or affect /api/chat, /api/brain/request, or
+// any other route. The /api/metrics and /api/diagnostics handlers below
+// already have their own try/catch around every Prisma call for the same
+// reason.
+// ---------------------------------------------------------------------------
+const telemetryConnectionString = process.env.DATABASE_URL;
+const telemetryPool = new Pool({
+  connectionString: telemetryConnectionString,
+  ssl: { rejectUnauthorized: false },
+});
+const telemetryAdapter = new PrismaPg(telemetryPool);
+const prisma = new PrismaClient({ adapter: telemetryAdapter });
+
+prisma
+  .$connect()
+  .then(() => {
+    console.log("[DB] Prisma Adapter successfully connected to Supabase!");
+    setDbClient(prisma);
+  })
+  .catch((err) => {
+    console.error(
+      "[DB_ERROR] Failed to connect Prisma to Supabase:",
+      err.message,
+    );
+  });
 
 async function handleOllamaStream(prompt, res) {
   const ollamaUrl = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
@@ -198,6 +239,57 @@ app.post("/api/termux/capability", (req, res) => {
 });
 
 app.use("/api/system", sourceApi);
+
+// ---------------------------------------------------------------------------
+// TASK-017: One Canonical Backend — telemetry routes absorbed from the now
+// retired orbis-server/server.cjs. Logic is copied unchanged (same Prisma
+// queries, same fallback shapes, same error handling); only the process/
+// port it runs in has changed.
+// ---------------------------------------------------------------------------
+app.post("/api/internal/log", async (req, res) => {
+  const { level, source, message } = req.body;
+  if (message) {
+    await addSystemLog(level, source, message);
+  }
+  res.sendStatus(200);
+});
+
+app.get("/api/metrics", async (req, res) => {
+  try {
+    const latestMetric = await prisma.foundationAdminMetric.findFirst({
+      orderBy: { recordedAt: "desc" },
+    });
+    if (latestMetric) {
+      res.json(latestMetric);
+    } else {
+      res.json({ ramUsageMb: 0, cpuLoad: 0, status: "NO_DATA_YET" });
+    }
+  } catch (error) {
+    console.error("[DB_ERROR] Failed to fetch metrics from Postgres");
+    res.status(500).json({ error: "Database connection failed" });
+  }
+});
+
+app.get("/api/diagnostics", async (req, res) => {
+  try {
+    const diag = getDiagnostics();
+    const dbLogs = await prisma.foundationSystemLog.findMany({
+      take: 100,
+      orderBy: { createdAt: "desc" },
+    });
+    if (dbLogs && dbLogs.length > 0) {
+      diag.logs = dbLogs.map((l) => ({
+        timestamp: l.timestamp,
+        level: l.level,
+        source: l.source,
+        message: l.message,
+      }));
+    }
+    res.json(diag);
+  } catch (error) {
+    res.json(getDiagnostics());
+  }
+});
 
 function getDirectoryTree(dirPath, indent = "", changedFiles = []) {
   let result = "";

@@ -1,3 +1,20 @@
+/**
+ * ⚠️ DEPRECATED — RETIRED AS A STANDALONE ENTRYPOINT (TASK-017)
+ *
+ * This file is no longer started by anything (package.json "start",
+ * render.yaml, and local dev all now run orbis-server/bridge.cjs alone).
+ * Its telemetry logic (Prisma/Postgres connection, /api/metrics,
+ * /api/diagnostics, /api/internal/log) has been copied into
+ * orbis-server/bridge.cjs, which is now the ONE canonical backend process.
+ *
+ * This file is kept on disk (not deleted) only because knip.json and
+ * src/admin/registry/system-map.json still reference it as an entry/
+ * registry item; removing it was out of scope for TASK-017's minimal
+ * change set. Do NOT add a startup script that launches this file again —
+ * that would recreate the exact "four entrypoints" confusion TASK-017
+ * fixed. If you are looking for the live telemetry routes, they are in
+ * orbis-server/bridge.cjs.
+ */
 const {
   getDiagnostics,
   addSystemLog,

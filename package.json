@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run --coverage",
     "coverage": "vitest run --coverage",
-    "start": "serve -s dist",
+    "start": "node orbis-server/bridge.cjs",
     "type-check": "tsc --noEmit",
     "prepare": "husky",
     "dead-code": "depcheck",

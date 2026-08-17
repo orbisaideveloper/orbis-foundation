@@ -1,3 +1,14 @@
+/**
+ * ⚠️ DEPRECATED — RETIRED (TASK-017)
+ *
+ * This file's entire purpose was reconciling two separately-launched
+ * processes (bridge.cjs + server.cjs) behind one port. Now that
+ * orbis-server/bridge.cjs is the ONE canonical backend process (owning
+ * every route directly, telemetry included), there is nothing left to
+ * reconcile. Nothing in package.json, render.yaml, or vite.config.ts
+ * starts this file anymore. It is kept on disk for historical reference
+ * only — do NOT reintroduce it as a startup path.
+ */
 const { spawn } = require("node:child_process");
 const http = require("node:http");
 const path = require("node:path");

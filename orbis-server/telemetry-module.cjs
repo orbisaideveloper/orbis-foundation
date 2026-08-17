@@ -83,8 +83,8 @@ function getDiagnostics() {
     timestamp: new Date().toISOString(),
     gitStatus,
     bridge: {
-      bridgeStatus: "🟢 Active (Port 3000)",
-      serverStatus: "🟢 Online (Port 3001)",
+      bridgeStatus: `🟢 Active (Port ${process.env.PORT || 3000})`,
+      serverStatus: "🟢 Merged into canonical backend (TASK-017)",
       uptime: `${Math.floor(process.uptime())} Secs`,
       platform: `${os.platform()} ${os.release()}`,
     },
