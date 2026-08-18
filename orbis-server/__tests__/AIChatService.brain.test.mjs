@@ -143,3 +143,55 @@ describe("TASK-013: AIChatService Brain capability routing (STEP 1.5)", () => {
     expect(result.message.content).toBe("normal ai reply");
   });
 });
+
+describe("TASK-019: generic termux.file.read phrase asks which file instead of approving input:{}", () => {
+  it("asks (in English) which allow-listed file, and never calls the Brain gateway", async () => {
+    const submitSpy = vi.spyOn(brainRuntime.brainRequestGateway, "submit");
+
+    const result = await AIChatService.processChatRequest([
+      { role: "user", content: "read file" },
+    ]);
+
+    expect(submitSpy).not.toHaveBeenCalled();
+    expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
+    expect(result.provider.type).toBe("BRAIN_CAPABILITY");
+    expect(result.message.content.toLowerCase()).toContain("package.json");
+    expect(result.message.content.toLowerCase()).toContain("readme.md");
+  });
+
+  it("asks (in Bengali) which allow-listed file when the message was Bengali", async () => {
+    const submitSpy = vi.spyOn(brainRuntime.brainRequestGateway, "submit");
+
+    const result = await AIChatService.processChatRequest([
+      { role: "user", content: "ফাইল পড়ো" },
+    ]);
+
+    expect(submitSpy).not.toHaveBeenCalled();
+    expect(result.message.content).toContain("package.json");
+  });
+
+  it("still submits to the Brain gateway once a specific allow-listed file is named", async () => {
+    const submitSpy = vi
+      .spyOn(brainRuntime.brainRequestGateway, "submit")
+      .mockResolvedValue({
+        success: false,
+        requestId: "task019-chat-1",
+        runtime: "TermuxRuntime",
+        error: "AUTHORIZATION_REQUIRE_APPROVAL: needs approval",
+        approvalRequired: true,
+        approvalToken: "test-token-value-1234567890",
+        durationMs: 1,
+      });
+
+    const result = await AIChatService.processChatRequest([
+      { role: "user", content: "read file package.json" },
+    ]);
+
+    expect(submitSpy).toHaveBeenCalledWith({
+      capabilityId: "termux.file.read",
+      input: { path: "package.json" },
+    });
+    expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
+    expect(result.message.content.toLowerCase()).toContain("approval");
+  });
+});

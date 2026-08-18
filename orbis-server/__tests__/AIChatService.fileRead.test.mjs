@@ -38,6 +38,15 @@ afterEach(() => {
 });
 
 describe("TASK-018 (3.A): AIChatService Brain capability routing for termux.file.read", () => {
+  // NOTE (TASK-019): these tests originally used generic phrases like
+  // "read file" with no file name, and expected that to reach the Brain
+  // with input:{}. That was exactly the TASK-019 bug (an approval could
+  // be created and approved for a request with no file resolved at all,
+  // only failing later at bridge.cjs with PATH_REQUIRED). Fixed here to
+  // use messages that name an allow-listed file, matching the corrected
+  // ChatCapabilityIntentMatcher.matchRequest() contract. The "no file
+  // named" case now has its own coverage in AIChatService.brain.test.mjs
+  // ("TASK-019: generic termux.file.read phrase asks which file...").
   it("routes a matched file-read phrase through brainRequestGateway.submit()", async () => {
     const submitSpy = vi
       .spyOn(brainRuntime.brainRequestGateway, "submit")
@@ -50,12 +59,12 @@ describe("TASK-018 (3.A): AIChatService Brain capability routing for termux.file
       });
 
     const result = await AIChatService.processChatRequest([
-      { role: "user", content: "read file" },
+      { role: "user", content: "read file package.json" },
     ]);
 
     expect(submitSpy).toHaveBeenCalledWith({
       capabilityId: CAPABILITY_FILE_READ,
-      input: {},
+      input: { path: "package.json" },
     });
     expect(result.provider.type).toBe("BRAIN_CAPABILITY");
   });
@@ -70,7 +79,7 @@ describe("TASK-018 (3.A): AIChatService Brain capability routing for termux.file
     });
 
     const result = await AIChatService.processChatRequest([
-      { role: "user", content: "please read file" },
+      { role: "user", content: "please read file package.json" },
     ]);
 
     expect(result.provider.type).toBe("BRAIN_CAPABILITY");
@@ -88,7 +97,7 @@ describe("TASK-018 (3.A): AIChatService Brain capability routing for termux.file
     });
 
     const result = await AIChatService.processChatRequest([
-      { role: "user", content: "ফাইল দেখাও" },
+      { role: "user", content: "ফাইল দেখাও রিডমি" },
     ]);
 
     expect(result.message.content).toContain("অনুমোদন");
@@ -104,7 +113,7 @@ describe("TASK-018 (3.A): AIChatService Brain capability routing for termux.file
     });
 
     const result = await AIChatService.processChatRequest([
-      { role: "user", content: "read file" },
+      { role: "user", content: "read file package.json" },
     ]);
 
     expect(result.provider.type).toBe("BRAIN_CAPABILITY");

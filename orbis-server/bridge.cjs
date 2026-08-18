@@ -782,6 +782,22 @@ function extractDateTimeFromFilename(file) {
   return { date: m[1], time: `${m[2]}:${m[3]}:${m[4]}` };
 }
 
+// TASK-019: /api/termux-observatory is polled every ~10s by the admin
+// dashboard, and resolveAuditGroups() runs on every poll. Without this,
+// the exact same "multiple FINAL reports" warning below was logged once
+// per poll forever, flooding production logs. Keyed by task number and
+// the exact duplicate-file-list signature, so: the same duplicate state
+// still warns exactly once (not per-poll spam), and it warns again if
+// the file list for that task actually changes later (a new/renamed
+// report appears) — nothing here suppresses a genuinely new condition,
+// and no report is ever deleted, renamed, or altered.
+const auditGroupWarningSignatures = new Map();
+function warnOnceForSignature(num, signature, message) {
+  if (auditGroupWarningSignatures.get(num) === signature) return;
+  auditGroupWarningSignatures.set(num, signature);
+  console.warn(message);
+}
+
 /**
  * Group discovered audit report filenames by numeric TASK id and resolve
  * each group to exactly one authoritative file, per the deterministic
@@ -810,13 +826,17 @@ function resolveAuditGroups(files) {
         chosen = finals[0];
       } else if (finals.length > 1) {
         chosen = finals[0];
-        console.warn(
+        warnOnceForSignature(
+          num,
+          `FINAL:${finals.join(",")}`,
           `[termux-observatory] Multiple FINAL audit reports found for TASK-${String(num).padStart(3, "0")}: ${finals.join(", ")}. ` +
             `Using "${chosen}" (deterministic: first alphabetically) — other reports were NOT deleted.`,
         );
       } else {
         chosen = groupFiles[groupFiles.length - 1];
-        console.warn(
+        warnOnceForSignature(
+          num,
+          `NOFINAL:${groupFiles.join(",")}`,
           `[termux-observatory] Multiple audit reports found for TASK-${String(num).padStart(3, "0")} with no FINAL report: ${groupFiles.join(", ")}. ` +
             `Using "${chosen}" (deterministic: last alphabetically) — other reports were NOT deleted.`,
         );

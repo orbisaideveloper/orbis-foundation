@@ -275,4 +275,74 @@ describe("ORBiS Server Bridge API", () => {
       global.fetch = originalFetch;
     }
   });
+
+  // TASK-018/019: POST /api/termux/capability — termux.file.read handler.
+  // This route is the last line of defense (defense-in-depth): even if
+  // every upstream authorization layer were somehow bypassed, this
+  // handler itself still refuses anything but the two hardcoded
+  // allow-listed keys.
+  describe("POST /api/termux/capability — termux.file.read", () => {
+    it("reads package.json when given the exact allow-listed key", async () => {
+      const res = await request("POST", "/api/termux/capability", {
+        capability: "termux.file.read",
+        input: { path: "package.json" },
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.json.success).toBe(true);
+      expect(res.json.data.path).toBe("package.json");
+      expect(res.json.data.content).toContain("orbis-foundation");
+    });
+
+    it("reads README.md when given the exact allow-listed key", async () => {
+      const res = await request("POST", "/api/termux/capability", {
+        capability: "termux.file.read",
+        input: { path: "README.md" },
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.json.success).toBe(true);
+      expect(res.json.data.path).toBe("README.md");
+    });
+
+    it("returns PATH_REQUIRED when no path is given (the exact TASK-019 symptom)", async () => {
+      const res = await request("POST", "/api/termux/capability", {
+        capability: "termux.file.read",
+        input: {},
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.json.error).toBe("PATH_REQUIRED");
+    });
+
+    it("rejects a traversal-style path", async () => {
+      const res = await request("POST", "/api/termux/capability", {
+        capability: "termux.file.read",
+        input: { path: "../../etc/passwd" },
+      });
+
+      expect(res.status).toBe(403);
+      expect(res.json.error).toBe("PATH_NOT_ALLOWED");
+    });
+
+    it("rejects an absolute path", async () => {
+      const res = await request("POST", "/api/termux/capability", {
+        capability: "termux.file.read",
+        input: { path: "/etc/passwd" },
+      });
+
+      expect(res.status).toBe(403);
+      expect(res.json.error).toBe("PATH_NOT_ALLOWED");
+    });
+
+    it("rejects a filename that is not in the allow-list", async () => {
+      const res = await request("POST", "/api/termux/capability", {
+        capability: "termux.file.read",
+        input: { path: "server.cjs" },
+      });
+
+      expect(res.status).toBe(403);
+      expect(res.json.error).toBe("PATH_NOT_ALLOWED");
+    });
+  });
 });

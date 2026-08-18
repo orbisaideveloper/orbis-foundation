@@ -76,6 +76,20 @@ const CAPABILITY_PHRASES = [
       "লোকাল ফাইল পড়",
       "আমার ফাইল পড়ো",
     ],
+    // TASK-019: deterministic English/Bengali name variants for each
+    // allow-listed file, checked against the normalized message inside
+    // matchRequest() below. Kept here (not inline) so the full list of
+    // recognized variants stays in one place, next to the phrase list
+    // it complements.
+    fileVariants: {
+      "package.json": [
+        "package.json",
+        "package json",
+        "প্যাকেজ জেসন",
+        "প্যাকেজ.জেসন",
+      ],
+      "README.md": ["readme.md", "readme", "রিডমি"],
+    },
   },
 ];
 
@@ -117,31 +131,39 @@ function matchRequest(message) {
   if (!capabilityId) return null;
 
   if (capabilityId === "termux.file.read") {
-    // TASK-019 compatibility:
-    // Preserve TASK-018 generic file-read behavior.
-    // Generic phrases go to Brain with input:{} so the existing
-    // REQUIRE_APPROVAL flow remains intact.
+    // TASK-019 fix (root cause of the PATH_REQUIRED-after-approval bug):
+    // a phrase match alone only proves the user wants SOME file read —
+    // it does NOT prove which allow-listed file. Only when a specific
+    // file name/variant is present in the message do we resolve
+    // input.path here. Every recognized variant is a fixed, hardcoded
+    // string (see CAPABILITY_PHRASES[].fileVariants above) — never
+    // free-form text, so this can never select an arbitrary path.
+    //
+    // When no file can be determined, needsInput MUST be true so
+    // AIChatService asks the user to pick one instead of submitting an
+    // approval request with input:{} (which used to reach the Brain,
+    // get approved, and only THEN fail with PATH_REQUIRED at
+    // bridge.cjs — after the user had already approved nothing
+    // specific).
+    const fileEntry = CAPABILITY_PHRASES.find(
+      (e) => e.capabilityId === "termux.file.read",
+    );
+    const variants = fileEntry?.fileVariants || {};
 
-    if (normalized.includes("package.json")) {
-      return {
-        capabilityId,
-        input: { path: "package.json" },
-        needsInput: false,
-      };
-    }
-
-    if (normalized.includes("readme.md")) {
-      return {
-        capabilityId,
-        input: { path: "README.md" },
-        needsInput: false,
-      };
+    for (const [path, aliases] of Object.entries(variants)) {
+      if (aliases.some((alias) => normalized.includes(normalize(alias)))) {
+        return {
+          capabilityId,
+          input: { path },
+          needsInput: false,
+        };
+      }
     }
 
     return {
       capabilityId,
       input: {},
-      needsInput: false,
+      needsInput: true,
     };
   }
 
