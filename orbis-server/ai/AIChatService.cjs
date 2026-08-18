@@ -322,6 +322,12 @@ class AIChatService {
       // ---------------------------------------------------------
       // STEP 2: ORBIS DIRECT WEB SEARCH
       // ---------------------------------------------------------
+      // TASK-020 Phase 1-A: "ওয়েদার" (the Bengali-script transliteration
+      // of "weather") added alongside the existing "আবহাওয়া" entry. This
+      // is the one concrete keyword gap TASK-020 was opened to fix — no
+      // other word was added, and this list is not being restructured
+      // into a general synonym/transliteration engine (that remains
+      // explicitly out of scope for Phase 1).
       const temporalWords = [
         "latest",
         "update",
@@ -336,6 +342,7 @@ class AIChatService {
         "এখন",
         "সর্বশেষ",
         "আবহাওয়া",
+        "ওয়েদার",
         "দাম",
       ];
       const regexPattern = new RegExp(
@@ -345,7 +352,108 @@ class AIChatService {
       const needsWebSearch = regexPattern.test(lowerCaseMessage);
 
       if (needsWebSearch) {
-        const searchResult = await tavilySearch.search(lastUserMessage);
+        // TASK-020 Phase 1-B: REALTIME CONTEXT SAFETY (bounded, weather-only).
+        //
+        // This is a deterministic guard against the specific reported bug:
+        // a weather question with NO location stated (e.g. "আজকের weather
+        // report দাও") must not be silently sent to Tavily, because Tavily's
+        // own answer-generation can then pick an arbitrary default city
+        // (observed: Dhaka) with no indication to the user that it guessed.
+        //
+        // This is NOT a location database, NOT a geocoding system, and NOT
+        // general NLP understanding — those are explicitly deferred to
+        // Phase 2. It is a small, fixed FILLER_WORDS set (generic words
+        // that carry no place information) plus a single check: after
+        // removing every recognized filler/temporal word from the message,
+        // does anything else remain? If yes, that leftover is treated as a
+        // possible location/specific detail and the original message is
+        // sent to Tavily unchanged (the user's own wording is preserved,
+        // nothing is invented). If nothing remains, ORBIS asks for the
+        // location instead of guessing one.
+        //
+        // KNOWN LIMITATION (documented, not hidden): this is a bounded
+        // heuristic, not true location detection. A phrasing like "current
+        // weather please" (an extra generic word that is not itself a
+        // location) could be treated as "complete" even though no real
+        // place was named, if "please"/its Bengali equivalents are not in
+        // FILLER_WORDS. This is a best-effort safety net for the exact
+        // reported failure mode, not a guarantee that every possible
+        // incomplete phrasing is caught.
+        const WEATHER_WORDS = ["weather", "আবহাওয়া", "ওয়েদার"];
+        const isWeatherQuery = WEATHER_WORDS.some((w) =>
+          lowerCaseMessage.includes(w),
+        );
+
+        if (isWeatherQuery) {
+          const FILLER_WORDS = new Set([
+            ...temporalWords.map((w) => w.toLowerCase()),
+            "report",
+            "update",
+            "please",
+            "give",
+            "me",
+            "tell",
+            "the",
+            "a",
+            "an",
+            "is",
+            "how",
+            "what",
+            "কেমন",
+            "দাও",
+            "বলো",
+            "বলুন",
+            "টা",
+            "টি",
+            "চাই",
+            "একটু",
+            "আছে",
+            "কি",
+            "কী",
+            "হবে",
+            "কর",
+            "করো",
+            "জানাও",
+            "জানতে",
+            "রিপোর্ট",
+          ]);
+          const tokens = lastUserMessage
+            .toLowerCase()
+            .replace(/[.,!?।]/g, " ")
+            .replace(/'s\b/gi, "")
+            .replace(/'/g, " ")
+            .split(/\s+/)
+            .filter(Boolean);
+          const hasLeftoverToken = tokens.some((t) => !FILLER_WORDS.has(t));
+
+          if (!hasLeftoverToken) {
+            const lang =
+              capabilityIntentMatcher.detectLanguage(lastUserMessage);
+            return {
+              message: {
+                role: "assistant",
+                content:
+                  lang === "bn"
+                    ? "কোন জায়গার weather জানতে চান? জায়গার নাম বললে খুঁজে দেখছি।"
+                    : "Which location's weather would you like? Let me know the place name and I'll look it up.",
+              },
+              provider: {
+                name: "ORBIS Brain (Web)",
+                type: "WEB_SEARCH_CLARIFICATION",
+              },
+            };
+          }
+        }
+
+        // TASK-020 Phase 1-D: Tavily language steering (BEST-EFFORT — see
+        // TavilySearch.cjs for exactly what this does and does not
+        // guarantee).
+        const searchLang =
+          capabilityIntentMatcher.detectLanguage(lastUserMessage);
+        const searchResult = await tavilySearch.search(
+          lastUserMessage,
+          searchLang,
+        );
         if (searchResult) {
           return {
             message: {
@@ -362,6 +470,28 @@ class AIChatService {
       // ---------------------------------------------------------
       const activeProvider = providerManager.getActiveProvider();
       const aiMessages = [...formattedMessages];
+
+      // TASK-020 Phase 1-E: Ollama anti-fabrication protection.
+      // Exactly one system-role message, prepended here (caller-side,
+      // OllamaProvider.cjs itself is unmodified) before every STEP 3
+      // fallback call. This does not change STEP 1/1.5/2 in any way, and
+      // is never sent for STEP 1.7-style analysis because no such step
+      // exists in Phase 1.
+      aiMessages.unshift({
+        role: "system",
+        content:
+          "You are ORBIS's general-conversation fallback. You do not have " +
+          "live internet access, and no real-time API, search engine, or " +
+          "external service was called for this specific reply unless the " +
+          "conversation explicitly shows ORBIS already did so. Never claim " +
+          "to have used Tavily, a weather API, a search engine, a live " +
+          "price/news/sports API, or any other real-time service you did " +
+          "not actually call in this exchange. Never invent live numbers, " +
+          "current facts, or a source/API attribution for them. If asked " +
+          "for current/live/time-sensitive information you cannot verify, " +
+          "say plainly that you don't have live access to it, rather than " +
+          "making up an answer.",
+      });
 
       if (memoryContext) {
         aiMessages[aiMessages.length - 1].content +=
