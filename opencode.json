@@ -1,0 +1,93 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "permission": {
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.pem": "deny",
+      "*.key": "deny",
+      "*credentials*": "deny",
+      "*secret*": "deny"
+    },
+
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "lsp": "allow",
+
+    "edit": "allow",
+
+    "task": "ask",
+
+    "webfetch": "ask",
+    "websearch": "ask",
+
+    "bash": {
+      "*": "ask",
+
+      "test*": "allow",
+      "*test*": "allow",
+      "*vitest*": "allow",
+      "*jest*": "allow",
+      "*npm*test*": "allow",
+      "*pnpm*test*": "allow",
+      "*yarn*test*": "allow",
+
+      "typecheck*": "allow",
+      "*tsc*": "allow",
+      "*typecheck*": "allow",
+
+      "lint*": "allow",
+      "*eslint*": "allow",
+      "*npm*lint*": "allow",
+      "*pnpm*lint*": "allow",
+
+      "git status": "allow",
+      "git status *": "allow",
+      "git diff": "allow",
+      "git diff *": "allow",
+      "git log": "allow",
+      "git log *": "allow",
+      "git show": "allow",
+      "git show *": "allow",
+      "git branch": "allow",
+      "git branch *": "allow",
+
+      "git add *": "ask",
+      "git commit *": "ask",
+      "git push *": "ask",
+
+      "rm *": "deny",
+      "rm -rf *": "deny",
+      "git reset --hard*": "deny",
+      "git clean *": "deny",
+      "git checkout -- *": "deny"
+    },
+
+    "question": "allow",
+    "todowrite": "allow",
+    "skill": "ask",
+    "doom_loop": "deny",
+    "external_directory": "deny"
+  },
+
+  "agent": {
+    "build": {
+      "mode": "primary",
+      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "steps": 20
+    },
+
+    "plan": {
+      "mode": "primary",
+      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "steps": 20
+    }
+  },
+
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "logLevel": "INFO",
+  "snapshot": true
+}
