@@ -122,29 +122,33 @@ describe("TASK-015 (Part 2): BrainRequestGateway <-> DecisionEngine/TaskProcesso
   });
 
   test("D. A TaskProcessor rejection does NOT call BrainCapabilityOrchestrator and returns success:false", async () => {
+    // TASK-020: the NON_EXECUTION category was removed as dead code, so
+    // this now exercises the DECISION_INVALID rejection path instead —
+    // still proving a TaskProcessor rejection short-circuits before the
+    // orchestrator is ever called.
     const orchestrator = makeOrchestrator();
     const decision: BrainDecision = {
-      category: "NON_EXECUTION",
-      decisionCode: "NON_EXECUTION_REQUEST",
-      capabilityId: "brain.reasoning.summarize",
-      reason: "reserved namespace",
+      category: "INVALID",
+      decisionCode: "MISSING_CAPABILITY_ID",
+      capabilityId: null,
+      reason: "capabilityId is missing or not a non-empty string",
     };
     const decisions = makeDecisionEngine(decision);
     const tasks = makeTaskProcessor({
       accepted: false,
-      rejectionCode: "DECISION_NON_EXECUTION_UNSUPPORTED",
-      reason: "not supported yet",
+      rejectionCode: "DECISION_INVALID",
+      reason: "capabilityId is missing or not a non-empty string",
     });
 
     const gateway = new BrainRequestGateway(orchestrator, decisions, tasks);
     const result = await gateway.submit({
-      capabilityId: "brain.reasoning.summarize",
+      capabilityId: CAP_ID,
       input: {},
     });
 
     expect(orchestrator.requestCapability).not.toHaveBeenCalled();
     expect(result.success).toBe(false);
-    expect(result.error).toContain("DECISION_NON_EXECUTION_UNSUPPORTED");
+    expect(result.error).toContain("DECISION_INVALID");
   });
 
   test("E. BrainCapabilityOrchestrator remains the execution-routing layer: its result is returned unchanged on acceptance", async () => {

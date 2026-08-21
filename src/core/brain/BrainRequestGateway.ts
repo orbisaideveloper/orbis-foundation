@@ -105,6 +105,70 @@ function isValidOptions(
   return value === undefined || isPlainObject(value);
 }
 
+/**
+ * TASK-020 (Part 1) — Conversational Missing Context Detection.
+ *
+ * A small, deterministic, hardcoded table of which input fields a given
+ * capability requires before it is even eligible to reach DecisionEngine/
+ * TaskProcessor/BrainCapabilityOrchestrator. This is NOT a second policy
+ * engine and it never decides ALLOW/DENY/REQUIRE_APPROVAL — that remains
+ * entirely inside TASK-009's authorization chain. It only prevents a
+ * request from being submitted for execution (and, critically, from ever
+ * creating a SENSITIVE-capability approval token) when the caller has not
+ * yet supplied the context that capability needs.
+ *
+ * Today only termux.file.read has a declared requirement. This closes the
+ * same gap TASK-019 already closed for the chat layer
+ * (ChatCapabilityIntentMatcher's needsInput), but at the gateway boundary
+ * itself, so any caller of BrainRequestGateway.submit() — chat or
+ * otherwise — gets the same protection instead of only chat-originated
+ * requests.
+ */
+const CAPABILITY_REQUIRED_CONTEXT: Readonly<Record<string, readonly string[]>> =
+  {
+    "termux.file.read": ["path"],
+  };
+
+function isMissingValue(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    (typeof value === "string" && value.trim().length === 0)
+  );
+}
+
+function findMissingContext(
+  capabilityId: string,
+  input: Record<string, any>,
+): string[] {
+  const required = CAPABILITY_REQUIRED_CONTEXT[capabilityId];
+  if (!required || required.length === 0) return [];
+  return required.filter((field) => isMissingValue(input[field]));
+}
+
+/**
+ * Builds the Clarification Request result. Reuses the same
+ * IExecutionResult shape as every other pre-execution failure in this
+ * file (see buildValidationFailure) rather than inventing a second result
+ * type, and additionally sets the new TASK-020 clarificationRequired /
+ * missingFields fields so a caller can distinguish "ask the user a
+ * follow-up question" from a hard validation/authorization failure.
+ */
+function buildClarificationResult(
+  capabilityId: string,
+  missingFields: string[],
+): IExecutionResult {
+  return {
+    success: false,
+    requestId: "unassigned",
+    runtime: "unknown",
+    error: `MISSING_CONTEXT: ${capabilityId} requires ${missingFields.join(", ")}`,
+    clarificationRequired: true,
+    missingFields,
+    durationMs: 0,
+  };
+}
+
 export interface IBrainRequestGateway {
   submit(request: RawBrainRequest): Promise<IExecutionResult>;
   submitApproval(
@@ -210,6 +274,22 @@ export class BrainRequestGateway implements IBrainRequestGateway {
         { capabilityId },
       );
       return buildValidationFailure(REASON_BRAIN_REQUEST_INVALID);
+    }
+
+    // TASK-020 (Part 1): Missing Context Detection. Runs after shape
+    // validation (capabilityId/input/options are already known-good) but
+    // BEFORE DecisionEngine/TaskProcessor/orchestrator ever see the
+    // request — so an incomplete request never reaches capability
+    // execution and, for SENSITIVE capabilities, never burns an approval
+    // token on a request that was never going to be able to execute.
+    const missingFields = findMissingContext(capabilityId, normalizedInput);
+    if (missingFields.length > 0) {
+      Logger.getInstance().info(
+        BRAIN_MODULE_NAMES.requestGateway,
+        "Brain request requires clarification: missing context",
+        { capabilityId, missingFields },
+      );
+      return buildClarificationResult(capabilityId, missingFields);
     }
 
     Logger.getInstance().info(

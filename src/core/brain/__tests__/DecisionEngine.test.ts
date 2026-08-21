@@ -2,7 +2,11 @@ import { describe, test, expect } from "vitest";
 import { DecisionEngine, NormalizedBrainRequest } from "../DecisionEngine";
 
 const CAP_ID = "termux.system.info";
-const NON_EXECUTION_CAP_ID = "brain.reasoning.summarize";
+// TASK-020: the reserved "brain.reasoning." NON_EXECUTION category was
+// removed (it was never reachable from any real caller). A capabilityId
+// under that former prefix is now classified exactly like any other
+// syntactically valid capabilityId — CAPABILITY_EXECUTION.
+const FORMER_NON_EXECUTION_CAP_ID = "brain.reasoning.summarize";
 
 describe("TASK-015 (Part 2): DecisionEngine", () => {
   const engine = new DecisionEngine();
@@ -17,17 +21,17 @@ describe("TASK-015 (Part 2): DecisionEngine", () => {
     expect(decision.capabilityId).toBe(CAP_ID);
   });
 
-  test("B. A reserved non-execution capabilityId is classified as NON_EXECUTION", () => {
+  test("B. TASK-020: a formerly-reserved capabilityId is now classified as CAPABILITY_EXECUTION like any other", () => {
     const request: NormalizedBrainRequest = {
-      capabilityId: NON_EXECUTION_CAP_ID,
+      capabilityId: FORMER_NON_EXECUTION_CAP_ID,
       input: {},
     };
 
     const decision = engine.decide(request);
 
-    expect(decision.category).toBe("NON_EXECUTION");
-    expect(decision.decisionCode).toBe("NON_EXECUTION_REQUEST");
-    expect(decision.capabilityId).toBe(NON_EXECUTION_CAP_ID);
+    expect(decision.category).toBe("CAPABILITY_EXECUTION");
+    expect(decision.decisionCode).toBe("CAPABILITY_EXECUTION_CANDIDATE");
+    expect(decision.capabilityId).toBe(FORMER_NON_EXECUTION_CAP_ID);
   });
 
   test.each([

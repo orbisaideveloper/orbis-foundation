@@ -18,10 +18,7 @@ import { RequestCapabilityOptions } from "./BrainCapabilityOrchestrator";
  * shape BrainCapabilityOrchestrator.requestCapability() already expects.
  */
 
-export type TaskRejectionCode =
-  | "DECISION_INVALID"
-  | "DECISION_NON_EXECUTION_UNSUPPORTED"
-  | "CAPABILITY_ID_MISSING";
+export type TaskRejectionCode = "DECISION_INVALID" | "CAPABILITY_ID_MISSING";
 
 export interface BrainTask {
   requestId?: string;
@@ -66,25 +63,10 @@ export class TaskProcessor implements ITaskProcessor {
       };
     }
 
-    if (decision.category === "NON_EXECUTION") {
-      // The existing Brain flow (TASK-009 -> TASK-012) only knows how to
-      // route capability-execution requests. Rather than silently
-      // forwarding a non-execution decision into
-      // BrainCapabilityOrchestrator (which would misinterpret it as a
-      // capability id), TaskProcessor rejects it cleanly. Nothing in the
-      // current repository produces this category today (see
-      // DecisionEngine's NON_EXECUTION_CAPABILITY_PREFIX comment), so
-      // this is currently unreachable in normal operation.
-      return {
-        accepted: false,
-        rejectionCode: "DECISION_NON_EXECUTION_UNSUPPORTED",
-        reason:
-          "Non-execution Brain requests are not yet supported by the existing Brain flow",
-        requestId: decision.requestId,
-      };
-    }
-
-    // decision.category === "CAPABILITY_EXECUTION" from here on.
+    // decision.category === "CAPABILITY_EXECUTION" from here on. DecisionEngine
+    // only ever returns "INVALID" (handled above) or "CAPABILITY_EXECUTION"
+    // (TASK-020: the dead-end "NON_EXECUTION" category was removed since
+    // nothing in the repository ever produced it).
     if (!isNonEmptyCapabilityId(decision.capabilityId)) {
       return {
         accepted: false,

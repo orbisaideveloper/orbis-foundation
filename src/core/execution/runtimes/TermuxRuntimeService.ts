@@ -193,9 +193,21 @@ export class TermuxRuntimeService {
     }
 
     const request = resolved.request;
+
+    // TASK-020 (Part 3): resolve() above only RESERVED the token — it is
+    // not yet consumed. Every return path from here on must explicitly
+    // confirm() (final, non-transient outcome) or release() (transient/
+    // environmental failure, so the still-valid, human-approved token is
+    // not lost) before returning, so the store's state and the actual
+    // execution outcome never drift apart.
     const status = await this.check();
 
     if (!status.connected) {
+      // Transient/environmental: the bridge being unreachable right now
+      // says nothing about whether the human's approval was valid. Put
+      // the token back to PENDING so it can be retried within its
+      // original TTL instead of being silently burned.
+      this.approvalStore.release(token);
       return {
         success: false,
         requestId: request.requestId,
@@ -210,10 +222,16 @@ export class TermuxRuntimeService {
 
     // The approval token only proves explicit human confirmation.
     // Authorization is recalculated from the current registry/lifecycle/
-    // policy state immediately before execution.
+    // policy state immediately before execution. By this point status.
+    // connected is already true, which — given how check() derives
+    // readiness/health — means isReady()/isHealthy() are guaranteed true
+    // too, so any denial reaching here is structural (unknown/disabled
+    // capability, PRIVILEGED, policy DENY), not transient. It will not
+    // change on retry, so the token is finalized rather than released.
     const authResult = this.authorizeRequest(request, runtimeId, true);
 
     if (!authResult.authorized) {
+      this.approvalStore.confirm(token);
       return {
         success: false,
         requestId: request.requestId,
@@ -224,6 +242,7 @@ export class TermuxRuntimeService {
     }
 
     const executionResult = await this.runtime.execute(request);
+    this.approvalStore.confirm(token);
 
     return {
       ...executionResult,

@@ -2,6 +2,7 @@ import { describe, test, expect } from "vitest";
 import { TaskProcessor } from "../TaskProcessor";
 import { BrainDecision, NormalizedBrainRequest } from "../DecisionEngine";
 
+const CAP_ID_FORMER_NON_EXECUTION = "brain.reasoning.summarize";
 const CAP_ID = "termux.system.info";
 const REQ_ID_1 = "req-1";
 const REQ_ID_PRESERVE_ME = "req-preserve-me";
@@ -62,18 +63,21 @@ describe("TASK-015 (Part 2): TaskProcessor", () => {
     }
   });
 
-  test("C. A NON_EXECUTION decision is rejected cleanly with DECISION_NON_EXECUTION_UNSUPPORTED", () => {
+  test("C. TASK-020: a formerly-reserved capabilityId is accepted like any other CAPABILITY_EXECUTION decision", () => {
+    // The NON_EXECUTION category was removed as dead code (nothing ever
+    // produced it). DecisionEngine now classifies this capabilityId as a
+    // normal CAPABILITY_EXECUTION candidate, so TaskProcessor must accept
+    // it exactly like test A — no special-casing left anywhere.
     const decision = makeDecision({
-      category: "NON_EXECUTION",
-      decisionCode: "NON_EXECUTION_REQUEST",
-      capabilityId: "brain.reasoning.summarize",
+      capabilityId: CAP_ID_FORMER_NON_EXECUTION,
     });
+    const request = makeRequest({ capabilityId: CAP_ID_FORMER_NON_EXECUTION });
 
-    const result = processor.process(decision, makeRequest());
+    const result = processor.process(decision, request);
 
-    expect(result.accepted).toBe(false);
-    if (!result.accepted) {
-      expect(result.rejectionCode).toBe("DECISION_NON_EXECUTION_UNSUPPORTED");
+    expect(result.accepted).toBe(true);
+    if (result.accepted) {
+      expect(result.task.capabilityId).toBe(CAP_ID_FORMER_NON_EXECUTION);
     }
   });
 

@@ -22,13 +22,10 @@ import { RequestCapabilityOptions } from "./BrainCapabilityOrchestrator";
  * is and why.
  */
 
-export type BrainRequestCategory =
-  "CAPABILITY_EXECUTION" | "NON_EXECUTION" | "INVALID";
+export type BrainRequestCategory = "CAPABILITY_EXECUTION" | "INVALID";
 
 export type DecisionCode =
-  | "CAPABILITY_EXECUTION_CANDIDATE"
-  | "NON_EXECUTION_REQUEST"
-  | "MISSING_CAPABILITY_ID";
+  "CAPABILITY_EXECUTION_CANDIDATE" | "MISSING_CAPABILITY_ID";
 
 /**
  * The request shape DecisionEngine operates on. This mirrors what
@@ -56,18 +53,6 @@ export interface IDecisionEngine {
   decide(request: NormalizedBrainRequest): BrainDecision;
 }
 
-/**
- * Reserved namespace for a future non-execution / reasoning-only Brain
- * capability category. Nothing in the existing repository (TASK-013's
- * ChatCapabilityIntentMatcher, or any other caller) currently issues a
- * capabilityId under this prefix, so in the CURRENT system every
- * syntactically valid capabilityId classifies as CAPABILITY_EXECUTION.
- * The branch exists so DecisionEngine can classify such a request
- * deterministically without a second Brain/DecisionEngine ever needing
- * to be built.
- */
-const NON_EXECUTION_CAPABILITY_PREFIX = "brain.reasoning.";
-
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -84,17 +69,6 @@ export class DecisionEngine implements IDecisionEngine {
         capabilityId: null,
         requestId,
         reason: "capabilityId is missing or not a non-empty string",
-      };
-    }
-
-    if (capabilityId.startsWith(NON_EXECUTION_CAPABILITY_PREFIX)) {
-      return {
-        category: "NON_EXECUTION",
-        decisionCode: "NON_EXECUTION_REQUEST",
-        capabilityId,
-        requestId,
-        reason:
-          "capabilityId belongs to the reserved non-execution reasoning namespace",
       };
     }
 
