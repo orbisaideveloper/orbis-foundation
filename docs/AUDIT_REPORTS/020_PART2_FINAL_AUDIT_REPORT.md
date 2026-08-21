@@ -13,7 +13,7 @@
 > If the two pieces of work were meant to be two different task numbers,
 > only this file's numbering needs correcting — nothing else changes.
 
-Status: **Implementation complete, NOT committed, NOT pushed.**
+Status: **COMPLETED, COMMITTED Status: **Implementation complete, NOT committed, NOT pushed.** PUSHED.**
 Scope: Part 1 (BrainRequestGateway), Part 2 (DecisionEngine + TaskProcessor),
 Part 3 (TermuxRuntimeService). Admin routes, Prisma/DB schema, and public
 API shapes were not touched (see "Out of scope — confirmed" below).
