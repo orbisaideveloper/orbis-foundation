@@ -76,18 +76,18 @@
   "agent": {
     "build": {
       "mode": "primary",
-      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "model": "nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
       "steps": 20
     },
 
     "plan": {
       "mode": "primary",
-      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "model": "nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
       "steps": 20
     }
   },
 
-  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "model": "nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
   "logLevel": "INFO",
   "snapshot": true
 }
