@@ -14,6 +14,60 @@ import {
   Search,
 } from "lucide-react";
 import TimeMachineCard from "../components/TimeMachine/TimeMachineCard";
+import { readAdminJson } from "../auth/adminFetch";
+
+interface SourceTreeNode {
+  name: string;
+  path: string;
+  type: "directory" | "file";
+  mtime: number;
+  children?: SourceTreeNode[];
+}
+
+interface SourceStatusResponse {
+  success: boolean;
+  hasError: boolean;
+  file: string | null;
+  errorLine: number | null;
+}
+
+function SourceTreeState({
+  isLoading,
+  message,
+  hasEntries,
+  hasSearchQuery,
+  children,
+}: {
+  isLoading: boolean;
+  message: string | null;
+  hasEntries: boolean;
+  hasSearchQuery: boolean;
+  children: React.ReactNode;
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-10 opacity-50">
+        <Activity size={32} className="animate-spin text-blue-400 mb-4" />
+        <p className="text-sm text-slate-400">
+          Fetching live dependency tree...
+        </p>
+      </div>
+    );
+  }
+  if (message) {
+    return (
+      <p role="alert" className="text-amber-300 text-sm text-center py-4">
+        {message}
+      </p>
+    );
+  }
+  if (hasEntries) return children;
+  return (
+    <p className="text-slate-500 text-sm text-center py-4">
+      {hasSearchQuery ? "No matching files found." : "No files found."}
+    </p>
+  );
+}
 
 export default function SystemLogManager() {
   const [isOpen, setIsOpen] = useState(false);
@@ -21,7 +75,7 @@ export default function SystemLogManager() {
     "cards" | "source" | "time_machine"
   >("cards");
 
-  const [treeData, setTreeData] = useState<any[]>([]);
+  const [treeData, setTreeData] = useState<SourceTreeNode[]>([]);
   const [latestUpdateTime, setLatestUpdateTime] = useState<number>(0);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
@@ -32,6 +86,9 @@ export default function SystemLogManager() {
   const [isCopied, setIsCopied] = useState(false);
   const [isTreeCopied, setIsTreeCopied] = useState(false);
   const [isLoadingTree, setIsLoadingTree] = useState(false);
+  const [sourceStateMessage, setSourceStateMessage] = useState<string | null>(
+    null,
+  );
   const [errorStatus, setErrorStatus] = useState<{
     hasError: boolean;
     file: string | null;
@@ -40,22 +97,29 @@ export default function SystemLogManager() {
 
   useEffect(() => {
     if (isOpen && activeView === "source") {
+      let active = true;
       setIsLoadingTree(true);
-      fetch("/api/system/status")
-        .then((res) => res.json())
+      setSourceStateMessage(null);
+      readAdminJson<SourceStatusResponse>("/api/system/status")
         .then((data) => {
+          if (!active) return;
           if (data.success && data.hasError) setErrorStatus(data);
           else setErrorStatus({ hasError: false, file: null, errorLine: null });
         })
-        .catch(() => {});
+        .catch(() => {
+          if (active) {
+            setErrorStatus({ hasError: false, file: null, errorLine: null });
+          }
+        });
 
-      fetch("/api/system/tree")
-        .then((res) => res.json())
+      readAdminJson<{ success: boolean; tree: SourceTreeNode[] }>(
+        "/api/system/tree",
+      )
         .then((data) => {
-          if (data.success) {
+          if (active && data.success) {
             setTreeData(data.tree);
             let maxTime = 0;
-            const findMaxTime = (items: any[]) => {
+            const findMaxTime = (items: SourceTreeNode[]) => {
               items.forEach((item) => {
                 if (item.mtime > maxTime) maxTime = item.mtime;
                 if (item.children) findMaxTime(item.children);
@@ -65,22 +129,35 @@ export default function SystemLogManager() {
             setLatestUpdateTime(maxTime);
           }
         })
-        .finally(() => setIsLoadingTree(false));
+        .catch((error: Error) => {
+          if (!active) return;
+          setTreeData([]);
+          setSourceStateMessage(
+            error.name === "AdminFetchError"
+              ? error.message
+              : "Source Explorer is currently unavailable.",
+          );
+        })
+        .finally(() => {
+          if (active) setIsLoadingTree(false);
+        });
+
+      return () => {
+        active = false;
+      };
     }
   }, [isOpen, activeView]);
 
   const handleFileClick = (filePath: string) => {
     setSelectedFile(filePath);
     setFileContent("// Loading source code from server...\n");
-    fetch(`/api/system/file?path=${encodeURIComponent(filePath)}`)
-      .then((res) => res.json())
+    readAdminJson<{ success: boolean; content: string }>(
+      `/api/system/file?path=${encodeURIComponent(filePath)}`,
+    )
       .then((data) => {
         if (data.success) setFileContent(data.content);
-        else setFileContent(`// Error: ${data.message}`);
       })
-      .catch((err) =>
-        setFileContent(`// Failed to fetch file content: ${err.message}`),
-      );
+      .catch(() => setFileContent("// Failed to fetch file content"));
   };
 
   const handleCopyCode = () => {
@@ -90,7 +167,7 @@ export default function SystemLogManager() {
   };
 
   const handleCopyTree = () => {
-    const generateTreeText = (items: any[], prefix = "") => {
+    const generateTreeText = (items: SourceTreeNode[], prefix = "") => {
       let text = "";
       items.forEach((item, idx) => {
         const isLast = idx === items.length - 1;
@@ -117,7 +194,7 @@ export default function SystemLogManager() {
     if (!searchQuery.trim()) return treeData;
     const query = searchQuery.toLowerCase();
 
-    const filterNodes = (nodes: any[]): any[] => {
+    const filterNodes = (nodes: SourceTreeNode[]): SourceTreeNode[] => {
       return nodes
         .map((node) => {
           if (node.type === "directory") {
@@ -139,12 +216,12 @@ export default function SystemLogManager() {
             return null;
           }
         })
-        .filter(Boolean);
+        .filter((node): node is SourceTreeNode => node !== null);
     };
     return filterNodes(treeData);
   }, [treeData, searchQuery]);
 
-  const renderFile = (item: any, index: number) => {
+  const renderFile = (item: SourceTreeNode, index: number) => {
     const isErrorFile = errorStatus.hasError && errorStatus.file === item.path;
     const isLatestUpdate =
       !isErrorFile && item.mtime >= latestUpdateTime - 60000;
@@ -182,7 +259,7 @@ export default function SystemLogManager() {
     );
   };
 
-  const renderDirectory = (item: any, index: number) => {
+  const renderDirectory = (item: SourceTreeNode, index: number) => {
     const folderHasError =
       errorStatus.hasError &&
       typeof errorStatus.file === "string" &&
@@ -210,7 +287,7 @@ export default function SystemLogManager() {
     );
   };
 
-  const renderTree = (items: any[]) =>
+  const renderTree = (items: SourceTreeNode[]) =>
     items.map((item, index) =>
       item.type === "directory"
         ? renderDirectory(item, index)
@@ -372,29 +449,16 @@ export default function SystemLogManager() {
                         />
                       </div>
 
-                      {isLoadingTree ? (
-                        <div className="flex flex-col items-center justify-center py-10 opacity-50">
-                          <Activity
-                            size={32}
-                            className="animate-spin text-blue-400 mb-4"
-                          />
-                          <p className="text-sm text-slate-400">
-                            Fetching live dependency tree...
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
-                          {filteredTreeData.length > 0 ? (
-                            renderTree(filteredTreeData)
-                          ) : (
-                            <p className="text-slate-500 text-sm text-center py-4">
-                              {searchQuery
-                                ? "No matching files found."
-                                : "No files found."}
-                            </p>
-                          )}
-                        </div>
-                      )}
+                      <div className="space-y-1">
+                        <SourceTreeState
+                          isLoading={isLoadingTree}
+                          message={sourceStateMessage}
+                          hasEntries={filteredTreeData.length > 0}
+                          hasSearchQuery={Boolean(searchQuery)}
+                        >
+                          {renderTree(filteredTreeData)}
+                        </SourceTreeState>
+                      </div>
                     </div>
                   )}
 

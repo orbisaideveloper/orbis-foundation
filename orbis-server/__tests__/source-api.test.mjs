@@ -1,6 +1,14 @@
 // @vitest-environment node
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import express from "express";
 import fs from "node:fs";
 import Module, { createRequire } from "node:module";
@@ -19,13 +27,7 @@ const timeMachineApiPath = path.join(
 const fixtureDirectories = new Set();
 const fakeDatabaseQueries = [];
 
-const hadSourceExplorerSetting = Object.hasOwn(
-  process.env,
-  "SOURCE_EXPLORER_ENABLED",
-);
-const originalSourceExplorerSetting = process.env.SOURCE_EXPLORER_ENABLED;
-const hadDatabaseUrl = Object.hasOwn(process.env, "DATABASE_URL");
-const originalDatabaseUrl = process.env.DATABASE_URL;
+vi.setConfig({ testTimeout: 20_000 });
 
 let app;
 let importTimeDatabaseQueryBaseline;
@@ -45,7 +47,7 @@ function removeFixture(fixtureDirectory) {
 
 function createFixture() {
   const fixtureDirectory = fs.mkdtempSync(
-    path.join(repositoryRoot, "source-api-fixture-"),
+    path.join(repositoryRoot, "src", "source-api-fixture-"),
   );
   fixtureDirectories.add(fixtureDirectory);
   return fixtureDirectory;
@@ -82,6 +84,9 @@ beforeAll(async () => {
   try {
     Module._load = function (requestName, parent, isMain) {
       if (requestName === "pg") return { Pool: FakePool };
+      if (requestName === "./admin-auth.cjs") {
+        return { requireAuthenticatedAdmin: (_req, _res, next) => next() };
+      }
       return originalLoad.call(this, requestName, parent, isMain);
     };
 
@@ -110,23 +115,24 @@ afterAll(() => {
     removeFixture(fixtureDirectory);
   }
 
-  if (hadSourceExplorerSetting) {
-    process.env.SOURCE_EXPLORER_ENABLED = originalSourceExplorerSetting;
-  } else {
-    delete process.env.SOURCE_EXPLORER_ENABLED;
-  }
-
-  if (hadDatabaseUrl) {
-    process.env.DATABASE_URL = originalDatabaseUrl;
-  } else {
-    delete process.env.DATABASE_URL;
-  }
+  delete process.env.SOURCE_EXPLORER_ENABLED;
+  delete process.env.DATABASE_URL;
 
   delete require.cache[require.resolve(sourceApiPath)];
   delete require.cache[require.resolve(timeMachineApiPath)];
 });
 
 describe("source-api Source Explorer", () => {
+  it("exposes a guarded metadata-free Admin access check", async () => {
+    const response = await request(app).get("/api/system/access");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, role: "ADMIN" });
+    expect(response.body).not.toHaveProperty("user");
+    expect(response.body).not.toHaveProperty("status");
+    expect(response.body).not.toHaveProperty("tree");
+  });
+
   it.each([undefined, "false", "1", "yes"])(
     "returns the generic disabled response for flag value %s",
     async (flagValue) => {
@@ -162,7 +168,7 @@ describe("source-api Source Explorer", () => {
     expect(fileResponse.body.success).toBe(true);
   });
 
-  it("keeps status available while Source Explorer is disabled", async () => {
+  it("keeps authenticated status available while Source Explorer is disabled", async () => {
     process.env.SOURCE_EXPLORER_ENABLED = "false";
 
     const response = await request(app).get("/api/system/status");
@@ -263,7 +269,9 @@ describe("source-api Source Explorer", () => {
   it("shows an allowed fixture while excluding unsafe fixture files", async () => {
     process.env.SOURCE_EXPLORER_ENABLED = "true";
     const fixtureDirectory = createFixture();
-    const fixtureName = path.basename(fixtureDirectory);
+    const fixtureName = path
+      .relative(repositoryRoot, fixtureDirectory)
+      .replaceAll("\\", "/");
     const visibleContent = "export const fixtureVisible = true;\n";
     const secretContent = "ORBiS_TEST_SECRET_CONTENT";
 
@@ -346,7 +354,9 @@ describe("source-api Source Explorer", () => {
     process.env.SOURCE_EXPLORER_ENABLED = "true";
     const secretContent = "ORBiS_TEST_SECRET_CONTENT";
     const fixtureDirectory = createFixture();
-    const fixtureName = path.basename(fixtureDirectory);
+    const fixtureName = path
+      .relative(repositoryRoot, fixtureDirectory)
+      .replaceAll("\\", "/");
 
     try {
       fs.writeFileSync(
@@ -392,6 +402,15 @@ describe("source-api Source Explorer", () => {
     expect(source).not.toMatch(/\bpool\.query\s*\(/);
     expect(source).not.toMatch(/\bsaveToTimeMachine\b/);
     expect(source).toContain('router.use("/time-machine", timeMachineRouter)');
+    expect(source).toContain('router.get("/access"');
+    expect(
+      source.indexOf("router.use(requireAuthenticatedAdmin)"),
+    ).toBeLessThan(
+      source.indexOf('router.use("/time-machine", timeMachineRouter)'),
+    );
+    expect(
+      source.indexOf("router.use(requireAuthenticatedAdmin)"),
+    ).toBeLessThan(source.indexOf('router.get("/access"'));
     expect(bridge).toContain('app.use("/api/system", sourceApi)');
     expect(legacyServer).toContain(
       'app.use("/api/system", require("./source-api.cjs"))',

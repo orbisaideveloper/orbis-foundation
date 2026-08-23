@@ -3,6 +3,19 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import SystemLogManager from "../SystemLogManager";
 
+vi.mock("../../auth/adminFetch", () => ({
+  readAdminJson: async (url: string) => {
+    const response = await fetch(url);
+    const data = await response.json();
+    if (response.ok === false) {
+      const error = new Error(data.message);
+      error.name = "AdminFetchError";
+      throw error;
+    }
+    return data;
+  },
+}));
+
 const SYSTEM_LOGS = "System Logs & Source";
 const SOURCE_EXPLORER = "Source Explorer";
 const PROJECT_STRUCTURE = "Project Structure";
@@ -162,6 +175,9 @@ describe("SystemLogManager", () => {
       expect(navigator.clipboard.writeText).toHaveBeenCalled();
     });
 
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "ORBIS Foundation Project Structure:\n\n└── src\n    ├── test.ts\n    └── old.ts\n",
+    );
     expect(screen.getByText("Copied Tree")).toBeInTheDocument();
   });
 
@@ -183,6 +199,29 @@ describe("SystemLogManager", () => {
 
     expect(screen.getByText("line two")).toBeInTheDocument();
     expect(screen.getByText("line three")).toBeInTheDocument();
+  });
+
+  it("shows a clear state when the protected explorer cannot load", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: () =>
+          Promise.resolve({
+            success: false,
+            message: "Source Explorer is disabled",
+          }),
+      }),
+    );
+    render(<SystemLogManager />);
+
+    fireEvent.click(screen.getByText(SYSTEM_LOGS));
+    fireEvent.click(screen.getByText(SOURCE_EXPLORER));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Source Explorer is disabled",
+    );
+    expect(screen.queryByText("No files found.")).not.toBeInTheDocument();
   });
 
   it("copies loaded source code", async () => {

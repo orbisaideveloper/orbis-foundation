@@ -3,12 +3,19 @@
 // ==========================================
 export type Role = "GUEST" | "OPERATOR" | "ADMIN" | "SYSTEM";
 
+export interface AdminAccessResponse {
+  success: true;
+  role: "ADMIN";
+}
+
 export interface IAuthService {
   user: string | null;
   role: Role;
   isAuthenticated: boolean;
-  login: (token: string) => void;
-  logout: () => void;
+  isLoading?: boolean;
+  authError?: string | null;
+  login: (email: string, password?: string) => void | Promise<void>;
+  logout: () => void | Promise<void>;
   hasPermission: (permissionId: string) => boolean;
 }
 

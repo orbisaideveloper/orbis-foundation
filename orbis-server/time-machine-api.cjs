@@ -1,6 +1,11 @@
 const express = require("express");
 const { Pool } = require("pg");
 const crypto = require("node:crypto");
+const {
+  isAllowedSourceSegments,
+  isSafeTextContent,
+  parseRelativeSourcePath,
+} = require("./source-access-policy.cjs");
 
 const router = express.Router();
 
@@ -17,7 +22,7 @@ async function ensureSchema() {
       ADD COLUMN IF NOT EXISTS "errorMessage" TEXT DEFAULT '';
     `);
   } catch (e) {
-    console.error("[TimeMachine] Schema check:", e.message);
+    console.error("[TimeMachine] Schema check failed");
   }
 }
 
@@ -30,15 +35,26 @@ async function saveToTimeMachine(
   status,
   errorMessage,
 ) {
+  const segments = parseRelativeSourcePath(filePath);
+  if (
+    segments === null ||
+    !isAllowedSourceSegments(segments) ||
+    !isSafeTextContent(content)
+  ) {
+    return false;
+  }
+
   try {
     const id = crypto.randomUUID();
-    const cid = commitId || crypto.randomUUID();
-    const buildStatus = status || "SUCCESS";
-    const buildErr = errorMessage || "";
+    const cid = validIdentifier(commitId) ? commitId : crypto.randomUUID();
+    const buildStatus = status === "FAILED" ? "FAILED" : "SUCCESS";
+    const buildErr =
+      buildStatus === "FAILED" && errorMessage ? "Build failed" : "";
+    const normalizedFilePath = segments.join("/");
 
     await pool.query(
       'INSERT INTO "FoundationTimeMachine" (id, "commitId", "filePath", "content", "status", "errorMessage") VALUES ($1, $2, $3, $4, $5, $6)',
-      [id, cid, filePath, content, buildStatus, buildErr],
+      [id, cid, normalizedFilePath, content, buildStatus, buildErr],
     );
 
     await pool.query(
@@ -52,34 +68,65 @@ async function saveToTimeMachine(
           OFFSET 100
         )
       `,
-      [filePath],
+      [normalizedFilePath],
     );
-  } catch (err) {
-    console.error("[TimeMachine] Save Error:", err.message);
+    return true;
+  } catch {
+    console.error("[TimeMachine] Save failed");
+    return false;
   }
+}
+
+function validIdentifier(value) {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 200 &&
+    !value.includes("\0")
+  );
+}
+
+function safePathSegments(value) {
+  const segments = parseRelativeSourcePath(value);
+  return segments !== null && isAllowedSourceSegments(segments)
+    ? segments
+    : null;
 }
 
 router.post("/sync", async (req, res) => {
   try {
     const { filePath, content, commitId, status, errorMessage } = req.body;
 
-    if (!filePath || !content) {
+    const segments = safePathSegments(filePath);
+    if (!segments || !isSafeTextContent(content)) {
       return res.status(400).json({
         success: false,
-        message: "filePath and content required",
+        message: "Valid source snapshot required",
       });
     }
 
-    await saveToTimeMachine(filePath, content, commitId, status, errorMessage);
+    const saved = await saveToTimeMachine(
+      segments.join("/"),
+      content,
+      commitId,
+      status,
+      errorMessage,
+    );
+    if (!saved) {
+      return res.status(500).json({
+        success: false,
+        message: "Unable to sync Time Machine record",
+      });
+    }
 
     return res.json({
       success: true,
       message: "TimeMachine record synced successfully",
     });
-  } catch (error) {
+  } catch {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to sync Time Machine record",
     });
   }
 });
@@ -93,6 +140,9 @@ router.get("/history", async (_req, res) => {
     const commitMap = {};
 
     for (const row of rows || []) {
+      const segments = safePathSegments(row.filePath);
+      if (!segments) continue;
+
       const cid = row.commitId || "legacy-commit";
 
       if (!commitMap[cid]) {
@@ -100,25 +150,24 @@ router.get("/history", async (_req, res) => {
           commitId: cid,
           createdAt: row.createdAt,
           status: row.status || "SUCCESS",
-          errorMessage: row.errorMessage || "",
+          errorMessage: row.status === "FAILED" ? "Build failed" : "",
           files: [],
         };
       }
 
       if (
-        row.filePath &&
-        !commitMap[cid].files.some((file) => file.filePath === row.filePath)
+        !commitMap[cid].files.some(
+          (file) => file.filePath === segments.join("/"),
+        )
       ) {
         commitMap[cid].files.push({
-          filePath: row.filePath,
+          filePath: segments.join("/"),
         });
       }
 
       if (row.status === "FAILED") {
         commitMap[cid].status = "FAILED";
-        if (row.errorMessage) {
-          commitMap[cid].errorMessage = row.errorMessage;
-        }
+        commitMap[cid].errorMessage = "Build failed";
       }
     }
 
@@ -126,10 +175,10 @@ router.get("/history", async (_req, res) => {
       success: true,
       history: Object.values(commitMap),
     });
-  } catch (error) {
+  } catch {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to load Time Machine history",
     });
   }
 });
@@ -138,16 +187,24 @@ router.get("/version", async (req, res) => {
   try {
     const { commitId, filePath } = req.query;
 
-    if (!commitId || !filePath) {
+    if (!validIdentifier(commitId) || typeof filePath !== "string") {
       return res.status(400).json({
         success: false,
         message: "commitId and filePath required",
       });
     }
 
+    const segments = safePathSegments(filePath);
+    if (!segments) {
+      return res.status(404).json({
+        success: false,
+        message: "Version not found",
+      });
+    }
+
     const { rows } = await pool.query(
       'SELECT content, "createdAt", "status", "errorMessage" FROM "FoundationTimeMachine" WHERE "commitId" = $1 AND "filePath" = $2 LIMIT 1',
-      [commitId, filePath],
+      [commitId, segments.join("/")],
     );
 
     if (!rows || rows.length === 0) {
@@ -157,14 +214,26 @@ router.get("/version", async (req, res) => {
       });
     }
 
+    if (!isSafeTextContent(rows[0].content)) {
+      return res.status(404).json({
+        success: false,
+        message: "Version not found",
+      });
+    }
+
     return res.json({
       success: true,
-      data: rows[0],
+      data: {
+        content: rows[0].content,
+        createdAt: rows[0].createdAt,
+        status: rows[0].status,
+        errorMessage: rows[0].status === "FAILED" ? "Build failed" : "",
+      },
     });
-  } catch (error) {
+  } catch {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to load Time Machine version",
     });
   }
 });

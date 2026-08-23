@@ -1,4 +1,43 @@
 import React, { useState, useEffect } from "react";
+import { readAdminJson } from "../../auth/adminFetch";
+
+function TimeMachineHistoryState({
+  loading,
+  loadError,
+  hasHistory,
+  children,
+}: {
+  loading: boolean;
+  loadError: string | null;
+  hasHistory: boolean;
+  children: React.ReactNode;
+}) {
+  if (loading) {
+    return (
+      <div className="text-center py-8 text-slate-400 animate-pulse flex-1 text-sm">
+        Loading grouped commit logs...
+      </div>
+    );
+  }
+  if (loadError) {
+    return (
+      <div
+        role="alert"
+        className="text-center py-8 text-amber-300 flex-1 text-sm"
+      >
+        {loadError}
+      </div>
+    );
+  }
+  if (!hasHistory) {
+    return (
+      <div className="text-center py-8 text-slate-500 flex-1 text-sm">
+        No logs found.
+      </div>
+    );
+  }
+  return children;
+}
 
 export default function TimeMachineCard() {
   const [history, setHistory] = useState<any[]>([]);
@@ -7,6 +46,7 @@ export default function TimeMachineCard() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [codeContent, setCodeContent] = useState("");
   const [copied, setCopied] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const copyResetTimer = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -19,18 +59,28 @@ export default function TimeMachineCard() {
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    fetch("/api/system/time-machine/history")
-      .then((res) => res.json())
+    let active = true;
+    readAdminJson<{ success: boolean; history: any[] }>(
+      "/api/system/time-machine/history",
+    )
       .then((data) => {
-        if (data.success && Array.isArray(data.history)) {
+        if (active && data.success && Array.isArray(data.history)) {
           setHistory(data.history);
         }
-        setLoading(false);
+        if (active) setLoading(false);
       })
-      .catch((err) => {
-        console.error("Time Machine Fetch Error:", err);
+      .catch((error: Error) => {
+        if (!active) return;
+        setLoadError(
+          error.name === "AdminFetchError"
+            ? error.message
+            : "Time Machine is currently unavailable.",
+        );
         setLoading(false);
       });
+    return () => {
+      active = false;
+    };
   }, []);
 
   // 🚀 হারানো লজিক ঠিক করা হলো: কমিট এবং নির্দিষ্ট ফাইল দুটোই ট্র্যাকিং
@@ -38,10 +88,10 @@ export default function TimeMachineCard() {
     setSelectedCommit(commit);
     setSelectedFile(filePath);
     setLoading(true);
-    fetch(
+    setLoadError(null);
+    readAdminJson<{ success: boolean; data: { content?: string } }>(
       `/api/system/time-machine/version?commitId=${commit.commitId}&filePath=${encodeURIComponent(filePath)}`,
     )
-      .then((res) => res.json())
       .then((data) => {
         if (data.success && data.data?.content) {
           setCodeContent(data.data.content);
@@ -199,15 +249,11 @@ export default function TimeMachineCard() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="text-center py-8 text-slate-400 animate-pulse flex-1 text-sm">
-              Loading grouped commit logs...
-            </div>
-          ) : filteredHistory.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 flex-1 text-sm">
-              No logs found.
-            </div>
-          ) : (
+          <TimeMachineHistoryState
+            loading={loading}
+            loadError={loadError}
+            hasHistory={filteredHistory.length > 0}
+          >
             <div className="space-y-3 overflow-y-auto pr-1 custom-scrollbar flex-1 max-h-[60vh]">
               {filteredHistory.map((commit) => (
                 <div
@@ -275,7 +321,7 @@ export default function TimeMachineCard() {
                 </div>
               ))}
             </div>
-          )}
+          </TimeMachineHistoryState>
         </div>
       ) : (
         <div className="flex flex-col h-full relative">

@@ -1,0 +1,208 @@
+const path = require("node:path");
+
+const MAX_SOURCE_FILE_BYTES = 1024 * 1024;
+
+const ALLOWED_SOURCE_ROOTS = new Set([
+  "docs",
+  "orbis-server",
+  "prisma",
+  "scripts",
+  "src",
+]);
+
+const ALLOWED_ROOT_FILES = new Set([
+  "Dockerfile",
+  "LICENSE",
+  "Makefile",
+  "Procfile",
+  "README.md",
+  "index.html",
+  "package-lock.json",
+  "package.json",
+  "postcss.config.js",
+  "prisma.config.ts",
+  "render.yaml",
+  "tailwind.config.js",
+  "tsconfig.brain-runtime.json",
+  "tsconfig.json",
+  "tsconfig.node.json",
+  "vite.config.ts",
+  "vitest.config.ts",
+]);
+
+const ALLOWED_SOURCE_EXTENSIONS = new Set([
+  ".bash",
+  ".cjs",
+  ".css",
+  ".htm",
+  ".html",
+  ".js",
+  ".json",
+  ".jsonc",
+  ".jsx",
+  ".less",
+  ".md",
+  ".mdx",
+  ".mjs",
+  ".prisma",
+  ".sass",
+  ".scss",
+  ".sh",
+  ".ts",
+  ".tsx",
+  ".yaml",
+  ".yml",
+  ".zsh",
+]);
+
+const ALLOWED_EXTENSIONLESS_FILES = new Set([
+  "dockerfile",
+  "license",
+  "makefile",
+  "procfile",
+]);
+
+const BLOCKED_FILE_EXTENSIONS = new Set([
+  ".bak",
+  ".backup",
+  ".cer",
+  ".cert",
+  ".crt",
+  ".db",
+  ".der",
+  ".dmp",
+  ".dump",
+  ".jks",
+  ".key",
+  ".keystore",
+  ".log",
+  ".old",
+  ".orig",
+  ".p12",
+  ".pem",
+  ".pfx",
+  ".sql",
+  ".sqlite",
+  ".sqlite3",
+  ".swp",
+  ".temp",
+  ".tmp",
+]);
+
+const RESTRICTED_SEGMENT_PATTERN =
+  /(?:^|[-_.])(audit|audits|backup|backups|build|copy|coverage|credential|credentials|database|databases|dist|generated|key|keys|log|logs|node_modules|old|passwd|password|passwords|private[-_]?key|report|reports|secret|secrets|snapshot|snapshots|temp|temporary|tmp|token|tokens)(?:[-_.]|$)/i;
+
+function decodeRequestedPath(value) {
+  if (
+    typeof value !== "string" ||
+    value.trim() === "" ||
+    value.includes("\0")
+  ) {
+    return null;
+  }
+
+  let decoded = value;
+  try {
+    for (let pass = 0; pass < 5; pass += 1) {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    }
+  } catch {
+    return null;
+  }
+
+  if (/%[0-9a-f]{2}/i.test(decoded) || decoded.includes("\0")) return null;
+  return decoded;
+}
+
+function parseRelativeSourcePath(value) {
+  const decoded = decodeRequestedPath(value);
+  if (
+    decoded === null ||
+    path.posix.isAbsolute(decoded) ||
+    path.win32.isAbsolute(decoded)
+  ) {
+    return null;
+  }
+
+  const segments = decoded.replaceAll("\\", "/").split("/");
+  if (
+    segments.some(
+      (segment) =>
+        segment === "" ||
+        segment === "." ||
+        segment === ".." ||
+        segment.startsWith("."),
+    )
+  ) {
+    return null;
+  }
+  return segments;
+}
+
+function isRestrictedSegment(segment) {
+  return segment.startsWith(".") || RESTRICTED_SEGMENT_PATTERN.test(segment);
+}
+
+function isAllowedSourceFileName(name) {
+  const normalizedName = name.toLowerCase();
+  const extension = path.extname(normalizedName);
+  if (
+    name.endsWith("~") ||
+    isRestrictedSegment(name) ||
+    BLOCKED_FILE_EXTENSIONS.has(extension)
+  ) {
+    return false;
+  }
+  return (
+    ALLOWED_SOURCE_EXTENSIONS.has(extension) ||
+    ALLOWED_EXTENSIONLESS_FILES.has(normalizedName)
+  );
+}
+
+function isAllowedSourceSegments(segments) {
+  if (!Array.isArray(segments) || segments.length === 0) return false;
+  if (segments.some(isRestrictedSegment)) return false;
+  if (!isAllowedSourceFileName(segments.at(-1))) return false;
+
+  if (segments.length === 1) return ALLOWED_ROOT_FILES.has(segments[0]);
+  return ALLOWED_SOURCE_ROOTS.has(segments[0]);
+}
+
+function isAllowedDirectorySegments(segments) {
+  return (
+    Array.isArray(segments) &&
+    segments.length > 0 &&
+    ALLOWED_SOURCE_ROOTS.has(segments[0]) &&
+    segments.every((segment) => !isRestrictedSegment(segment))
+  );
+}
+
+function isAllowedSourcePath(value) {
+  const segments = parseRelativeSourcePath(value);
+  return segments !== null && isAllowedSourceSegments(segments);
+}
+
+function isSafeTextContent(content) {
+  if (typeof content !== "string" || content.includes("\0")) return false;
+  if (Buffer.byteLength(content, "utf8") > MAX_SOURCE_FILE_BYTES) return false;
+  return (
+    new TextDecoder("utf-8", { fatal: true }).decode(
+      new TextEncoder().encode(content),
+    ) === content
+  );
+}
+
+module.exports = {
+  ALLOWED_ROOT_FILES,
+  ALLOWED_SOURCE_ROOTS,
+  MAX_SOURCE_FILE_BYTES,
+  isAllowedSourceFileName,
+  isAllowedDirectorySegments,
+  isAllowedSourcePath,
+  isAllowedSourceSegments,
+  isRestrictedSegment,
+  isSafeTextContent,
+  parseRelativeSourcePath,
+};

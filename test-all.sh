@@ -4,10 +4,7 @@
 CIRCULAR_OUTPUT=$(./node_modules/.bin/madge --circular --extensions ts,tsx,cjs --exclude "generated" ./src 2>&1)
 
 if echo "$CIRCULAR_OUTPUT" | grep -q "No circular dependency found"; then
-    git add . > /dev/null 2>&1
-    git commit -m "chore(auto): silent high-tech check passed" > /dev/null 2>&1
-    git push origin main > /dev/null 2>&1
-    echo "⚡ [Success]: Clean check & silently pushed to GitHub!"
+    echo "⚡ [Success]: Verification passed. Manually review, commit, and push your changes."
 else
     echo "⚠️ [Loop Detected in Code]:"
     echo "$CIRCULAR_OUTPUT"

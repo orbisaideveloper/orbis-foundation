@@ -2,95 +2,26 @@ const express = require("express");
 const fs = require("node:fs");
 const path = require("node:path");
 const { router: timeMachineRouter } = require("./time-machine-api.cjs");
+const { requireAuthenticatedAdmin } = require("./admin-auth.cjs");
+const {
+  MAX_SOURCE_FILE_BYTES,
+  isAllowedDirectorySegments,
+  isAllowedSourceSegments,
+  parseRelativeSourcePath,
+} = require("./source-access-policy.cjs");
 
 const router = express.Router();
 const repositoryRoot = fs.realpathSync(path.resolve(__dirname, ".."));
-const MAX_SOURCE_FILE_BYTES = 1024 * 1024;
 
-const ALLOWED_SOURCE_EXTENSIONS = new Set([
-  ".bash",
-  ".cjs",
-  ".css",
-  ".htm",
-  ".html",
-  ".js",
-  ".json",
-  ".jsonc",
-  ".jsx",
-  ".less",
-  ".md",
-  ".mdx",
-  ".mjs",
-  ".prisma",
-  ".sass",
-  ".scss",
-  ".sh",
-  ".ts",
-  ".tsx",
-  ".yaml",
-  ".yml",
-  ".zsh",
-]);
-
-const ALLOWED_EXTENSIONLESS_FILES = new Set([
-  "dockerfile",
-  "license",
-  "makefile",
-  "procfile",
-]);
-
-const BLOCKED_DIRECTORY_NAMES = new Set([
-  "audit",
-  "audits",
-  "build",
-  "coverage",
-  "dist",
-  "log",
-  "logs",
-  "node_modules",
-  "report",
-  "reports",
-  "snapshot",
-  "snapshots",
-  "temp",
-  "temporary",
-  "tmp",
-]);
-
-const BLOCKED_FILE_EXTENSIONS = new Set([
-  ".bak",
-  ".backup",
-  ".cer",
-  ".cert",
-  ".crt",
-  ".db",
-  ".der",
-  ".dmp",
-  ".dump",
-  ".jks",
-  ".key",
-  ".keystore",
-  ".log",
-  ".old",
-  ".orig",
-  ".p12",
-  ".pem",
-  ".pfx",
-  ".sql",
-  ".sqlite",
-  ".sqlite3",
-  ".swp",
-  ".temp",
-  ".tmp",
-]);
-
-const SENSITIVE_NAME_PATTERN =
-  /(?:api[-_]?key|auth[-_]?token|credential|passwd|password|private[-_]?key|secret|token)/i;
-const BACKUP_OR_TEMP_NAME_PATTERN =
-  /(?:^|[-_.])(backup|backups|copy|old|temp|temporary|tmp)(?:[-_.]|$)/i;
-const LOG_FILE_NAME_PATTERN = /(?:^|[-_.])logs?(?:[-_.]|$)/i;
-
+router.use(requireAuthenticatedAdmin);
 router.use("/time-machine", timeMachineRouter);
+
+router.get("/access", (_req, res) => {
+  return res.json({
+    success: true,
+    role: "ADMIN",
+  });
+});
 
 function isSourceExplorerEnabled() {
   return (
@@ -112,106 +43,6 @@ function requireSourceExplorer(req, res, next) {
 
 function isStrictlyContained(candidatePath) {
   return candidatePath.startsWith(`${repositoryRoot}${path.sep}`);
-}
-
-function isBlockedDirectoryName(name) {
-  const normalizedName = name.toLowerCase();
-
-  return (
-    name.startsWith(".") ||
-    BLOCKED_DIRECTORY_NAMES.has(normalizedName) ||
-    /(?:^|[-_])(audit|backup|backups|log|logs|report|reports|snapshot|snapshots|temp|temporary|tmp)(?:[-_]|$)/i.test(
-      normalizedName,
-    )
-  );
-}
-
-function isAllowedSourceFileName(name) {
-  const normalizedName = name.toLowerCase();
-  const extension = path.extname(normalizedName);
-
-  if (
-    name.startsWith(".") ||
-    name.endsWith("~") ||
-    SENSITIVE_NAME_PATTERN.test(normalizedName) ||
-    BACKUP_OR_TEMP_NAME_PATTERN.test(normalizedName) ||
-    LOG_FILE_NAME_PATTERN.test(normalizedName) ||
-    BLOCKED_FILE_EXTENSIONS.has(extension)
-  ) {
-    return false;
-  }
-
-  return (
-    ALLOWED_SOURCE_EXTENSIONS.has(extension) ||
-    ALLOWED_EXTENSIONLESS_FILES.has(normalizedName)
-  );
-}
-
-function decodeRequestedPath(value) {
-  if (
-    typeof value !== "string" ||
-    value.trim() === "" ||
-    value.includes("\0")
-  ) {
-    return null;
-  }
-
-  let decoded = value;
-
-  try {
-    for (let pass = 0; pass < 5; pass += 1) {
-      const next = decodeURIComponent(decoded);
-
-      if (next === decoded) break;
-      decoded = next;
-    }
-  } catch {
-    return null;
-  }
-
-  if (/%[0-9a-f]{2}/i.test(decoded) || decoded.includes("\0")) {
-    return null;
-  }
-
-  return decoded;
-}
-
-function parseRelativeSourcePath(value) {
-  const decoded = decodeRequestedPath(value);
-
-  if (
-    decoded === null ||
-    path.posix.isAbsolute(decoded) ||
-    path.win32.isAbsolute(decoded)
-  ) {
-    return null;
-  }
-
-  const segments = decoded.replace(/\\/g, "/").split("/");
-
-  if (
-    segments.some(
-      (segment) =>
-        segment === "" ||
-        segment === "." ||
-        segment === ".." ||
-        segment.startsWith("."),
-    )
-  ) {
-    return null;
-  }
-
-  return segments;
-}
-
-function hasSafePathSegments(segments) {
-  return (
-    segments.length > 0 &&
-    segments
-      .slice(0, -1)
-      .every((segment) => !isBlockedDirectoryName(segment)) &&
-    isAllowedSourceFileName(segments.at(-1))
-  );
 }
 
 function hasNoSymbolicLinkSegments(segments) {
@@ -246,7 +77,7 @@ function readSafeTextFile(filePath, stats) {
 }
 
 function inspectAllowedFile(filePath, segments, stats) {
-  if (!hasSafePathSegments(segments) || stats.isSymbolicLink()) return null;
+  if (!isAllowedSourceSegments(segments) || stats.isSymbolicLink()) return null;
 
   const canonicalPath = fs.realpathSync(filePath);
 
@@ -274,7 +105,7 @@ function getDirTreeSync(dirPath, relativeSegments = []) {
       if (stats.isSymbolicLink()) continue;
 
       if (stats.isDirectory()) {
-        if (isBlockedDirectoryName(item.name)) continue;
+        if (!isAllowedDirectorySegments(segments)) continue;
 
         const canonicalDirectory = fs.realpathSync(fullPath);
 
@@ -345,18 +176,18 @@ router.get("/file", requireSourceExplorer, (req, res) => {
 
   const segments = parseRelativeSourcePath(requestedPath);
 
-  if (segments === null || !hasSafePathSegments(segments)) {
-    return res.status(400).json({
+  if (segments === null || !isAllowedSourceSegments(segments)) {
+    return res.status(404).json({
       success: false,
-      message: "Invalid file path",
+      message: "Source file unavailable",
     });
   }
 
   try {
     if (!hasNoSymbolicLinkSegments(segments)) {
-      return res.status(403).json({
+      return res.status(404).json({
         success: false,
-        message: "File access denied",
+        message: "Source file unavailable",
       });
     }
 
@@ -365,9 +196,9 @@ router.get("/file", requireSourceExplorer, (req, res) => {
     const inspectedFile = inspectAllowedFile(resolvedPath, segments, stats);
 
     if (inspectedFile === null) {
-      return res.status(403).json({
+      return res.status(404).json({
         success: false,
-        message: "File access denied",
+        message: "Source file unavailable",
       });
     }
 
@@ -379,7 +210,7 @@ router.get("/file", requireSourceExplorer, (req, res) => {
     if (error?.code === "ENOENT" || error?.code === "ENOTDIR") {
       return res.status(404).json({
         success: false,
-        message: "File not found",
+        message: "Source file unavailable",
       });
     }
 
@@ -399,6 +230,22 @@ router.get("/status", (_req, res) => {
     if (fs.existsSync(crashReportPath)) {
       const crashData = JSON.parse(fs.readFileSync(crashReportPath, "utf8"));
 
+      if (
+        typeof crashData.file !== "string" ||
+        !isAllowedSourceSegments(
+          parseRelativeSourcePath(crashData.file) || [],
+        ) ||
+        !Number.isSafeInteger(crashData.line) ||
+        crashData.line < 1
+      ) {
+        return res.json({
+          success: true,
+          hasError: false,
+          file: null,
+          errorLine: null,
+        });
+      }
+
       return res.json({
         success: true,
         hasError: true,
@@ -417,6 +264,8 @@ router.get("/status", (_req, res) => {
     return res.json({
       success: true,
       hasError: false,
+      file: null,
+      errorLine: null,
     });
   }
 });

@@ -6,3 +6,16 @@ services:
     startCommand: node orbis-server/bridge.cjs
     healthCheckPath: /api/system-stats
     autoDeploy: true
+    envVars:
+      - key: SOURCE_EXPLORER_ENABLED
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: ADMIN_USER_IDS
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false

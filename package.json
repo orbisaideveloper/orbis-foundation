@@ -8,8 +8,8 @@
     "build": "tsc && npm run build:brain-runtime && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "test": "vitest run --coverage",
-    "coverage": "vitest run --coverage",
+    "test": "vitest run --coverage --maxWorkers=2",
+    "coverage": "vitest run --coverage --maxWorkers=2",
     "start": "node orbis-server/bridge.cjs",
     "type-check": "tsc --noEmit",
     "prepare": "husky",
@@ -18,9 +18,12 @@
     "check:circular": "madge --circular --extensions ts,tsx,cjs --exclude '^src/generated/.*' ./src ./orbis-server",
     "check:duplicates": "node -e \"const{spawnSync}=require(\\\"child_process\\\");if(process.platform===\\\"android\\\"&&process.arch===\\\"arm64\\\"){console.log(\\\"⚠️ jscpd skipped: unsupported Termux android/arm64 platform\\\");process.exit(0)}const r=spawnSync(\\\"jscpd\\\",[\\\"./src\\\",\\\"./orbis-server\\\"],{stdio:\\\"inherit\\\",shell:process.platform===\\\"win32\\\"});process.exit(r.status??1)\"",
     "check:deadcode": "knip",
-    "test:coverage": "vitest run --coverage --coverage.thresholds.lines=48 --coverage.thresholds.functions=48 --coverage.thresholds.branches=48 --coverage.thresholds.statements=48",
+    "test:coverage": "vitest run --coverage --maxWorkers=2 --coverage.thresholds.lines=48 --coverage.thresholds.functions=48 --coverage.thresholds.branches=48 --coverage.thresholds.statements=48",
     "check:duplicates:ci": "jscpd ./src ./orbis-server",
-    "build:brain-runtime": "tsc -p tsconfig.brain-runtime.json"
+    "build:brain-runtime": "tsc -p tsconfig.brain-runtime.json",
+    "workflow:start": "bash scripts/orbis-safe-workflow.sh start",
+    "workflow:verify": "bash scripts/orbis-safe-workflow.sh verify",
+    "workflow:review": "bash scripts/orbis-safe-workflow.sh review"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
@@ -76,14 +79,5 @@
     "typescript": "^5.9.3",
     "vite": "^5.2.0",
     "vitest": "^4.1.10"
-  },
-  "lint-staged": {
-    "src/**/*.{ts,tsx,js,jsx}": [
-      "prettier --write",
-      "eslint --fix"
-    ],
-    "orbis-server/**/*.cjs": [
-      "prettier --write"
-    ]
   }
 }

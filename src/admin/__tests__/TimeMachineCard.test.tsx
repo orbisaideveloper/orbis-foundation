@@ -16,6 +16,13 @@ import {
 import "@testing-library/jest-dom";
 import TimeMachineCard from "../components/TimeMachine/TimeMachineCard";
 
+vi.mock("../auth/adminFetch", () => ({
+  readAdminJson: async (url: string) => {
+    const response = await fetch(url);
+    return response.json();
+  },
+}));
+
 const historyResponse = {
   success: true,
   history: [
@@ -234,10 +241,10 @@ describe("TimeMachineCard", () => {
     render(<TimeMachineCard />);
 
     await waitFor(() => {
-      expect(screen.getByText("No logs found.")).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Time Machine is currently unavailable.",
+      );
     });
-
-    expect(console.error).toHaveBeenCalled();
   });
 
   it("handles empty history response", async () => {

@@ -1,9 +1,6 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-echo "🛡️ [Husky Guard] অটো-ফিক্সার ও ক্লিনআপ শুরু..."
-npx lint-staged
-
 echo "🔄 [Logic Integrity Guard] Checking core business logic & data flows..."
 node orbis-logic-guard.cjs || {
     echo "❌ Logic Mismatch Alert! Commit aborted."
@@ -16,4 +13,4 @@ npm run check:circular || {
     exit 1
 }
 
-echo "✅ [Termux] কোড ১০০% পারফেক্ট!"
+echo "✅ [Termux] Read-only pre-commit verification passed!"
