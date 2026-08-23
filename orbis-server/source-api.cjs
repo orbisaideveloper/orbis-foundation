@@ -1,222 +1,393 @@
 const express = require("express");
 const fs = require("node:fs");
 const path = require("node:path");
-const crypto = require("node:crypto");
-const { Pool } = require("pg");
-
-const {
-  router: timeMachineRouter,
-  saveToTimeMachine,
-} = require("./time-machine-api.cjs");
+const { router: timeMachineRouter } = require("./time-machine-api.cjs");
 
 const router = express.Router();
+const repositoryRoot = fs.realpathSync(path.resolve(__dirname, ".."));
+const MAX_SOURCE_FILE_BYTES = 1024 * 1024;
+
+const ALLOWED_SOURCE_EXTENSIONS = new Set([
+  ".bash",
+  ".cjs",
+  ".css",
+  ".htm",
+  ".html",
+  ".js",
+  ".json",
+  ".jsonc",
+  ".jsx",
+  ".less",
+  ".md",
+  ".mdx",
+  ".mjs",
+  ".prisma",
+  ".sass",
+  ".scss",
+  ".sh",
+  ".ts",
+  ".tsx",
+  ".yaml",
+  ".yml",
+  ".zsh",
+]);
+
+const ALLOWED_EXTENSIONLESS_FILES = new Set([
+  "dockerfile",
+  "license",
+  "makefile",
+  "procfile",
+]);
+
+const BLOCKED_DIRECTORY_NAMES = new Set([
+  "audit",
+  "audits",
+  "build",
+  "coverage",
+  "dist",
+  "log",
+  "logs",
+  "node_modules",
+  "report",
+  "reports",
+  "snapshot",
+  "snapshots",
+  "temp",
+  "temporary",
+  "tmp",
+]);
+
+const BLOCKED_FILE_EXTENSIONS = new Set([
+  ".bak",
+  ".backup",
+  ".cer",
+  ".cert",
+  ".crt",
+  ".db",
+  ".der",
+  ".dmp",
+  ".dump",
+  ".jks",
+  ".key",
+  ".keystore",
+  ".log",
+  ".old",
+  ".orig",
+  ".p12",
+  ".pem",
+  ".pfx",
+  ".sql",
+  ".sqlite",
+  ".sqlite3",
+  ".swp",
+  ".temp",
+  ".tmp",
+]);
+
+const SENSITIVE_NAME_PATTERN =
+  /(?:api[-_]?key|auth[-_]?token|credential|passwd|password|private[-_]?key|secret|token)/i;
+const BACKUP_OR_TEMP_NAME_PATTERN =
+  /(?:^|[-_.])(backup|backups|copy|old|temp|temporary|tmp)(?:[-_.]|$)/i;
+const LOG_FILE_NAME_PATTERN = /(?:^|[-_.])logs?(?:[-_.]|$)/i;
 
 router.use("/time-machine", timeMachineRouter);
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
-
-function getHash(content) {
-  return crypto.createHash("md5").update(content, "utf8").digest("hex");
+function isSourceExplorerEnabled() {
+  return (
+    typeof process.env.SOURCE_EXPLORER_ENABLED === "string" &&
+    process.env.SOURCE_EXPLORER_ENABLED.trim().toLowerCase() === "true"
+  );
 }
 
-function getDirTreeSync(dirPath, dbMap, updatesToPerform) {
-  const result = [];
+function requireSourceExplorer(req, res, next) {
+  if (!isSourceExplorerEnabled()) {
+    return res.status(403).json({
+      success: false,
+      message: "Source Explorer is disabled",
+    });
+  }
+
+  return next();
+}
+
+function isStrictlyContained(candidatePath) {
+  return candidatePath.startsWith(`${repositoryRoot}${path.sep}`);
+}
+
+function isBlockedDirectoryName(name) {
+  const normalizedName = name.toLowerCase();
+
+  return (
+    name.startsWith(".") ||
+    BLOCKED_DIRECTORY_NAMES.has(normalizedName) ||
+    /(?:^|[-_])(audit|backup|backups|log|logs|report|reports|snapshot|snapshots|temp|temporary|tmp)(?:[-_]|$)/i.test(
+      normalizedName,
+    )
+  );
+}
+
+function isAllowedSourceFileName(name) {
+  const normalizedName = name.toLowerCase();
+  const extension = path.extname(normalizedName);
+
+  if (
+    name.startsWith(".") ||
+    name.endsWith("~") ||
+    SENSITIVE_NAME_PATTERN.test(normalizedName) ||
+    BACKUP_OR_TEMP_NAME_PATTERN.test(normalizedName) ||
+    LOG_FILE_NAME_PATTERN.test(normalizedName) ||
+    BLOCKED_FILE_EXTENSIONS.has(extension)
+  ) {
+    return false;
+  }
+
+  return (
+    ALLOWED_SOURCE_EXTENSIONS.has(extension) ||
+    ALLOWED_EXTENSIONLESS_FILES.has(normalizedName)
+  );
+}
+
+function decodeRequestedPath(value) {
+  if (
+    typeof value !== "string" ||
+    value.trim() === "" ||
+    value.includes("\0")
+  ) {
+    return null;
+  }
+
+  let decoded = value;
 
   try {
-    const items = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (let pass = 0; pass < 5; pass += 1) {
+      const next = decodeURIComponent(decoded);
 
-    for (const item of items) {
-      if (
-        [
-          "node_modules",
-          ".git",
-          ".agents",
-          ".claude",
-          ".windsurf",
-          "dist",
-          "build",
-        ].includes(item.name)
-      ) {
-        continue;
-      }
+      if (next === decoded) break;
+      decoded = next;
+    }
+  } catch {
+    return null;
+  }
 
-      const fullPath = path.join(dirPath, item.name);
-      const relativePath = path
-        .relative(path.join(__dirname, ".."), fullPath)
-        .replace(/\\/g, "/");
+  if (/%[0-9a-f]{2}/i.test(decoded) || decoded.includes("\0")) {
+    return null;
+  }
 
-      const stats = fs.statSync(fullPath);
+  return decoded;
+}
 
-      if (item.isDirectory()) {
-        const children = getDirTreeSync(fullPath, dbMap, updatesToPerform);
+function parseRelativeSourcePath(value) {
+  const decoded = decodeRequestedPath(value);
+
+  if (
+    decoded === null ||
+    path.posix.isAbsolute(decoded) ||
+    path.win32.isAbsolute(decoded)
+  ) {
+    return null;
+  }
+
+  const segments = decoded.replace(/\\/g, "/").split("/");
+
+  if (
+    segments.some(
+      (segment) =>
+        segment === "" ||
+        segment === "." ||
+        segment === ".." ||
+        segment.startsWith("."),
+    )
+  ) {
+    return null;
+  }
+
+  return segments;
+}
+
+function hasSafePathSegments(segments) {
+  return (
+    segments.length > 0 &&
+    segments
+      .slice(0, -1)
+      .every((segment) => !isBlockedDirectoryName(segment)) &&
+    isAllowedSourceFileName(segments.at(-1))
+  );
+}
+
+function hasNoSymbolicLinkSegments(segments) {
+  let currentPath = repositoryRoot;
+
+  for (const segment of segments) {
+    currentPath = path.join(currentPath, segment);
+    const stats = fs.lstatSync(currentPath);
+
+    if (stats.isSymbolicLink()) return false;
+  }
+
+  return true;
+}
+
+function readSafeTextFile(filePath, stats) {
+  if (!stats.isFile() || stats.size > MAX_SOURCE_FILE_BYTES || stats.size < 0) {
+    return null;
+  }
+
+  const content = fs.readFileSync(filePath);
+
+  if (content.length > MAX_SOURCE_FILE_BYTES || content.includes(0)) {
+    return null;
+  }
+
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(content);
+  } catch {
+    return null;
+  }
+}
+
+function inspectAllowedFile(filePath, segments, stats) {
+  if (!hasSafePathSegments(segments) || stats.isSymbolicLink()) return null;
+
+  const canonicalPath = fs.realpathSync(filePath);
+
+  if (!isStrictlyContained(canonicalPath)) return null;
+
+  const content = readSafeTextFile(canonicalPath, stats);
+
+  if (content === null) return null;
+
+  return { canonicalPath, content };
+}
+
+function getDirTreeSync(dirPath, relativeSegments = []) {
+  const result = [];
+  const items = fs.readdirSync(dirPath, { withFileTypes: true });
+
+  for (const item of items) {
+    const segments = [...relativeSegments, item.name];
+    const fullPath = path.join(dirPath, item.name);
+    let stats;
+
+    try {
+      stats = fs.lstatSync(fullPath);
+
+      if (stats.isSymbolicLink()) continue;
+
+      if (stats.isDirectory()) {
+        if (isBlockedDirectoryName(item.name)) continue;
+
+        const canonicalDirectory = fs.realpathSync(fullPath);
+
+        if (!isStrictlyContained(canonicalDirectory)) continue;
+
+        const children = getDirTreeSync(canonicalDirectory, segments);
 
         if (children.length > 0) {
           result.push({
             name: item.name,
             type: "directory",
-            path: relativePath,
+            path: segments.join("/"),
             mtime: stats.mtimeMs,
             children,
           });
         }
-      } else {
-        let content;
 
-        try {
-          content = fs.readFileSync(fullPath, "utf8");
-        } catch {
-          continue;
-        }
-
-        const hash = getHash(content);
-        let fileMtime = stats.mtimeMs;
-        const dbRecord = dbMap[relativePath];
-
-        if (dbRecord) {
-          if (dbRecord.versionHash === hash) {
-            fileMtime = new Date(dbRecord.updatedAt).getTime();
-          } else {
-            fileMtime = Date.now();
-
-            updatesToPerform.push({
-              filePath: relativePath,
-              content,
-              versionHash: hash,
-              isNew: false,
-              id: dbRecord.id,
-            });
-          }
-        } else {
-          fileMtime = Date.now();
-
-          updatesToPerform.push({
-            filePath: relativePath,
-            content,
-            versionHash: hash,
-            isNew: true,
-          });
-        }
-
-        result.push({
-          name: item.name,
-          type: "file",
-          path: relativePath,
-          mtime: fileMtime,
-        });
+        continue;
       }
+
+      if (!stats.isFile()) continue;
+
+      const inspectedFile = inspectAllowedFile(fullPath, segments, stats);
+
+      if (inspectedFile === null) continue;
+
+      result.push({
+        name: item.name,
+        type: "file",
+        path: segments.join("/"),
+        mtime: stats.mtimeMs,
+      });
+    } catch {
+      continue;
     }
-  } catch (error) {
-    console.error("[SourceExplorer] Tree error:", error.message);
   }
 
   return result;
 }
 
-router.get("/tree", async (_req, res) => {
+router.get("/tree", requireSourceExplorer, (_req, res) => {
   try {
-    const rootPath = path.join(__dirname, "..");
-
-    const { rows } = await pool.query(
-      'SELECT id, "filePath", "versionHash", "updatedAt" FROM "FoundationSourceCodeHistory"',
-    );
-
-    const dbMap = {};
-
-    for (const record of rows) {
-      dbMap[record.filePath] = record;
-    }
-
-    const updatesToPerform = [];
-    const tree = getDirTreeSync(rootPath, dbMap, updatesToPerform);
-
-    if (updatesToPerform.length > 0) {
-      setTimeout(async () => {
-        for (const update of updatesToPerform) {
-          try {
-            if (update.isNew) {
-              await pool.query(
-                'INSERT INTO "FoundationSourceCodeHistory" (id, "filePath", "content", "versionHash") VALUES ($1, $2, $3, $4)',
-                [
-                  crypto.randomUUID(),
-                  update.filePath,
-                  update.content,
-                  update.versionHash,
-                ],
-              );
-            } else {
-              await pool.query(
-                'UPDATE "FoundationSourceCodeHistory" SET content = $1, "versionHash" = $2, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $3',
-                [update.content, update.versionHash, update.id],
-              );
-            }
-
-            await saveToTimeMachine(update.filePath, update.content);
-          } catch (error) {
-            console.error(
-              `[SourceExplorer] DB sync ${update.filePath}:`,
-              error.message,
-            );
-          }
-        }
-      }, 100);
-    }
+    const tree = getDirTreeSync(repositoryRoot);
 
     return res.json({
       success: true,
       tree,
     });
-  } catch (error) {
+  } catch {
+    console.error("[SourceExplorer] Tree scan failed");
+
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to load source tree",
     });
   }
 });
 
-router.get("/file", (req, res) => {
+router.get("/file", requireSourceExplorer, (req, res) => {
+  const requestedPath = req.query.path;
+
+  if (typeof requestedPath !== "string" || requestedPath.trim() === "") {
+    return res.status(400).json({
+      success: false,
+      message: "File path is required",
+    });
+  }
+
+  const segments = parseRelativeSourcePath(requestedPath);
+
+  if (segments === null || !hasSafePathSegments(segments)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid file path",
+    });
+  }
+
   try {
-    const requestedPath = req.query.path;
-
-    if (!requestedPath) {
-      return res.status(400).json({
-        success: false,
-        message: "File path is required",
-      });
-    }
-
-    const rootPath = path.resolve(path.join(__dirname, ".."));
-    const resolvedPath = path.resolve(path.join(rootPath, requestedPath));
-
-    if (
-      !resolvedPath.startsWith(`${rootPath}${path.sep}`) &&
-      resolvedPath !== rootPath
-    ) {
+    if (!hasNoSymbolicLinkSegments(segments)) {
       return res.status(403).json({
         success: false,
-        message: "Access denied",
+        message: "File access denied",
       });
     }
 
-    if (!fs.existsSync(resolvedPath)) {
+    const resolvedPath = path.join(repositoryRoot, ...segments);
+    const stats = fs.lstatSync(resolvedPath);
+    const inspectedFile = inspectAllowedFile(resolvedPath, segments, stats);
+
+    if (inspectedFile === null) {
+      return res.status(403).json({
+        success: false,
+        message: "File access denied",
+      });
+    }
+
+    return res.json({
+      success: true,
+      content: inspectedFile.content,
+    });
+  } catch (error) {
+    if (error?.code === "ENOENT" || error?.code === "ENOTDIR") {
       return res.status(404).json({
         success: false,
         message: "File not found",
       });
     }
 
-    const content = fs.readFileSync(resolvedPath, "utf8");
+    console.error("[SourceExplorer] File read failed");
 
-    return res.json({
-      success: true,
-      content,
-    });
-  } catch (error) {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to read source file",
     });
   }
 });
