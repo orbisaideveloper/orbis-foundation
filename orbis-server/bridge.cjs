@@ -18,10 +18,48 @@ const {
 } = require("./telemetry-module.cjs");
 
 const PORT = process.env.PORT || 3000;
+const CORS_ALLOWED_ORIGINS = new Set([
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:4173",
+  "http://127.0.0.1:4173",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  ...(process.env.CORS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+]);
 const FILE_READ_ALLOW_LIST = Object.freeze({
   "package.json": path.join(__dirname, "..", "package.json"),
   "README.md": path.join(__dirname, "..", "README.md"),
 });
+
+function logSanitizedError(context) {
+  console.error(context);
+}
+
+function getCorsOptions(req, callback) {
+  const origin = req.get("Origin");
+  const forwardedProto = req.get("X-Forwarded-Proto");
+  const protocol = forwardedProto
+    ? forwardedProto.split(",", 1)[0].trim().toLowerCase()
+    : req.protocol;
+  const host = req.get("Host");
+  const requestOrigin =
+    host && (protocol === "http" || protocol === "https")
+      ? `${protocol}://${host}`
+      : null;
+
+  if (!origin || CORS_ALLOWED_ORIGINS.has(origin) || origin === requestOrigin) {
+    callback(null, { origin: true });
+    return;
+  }
+
+  const error = new Error("Origin is not allowed by the CORS policy.");
+  error.code = "CORS_ORIGIN_NOT_ALLOWED";
+  callback(error);
+}
 
 // ---------------------------------------------------------------------------
 // TASK-017: One Canonical Backend — telemetry DB connection
@@ -90,7 +128,8 @@ async function handleOllamaStream(prompt, res) {
           if (parsed.response) {
             res.write(parsed.response);
           }
-        } catch (e) {
+        } catch {
+          logSanitizedError("[OLLAMA_STREAM] Invalid JSON chunk");
           res.write(text);
         }
       }
@@ -107,7 +146,17 @@ async function handleOllamaStream(prompt, res) {
 }
 
 const app = express();
-app.use(cors());
+app.disable("x-powered-by");
+app.use(cors(getCorsOptions));
+app.use((error, req, res, next) => {
+  if (error?.code === "CORS_ORIGIN_NOT_ALLOWED") {
+    return res.status(403).json({
+      error: "CORS_ORIGIN_NOT_ALLOWED",
+      message: "Origin is not allowed by the CORS policy.",
+    });
+  }
+  return next(error);
+});
 app.use(express.json());
 
 /**
@@ -240,8 +289,7 @@ app.post("/api/termux/capability", (req, res) => {
   // is treated purely as a lookup key, never as part of an actual
   // filesystem path, so it cannot be used for traversal.
   if (capability === "termux.file.read") {
-    const rawKey =
-      (req.body.input && req.body.input.path) ?? req.body.path ?? null;
+    const rawKey = req.body.input?.path ?? req.body.path ?? null;
 
     if (typeof rawKey !== "string" || rawKey.length === 0) {
       return res.status(400).json({
@@ -266,7 +314,7 @@ app.post("/api/termux/capability", (req, res) => {
       });
     }
 
-    if (!Object.prototype.hasOwnProperty.call(FILE_READ_ALLOW_LIST, rawKey)) {
+    if (!Object.hasOwn(FILE_READ_ALLOW_LIST, rawKey)) {
       return res.status(403).json({
         success: false,
         error: "PATH_NOT_ALLOWED",
@@ -288,7 +336,8 @@ app.post("/api/termux/capability", (req, res) => {
           sizeBytes: Buffer.byteLength(content, "utf8"),
         },
       });
-    } catch (err) {
+    } catch {
+      logSanitizedError("[FILE_READ] Failed to read allow-listed file");
       return res.status(500).json({
         success: false,
         error: "FILE_READ_FAILED",
@@ -330,7 +379,7 @@ app.get("/api/metrics", async (req, res) => {
     } else {
       res.json({ ramUsageMb: 0, cpuLoad: 0, status: "NO_DATA_YET" });
     }
-  } catch (error) {
+  } catch {
     console.error("[DB_ERROR] Failed to fetch metrics from Postgres");
     res.status(500).json({ error: "Database connection failed" });
   }
@@ -352,7 +401,8 @@ app.get("/api/diagnostics", async (req, res) => {
       }));
     }
     res.json(diag);
-  } catch (error) {
+  } catch {
+    logSanitizedError("[DB_ERROR] Failed to fetch diagnostics");
     res.json(getDiagnostics());
   }
 });
@@ -366,7 +416,7 @@ function getDirectoryTree(dirPath, indent = "", changedFiles = []) {
       return;
     const fullPath = path.join(dirPath, item);
     const stat = fs.statSync(fullPath);
-    const relPath = fullPath.replace(/\\/g, "/");
+    const relPath = fullPath.replaceAll("\\", "/");
     const isChanged = changedFiles.some((f) => relPath.endsWith(f));
     const marker = isChanged ? " ✨ [NEWLY EDITED]" : "";
 
@@ -575,7 +625,35 @@ const HISTORICAL_FALLBACK_METADATA = {
   },
 };
 
-const AUDIT_FILE_RE = /^0*(\d+)_.+\.md$/i;
+function getAuditTaskNumber(fileName) {
+  if (typeof fileName !== "string" || !fileName.toLowerCase().endsWith(".md")) {
+    return null;
+  }
+
+  const separatorIndex = fileName.indexOf("_");
+  if (separatorIndex <= 0 || separatorIndex >= fileName.length - 3) return null;
+
+  const taskPrefix = fileName.slice(0, separatorIndex);
+  for (const character of taskPrefix) {
+    if (character < "0" || character > "9") return null;
+  }
+  return Number.parseInt(taskPrefix, 10);
+}
+
+function isAuditFileName(fileName) {
+  return getAuditTaskNumber(fileName) !== null;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
+function removeTrailingAsterisks(value) {
+  const withoutTrailingWhitespace = value.trimEnd();
+  let end = withoutTrailingWhitespace.length;
+  while (end > 0 && withoutTrailingWhitespace[end - 1] === "*") end -= 1;
+  return withoutTrailingWhitespace.slice(0, end).trim();
+}
 
 /**
  * Extract a "Label: value" style field from free-form audit report text.
@@ -586,14 +664,14 @@ const AUDIT_FILE_RE = /^0*(\d+)_.+\.md$/i;
  *   "**Status:** COMPLETED"
  */
 function extractField(content, label) {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = escapeRegExp(label);
   const re = new RegExp(
     String.raw`(?:^|\n)[ \t\-\*]*${escaped}[ \t\*]*:\s*\*{0,2}\s*(.+)`,
     "i",
   );
   const m = content.match(re);
   if (!m) return null;
-  const value = m[1].replace(/\*+\s*$/, "").trim();
+  const value = removeTrailingAsterisks(m[1]);
   return value || null;
 }
 
@@ -607,7 +685,7 @@ function extractField(content, label) {
 function isLabelLikeParagraph(paragraph) {
   const trimmed = paragraph.trim();
   if (!trimmed) return true;
-  if (/:$/.test(trimmed) && trimmed.split(/\s+/).length <= 6) return true;
+  if (trimmed.endsWith(":") && trimmed.split(/\s+/).length <= 6) return true;
   if (
     paragraph
       .split("\n")
@@ -616,6 +694,30 @@ function isLabelLikeParagraph(paragraph) {
     return true;
   }
   return false;
+}
+
+function extractNamedSection(content, name) {
+  const escaped = escapeRegExp(name);
+  const headingRe = new RegExp(
+    String.raw`^#+\s*(?:\d+\.\s*)?${escaped}\s*$`,
+    "im",
+  );
+  const headingMatch = headingRe.exec(content);
+  if (!headingMatch) return null;
+
+  const after = content.slice(headingMatch.index + headingMatch[0].length);
+  const nextHeadingIdx = after.search(/\n#+[ \t]/);
+  return nextHeadingIdx === -1 ? after : after.slice(0, nextHeadingIdx);
+}
+
+function extractProseParagraph(section) {
+  const paragraphs = section.split(/\n[ \t]*\n/);
+  for (const paragraph of paragraphs) {
+    if (!paragraph.trim() || isLabelLikeParagraph(paragraph)) continue;
+    const candidate = paragraph.replace(/\n+/g, " ").trim();
+    if (candidate.length >= 30) return candidate;
+  }
+  return null;
 }
 
 /**
@@ -628,27 +730,10 @@ function isLabelLikeParagraph(paragraph) {
  */
 function extractHeadingParagraph(content, headingNames) {
   for (const name of headingNames) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const headingRe = new RegExp(
-      String.raw`^#+\s*(?:\d+\.\s*)?${escaped}\s*$`,
-      "im",
-    );
-    const headingMatch = headingRe.exec(content);
-    if (!headingMatch) continue;
-
-    const after = content.slice(headingMatch.index + headingMatch[0].length);
-    const nextHeadingIdx = after.search(/\n#+[ \t]/);
-    const section =
-      nextHeadingIdx === -1 ? after : after.slice(0, nextHeadingIdx);
-
-    const paragraphs = section.split(/\n[ \t]*\n/);
-    for (const para of paragraphs) {
-      if (!para.trim()) continue;
-      if (isLabelLikeParagraph(para)) continue;
-      const candidate = para.replace(/\n+/g, " ").trim();
-      if (candidate.length < 30) continue;
-      return candidate;
-    }
+    const section = extractNamedSection(content, name);
+    if (!section) continue;
+    const paragraph = extractProseParagraph(section);
+    if (paragraph) return paragraph;
   }
   return null;
 }
@@ -664,6 +749,63 @@ const SOURCE_FILE_HEADINGS = [
   "Source File",
 ];
 
+function isFilePath(candidate) {
+  const extensionIndex = candidate.lastIndexOf(".");
+  if (extensionIndex <= 0 || extensionIndex === candidate.length - 1) {
+    return false;
+  }
+
+  for (let index = 0; index < candidate.length; index += 1) {
+    const character = candidate[index];
+    const isAlphaNumeric =
+      (character >= "A" && character <= "Z") ||
+      (character >= "a" && character <= "z") ||
+      (character >= "0" && character <= "9");
+    const isPathPunctuation = "_.-/".includes(character);
+    if (!isAlphaNumeric && !isPathPunctuation) return false;
+    if (index > extensionIndex && !isAlphaNumeric) return false;
+  }
+  return true;
+}
+
+function getListMarkerEnd(value) {
+  if (value.startsWith("-") || value.startsWith("*")) return 1;
+
+  let markerIndex = 0;
+  while (
+    markerIndex < value.length &&
+    value[markerIndex] >= "0" &&
+    value[markerIndex] <= "9"
+  ) {
+    markerIndex += 1;
+  }
+  return value[markerIndex] === "." || value[markerIndex] === ")"
+    ? markerIndex + 1
+    : 0;
+}
+
+function extractFilePathFromLine(line) {
+  const value = line.trim();
+  const markerEnd = getListMarkerEnd(value);
+  if (markerEnd > 0) {
+    const withoutMarker = value.slice(markerEnd).trim();
+    if (isFilePath(withoutMarker)) return withoutMarker;
+  }
+  return isFilePath(value) ? value : null;
+}
+
+function extractFilesFromSection(section, auditFileName) {
+  const body = section.split(/\n[ \t]*No changes? (?:were|was) made to:?/i)[0];
+  const files = [];
+  for (const line of body.split("\n")) {
+    const candidate = extractFilePathFromLine(line);
+    if (!candidate || candidate === auditFileName) continue;
+    if (/AUDIT_REPORT/i.test(candidate)) continue;
+    files.push(candidate);
+  }
+  return files;
+}
+
 /**
  * Extract real implementation source file paths from a section like
  * "# 6. FILE CHANGE SCOPE". Only lines that look like an actual path
@@ -676,35 +818,11 @@ const SOURCE_FILE_HEADINGS = [
  */
 function extractSourceFiles(content, auditFileName) {
   for (const name of SOURCE_FILE_HEADINGS) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const headingRe = new RegExp(
-      String.raw`^#+\s*(?:\d+\.\s*)?${escaped}\s*$`,
-      "im",
-    );
-    const headingMatch = headingRe.exec(content);
-    if (!headingMatch) continue;
-
-    const after = content.slice(headingMatch.index + headingMatch[0].length);
-    const nextHeadingIdx = after.search(/\n#+[ \t]/);
-    const section =
-      nextHeadingIdx === -1 ? after : after.slice(0, nextHeadingIdx);
+    const section = extractNamedSection(content, name);
+    if (!section) continue;
     // Stop before an "untouched components" list that sometimes shares
     // the same section (bare names, not file paths — see TASK-014).
-    const body = section.split(
-      /\n[ \t]*No changes? (?:were|was) made to:?/i,
-    )[0];
-
-    const fileLineRe =
-      /^[ \t]*(?:\d+[.)]|[-*])?[ \t]*([A-Za-z0-9_.\-/]+\.[A-Za-z0-9]+)[ \t]*$/;
-    const files = [];
-    for (const line of body.split("\n")) {
-      const m = line.match(fileLineRe);
-      if (!m) continue;
-      const candidate = m[1].trim();
-      if (candidate === auditFileName) continue;
-      if (/AUDIT_REPORT/i.test(candidate)) continue;
-      files.push(candidate);
-    }
+    const files = extractFilesFromSection(section, auditFileName);
     if (files.length) return files;
   }
   return null;
@@ -721,7 +839,7 @@ function extractObjective(content) {
     extractField(content, "Task ID") || extractField(content, "Task");
   if (taskLine) {
     const dashMatch = taskLine.match(/TASK-\d+\s*[—–-]\s*(.+)/i);
-    if (dashMatch && dashMatch[1]) return dashMatch[1].trim();
+    if (dashMatch?.[1]) return dashMatch[1].trim();
   }
 
   const heading = extractHeadingParagraph(content, ["Objective"]);
@@ -753,7 +871,7 @@ function extractCommit(content) {
     extractField(content, "Git Commit SHA") ||
     extractField(content, "Commit");
   if (!raw) return null;
-  const cleaned = raw.replace(/`/g, "").trim();
+  const cleaned = raw.replaceAll("`", "").trim();
   return cleaned && !/^pending/i.test(cleaned) ? cleaned : null;
 }
 
@@ -764,7 +882,7 @@ function extractDependencies(content, num) {
     extractField(content, "Previous Baseline");
   if (raw) {
     const taskRefs = raw.match(/TASK-\d+/gi);
-    if (taskRefs && taskRefs.length) {
+    if (taskRefs?.length) {
       return taskRefs.map((t) => t.toUpperCase());
     }
   }
@@ -806,9 +924,8 @@ function warnOnceForSignature(num, signature, message) {
 function resolveAuditGroups(files) {
   const groups = new Map();
   for (const name of files) {
-    const m = name.match(AUDIT_FILE_RE);
-    if (!m) continue;
-    const num = parseInt(m[1], 10);
+    const num = getAuditTaskNumber(name);
+    if (num === null) continue;
     if (!groups.has(num)) groups.set(num, []);
     groups.get(num).push(name);
   }
@@ -917,7 +1034,7 @@ function buildObservatoryTasks(auditDir) {
   let files = [];
   try {
     if (fs.existsSync(auditDir)) {
-      files = fs.readdirSync(auditDir).filter((n) => AUDIT_FILE_RE.test(n));
+      files = fs.readdirSync(auditDir).filter(isAuditFileName);
     }
   } catch (e) {
     files = [];
@@ -934,7 +1051,7 @@ app.get("/api/termux-observatory", (req, res) => {
     const auditDir = path.join(__dirname, "../docs/AUDIT_REPORTS");
     const tasks = buildObservatoryTasks(auditDir);
     const maxTaskNum = tasks.reduce((max, t) => {
-      const n = parseInt(t.task.replace("TASK-", ""), 10);
+      const n = Number.parseInt(t.task.replace("TASK-", ""), 10);
       return Number.isFinite(n) ? Math.max(max, n) : max;
     }, 0);
 
