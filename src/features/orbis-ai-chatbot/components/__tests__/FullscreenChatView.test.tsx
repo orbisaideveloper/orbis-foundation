@@ -1,204 +1,244 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FullscreenChatView } from "../FullscreenChatView";
-import { chatStorage } from "../../storage/ChatStorageManager";
+
+const CHAT_PLACEHOLDER = "ORBIS-কে নির্দেশ দিন...";
+
+const mocks = vi.hoisted(() => ({
+  consent: "declined" as "accepted" | "declined" | null,
+  getSession: vi.fn(),
+  init: vi.fn(),
+  saveMessage: vi.fn(),
+  setPending: vi.fn(),
+  learningConsent: "declined" as "accepted" | "declined" | null,
+  setLearningConsent: vi.fn(),
+}));
+
+vi.mock("../../../../core/supabase/client", () => ({
+  supabase: { auth: { getSession: mocks.getSession } },
+}));
 
 vi.mock("../../storage/ChatStorageManager", () => ({
   chatStorage: {
-    init: vi.fn().mockResolvedValue(undefined),
+    getConsent: vi.fn(() => mocks.consent),
+    setConsent: vi.fn(),
+    getLearningConsent: vi.fn(() => mocks.learningConsent),
+    setLearningConsent: mocks.setLearningConsent,
+    getOrCreateAnonymousProfileId: vi.fn(() => "anonymous-test"),
+    init: mocks.init,
     createConversation: vi.fn().mockResolvedValue(undefined),
     getMessagesByConversation: vi.fn().mockResolvedValue([]),
-    saveMessage: vi.fn().mockResolvedValue(undefined),
+    saveMessage: mocks.saveMessage,
+    getPendingClarification: vi.fn().mockResolvedValue(null),
+    setPendingClarification: mocks.setPending,
+    getCachedResponse: vi.fn().mockResolvedValue(null),
+    saveCachedResponse: vi.fn().mockResolvedValue(undefined),
+    getUsage: vi.fn().mockResolvedValue({
+      budgetBytes: 500 * 1024 * 1024,
+      logicalBytes: 1024,
+      deviceUsageBytes: null,
+      deviceQuotaBytes: null,
+      warning: false,
+    }),
+    clearConversation: vi.fn().mockResolvedValue(undefined),
+    clearPersonalMemory: vi.fn().mockResolvedValue(undefined),
+    clearAllForProfile: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
+function successfulResponse(content = "This is a mocked AI response.") {
+  return {
+    ok: true,
+    json: async () => ({
+      message: { role: "assistant", content },
+      provider: { name: "Ollama", type: "local", model: "tinyllama" },
+      clarification: { state: "none", pending: null },
+    }),
+  } as Response;
+}
+
 describe("FullscreenChatView", () => {
-  let fetchMock: any;
+  let fetchMock: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    fetchMock = vi.spyOn(global, "fetch").mockImplementation(async () => {
-      return {
-        ok: true,
-        json: async () => ({
-          message: {
-            role: "assistant",
-            content: "This is a mocked AI response.",
-          },
-          provider: {
-            name: "Ollama",
-            type: "local",
-            model: "tinyllama",
-          },
-        }),
-      } as Response;
+    mocks.consent = "declined";
+    mocks.learningConsent = "declined";
+    mocks.getSession.mockResolvedValue({
+      data: {
+        session: {
+          access_token: "test-access-token",
+          user: { id: "account-1" },
+        },
+      },
+      error: null,
     });
-
-    vi.clearAllMocks();
+    mocks.init.mockResolvedValue(undefined);
+    mocks.saveMessage.mockResolvedValue(undefined);
+    mocks.setPending.mockResolvedValue(undefined);
+    mocks.setLearningConsent.mockReset();
+    fetchMock = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(successfulResponse());
   });
 
   afterEach(() => {
-    fetchMock.mockRestore();
+    vi.restoreAllMocks();
     delete (window as any).SpeechRecognition;
     delete (window as any).webkitSpeechRecognition;
   });
 
-  it("renders initial message properly", async () => {
+  it("shows a deterministic greeting immediately and asks first-use consent", async () => {
+    mocks.consent = null;
     render(<FullscreenChatView onClose={() => {}} />);
-
-    expect(await screen.findByText(/নমস্কার দাদা/i)).toBeInTheDocument();
+    expect(screen.getByText(/নমস্কার দাদা/i)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("dialog", { name: /Save Chatbot memory/i }),
+    ).toBeInTheDocument();
   });
 
-  it("sends a message, calls API, and saves to local storage", async () => {
+  it("sends only supported chat fields with verified auth in session-only mode", async () => {
     render(<FullscreenChatView onClose={() => {}} />);
-
-    await screen.findByText(/নমস্কার দাদা/i);
-
-    const input = screen.getByPlaceholderText("ORBIS-কে নির্দেশ দিন...");
-    const sendBtn = screen.getByRole("button", {
-      name: /send message/i,
-    });
-
-    fireEvent.change(input, {
-      target: { value: "Hello ORBIS" },
-    });
-
-    fireEvent.click(sendBtn);
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalled();
-    });
+    const input = await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
+    fireEvent.change(input, { target: { value: "Hello ORBIS" } });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
     expect(
       await screen.findByText("This is a mocked AI response."),
     ).toBeInTheDocument();
-
-    expect(chatStorage.saveMessage).toHaveBeenCalled();
-  });
-
-  it("processes attachments and sends processed files to the API", async () => {
-    const createObjectURL = vi
-      .spyOn(URL, "createObjectURL")
-      .mockReturnValue("blob:orbis-test");
-
-    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
-
-    render(<FullscreenChatView onClose={() => {}} />);
-
-    await screen.findByText(/নমস্কার দাদা/i);
-
-    const fileInput = document.querySelector(
-      'input[type="file"]',
-    ) as HTMLInputElement;
-
-    const image = new File(["image-data"], "photo.png", { type: "image/png" });
-
-    const csv = new File(["name,amount\nORBIS,1"], "data.csv", {
-      type: "text/csv",
-    });
-
-    fireEvent.change(fileInput, {
-      target: {
-        files: [image, csv],
-      },
-    });
-
-    expect(screen.getByText("photo.png")).toBeInTheDocument();
-    expect(screen.getByText("data.csv")).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /send message/i,
-      }),
+    const request = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(new Headers(request.headers).get("Authorization")).toBe(
+      "Bearer test-access-token",
     );
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalled();
-    });
-
-    const request = fetchMock.mock.calls[0][1];
-    const body = JSON.parse(request.body);
-
-    expect(body.attachments).toHaveLength(2);
-
-    expect(body.attachments[0]).toMatchObject({
-      fileName: "photo.png",
-      mimeType: "image/png",
-    });
-
-    expect(body.attachments[1]).toMatchObject({
-      fileName: "data.csv",
-      mimeType: "text/csv",
-      textContent: "name,amount\nORBIS,1",
-    });
-
-    expect(createObjectURL).toHaveBeenCalledWith(image);
-
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:orbis-test");
-
-    createObjectURL.mockRestore();
-    revokeObjectURL.mockRestore();
+    const body = JSON.parse(String(request.body));
+    expect(body.attachments).toBeUndefined();
+    expect(mocks.saveMessage).not.toHaveBeenCalled();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
   });
 
-  it("shows the connection error when the chat API fails", async () => {
+  it("persists clarification state only after storage consent", async () => {
+    mocks.consent = "accepted";
     fetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
+      ok: true,
       json: async () => ({
-        error: "Server unavailable",
+        message: { role: "assistant", content: "কোন জায়গার weather?" },
+        provider: {
+          name: "ORBIS Brain (Web)",
+          type: "WEB_SEARCH_CLARIFICATION",
+        },
+        clarification: {
+          state: "pending",
+          pending: {
+            kind: "weather-location",
+            originalRequest: "আজকের weather বলো",
+            createdAt: 1,
+            expiresAt: Date.now() + 60_000,
+          },
+        },
       }),
     } as Response);
-
     render(<FullscreenChatView onClose={() => {}} />);
-
-    await screen.findByText(/নমস্কার দাদা/i);
-
-    fireEvent.change(screen.getByPlaceholderText("ORBIS-কে নির্দেশ দিন..."), {
-      target: {
-        value: "trigger failure",
-      },
-    });
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /send message/i,
-      }),
+    const input = await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
+    await waitFor(() => expect(input).not.toBeDisabled());
+    fireEvent.change(input, { target: { value: "আজকের weather বলো" } });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+    await screen.findByText("কোন জায়গার weather?");
+    expect(mocks.setPending).toHaveBeenCalledWith(
+      "account-1",
+      "account-1:default-chat-v2",
+      expect.objectContaining({ kind: "weather-location" }),
     );
+  });
 
+  it("keeps the greeting and offers recovery when IndexedDB fails", async () => {
+    mocks.consent = "accepted";
+    mocks.init.mockRejectedValueOnce(new Error("blocked"));
+    render(<FullscreenChatView onClose={() => {}} />);
+    expect(screen.getByText(/নমস্কার দাদা/i)).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Retry/);
     expect(
-      await screen.findByText("দুঃখিত, সংযোগ করা যাচ্ছে না।"),
+      screen.getByRole("button", { name: "Session only" }),
     ).toBeInTheDocument();
+  });
+
+  it("maps server timeout to an actionable safe category", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 504,
+      json: async () => ({
+        error: { category: "timeout", code: "PROVIDER_TIMEOUT" },
+      }),
+    } as Response);
+    render(<FullscreenChatView onClose={() => {}} />);
+    const input = await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
+    fireEvent.change(input, { target: { value: "trigger timeout" } });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+    expect(await screen.findByText(/সময়মতো সাড়া দেয়নি/)).toBeInTheDocument();
   });
 
   it("shows voice support warning when speech recognition is unavailable", async () => {
     render(<FullscreenChatView onClose={() => {}} />);
-
-    await screen.findByText(/নমস্কার দাদা/i);
-
-    const micButton = Array.from(document.querySelectorAll("button")).find(
-      (button) => button.querySelector("svg.lucide-mic"),
+    fireEvent.click(
+      await screen.findByRole("button", { name: /voice input/i }),
     );
-
-    expect(micButton).toBeDefined();
-
-    fireEvent.click(micButton!);
-
     expect(
       await screen.findByText("Voice Input support নেই।"),
     ).toBeInTheDocument();
   });
 
-  it("clears chat after confirmation", async () => {
-    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
-
+  it("keeps learning consent separate and requires candidate review before approval", async () => {
+    fetchMock
+      .mockResolvedValueOnce(successfulResponse("ordinary reply"))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidate: {
+            content:
+              "Protected capability execution requires deterministic validation.",
+            category: "OPERATING_RULE",
+            tags: ["validation"],
+          },
+          approvalToken: "signed-approval-token",
+          expiresAt: Date.now() + 60_000,
+        }),
+      } as Response);
     render(<FullscreenChatView onClose={() => {}} />);
+    const input = await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
+    fireEvent.change(input, {
+      target: {
+        value:
+          "The application should validate requests before protected execution.",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+    await screen.findByText("ordinary reply");
+    fireEvent.click(screen.getByTitle("Local data controls"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enable learning review" }),
+    );
+    expect(mocks.setLearningConsent).toHaveBeenCalledWith(
+      "account-1",
+      "accepted",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    await screen.findByText(/নমস্কার দাদা/i);
-
-    fireEvent.click(screen.getByTitle("Clear Chat"));
-
-    expect(confirmMock).toHaveBeenCalled();
-
-    confirmMock.mockRestore();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Review latest message for learning",
+      }),
+    );
+    expect(
+      await screen.findByRole("dialog", {
+        name: "Review generalized learning candidate",
+      }),
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const previewBody = JSON.parse(
+      String((fetchMock.mock.calls[1][1] as RequestInit).body),
+    );
+    expect(previewBody.consent).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Approve and save" }),
+    ).toBeInTheDocument();
   });
 });

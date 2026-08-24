@@ -5,10 +5,14 @@ interface ProviderMetadata {
   name: string;
   type: string;
   model: string;
+  health?: {
+    state: "UNKNOWN" | "AVAILABLE" | "UNAVAILABLE";
+    checkedAt: number | null;
+  };
 }
 
 interface ProviderStatus {
-  activeProvider: ProviderMetadata;
+  activeProvider: ProviderMetadata | null;
   allProviders: ProviderMetadata[];
 }
 
@@ -23,8 +27,8 @@ export const AIProviders: React.FC = () => {
         setStatus(data);
         setLoading(false);
       })
-      .catch((err) => {
-        console.error("Failed to fetch provider status", err);
+      .catch(() => {
+        console.error("Failed to fetch provider status");
         setLoading(false);
       });
   }, []);
@@ -63,9 +67,9 @@ export const AIProviders: React.FC = () => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 rounded-full text-sm font-medium">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-sm font-medium">
           <Activity className="w-4 h-4" />
-          <span>System Active</span>
+          <span>{active.health?.state || "UNKNOWN"}</span>
         </div>
       </div>
 
@@ -81,7 +85,7 @@ export const AIProviders: React.FC = () => {
             </h3>
             <span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500 text-white text-xs font-bold rounded-full shadow-sm">
               <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-              ACTIVE
+              {active.health?.state || "UNKNOWN"}
             </span>
           </div>
           <div className="space-y-3 relative z-10">

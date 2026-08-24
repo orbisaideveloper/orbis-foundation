@@ -31,6 +31,46 @@ class AIProviderManager {
     }
     return this.providers.get(this.activeProviderName);
   }
+
+  async generateChat(messages, options = {}) {
+    const active = this.getActiveProvider();
+    const candidates = [
+      active,
+      ...Array.from(this.providers.values()).filter(
+        (provider) => provider !== active,
+      ),
+    ].slice(0, 2);
+
+    let lastCode = "PROVIDER_UNAVAILABLE";
+    for (const provider of candidates) {
+      try {
+        return await provider.generateChat(messages, {
+          timeoutMs: options.timeoutMs || 30_000,
+        });
+      } catch (error) {
+        lastCode = error?.code || "PROVIDER_UNAVAILABLE";
+      }
+    }
+
+    const normalized = new Error(lastCode);
+    normalized.code = lastCode;
+    throw normalized;
+  }
+
+  getStatus() {
+    let active = null;
+    try {
+      active = this.getActiveProvider();
+    } catch {
+      // Truthful empty status when no provider is configured.
+    }
+    return {
+      activeProvider: active?.getMetadata() || null,
+      allProviders: Array.from(this.providers.values()).map((provider) =>
+        provider.getMetadata(),
+      ),
+    };
+  }
 }
 
 module.exports = new AIProviderManager();

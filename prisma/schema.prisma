@@ -47,20 +47,33 @@ model FoundationSourceCodeHistory {
 // ১. Brain Knowledge (কোম্পানির স্থায়ী তথ্য, নিয়ম, প্রোডাক্ট ইত্যাদি)
 model FoundationBrainKnowledge {
   id        String   @id @default(uuid())
-  category  String   
-  content   String   
-  tags      String?  
+  category  String
+  content   String
+  tags      String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
+// Admin-reviewed, generalized knowledge only. This table is deliberately
+// separate from historical Brain knowledge and conversational/user memory.
+model FoundationLearnedKnowledge {
+  id                String   @id @default(uuid())
+  category          String
+  content           String
+  tags              String[] @default([])
+  deduplicationHash String   @unique
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
 // ২. User Memory (ইউজারদের সম্পর্কে যা যা শিখবে বা মনে রাখবে)
 model FoundationUserMemory {
   id        String   @id @default(uuid())
-  sessionId String   
-  factKey   String   
-  factValue String   
+  sessionId String
+  factKey   String
+  factValue String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

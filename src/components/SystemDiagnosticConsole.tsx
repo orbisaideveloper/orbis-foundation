@@ -1,6 +1,7 @@
 /* eslint-disable sonarjs/no-duplicate-string */
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { readAdminJson } from "../admin/auth/adminFetch";
 
 export default function SystemDiagnosticConsole() {
   const [isOpen, setIsOpen] = useState(false);
@@ -19,21 +20,14 @@ export default function SystemDiagnosticConsole() {
 
   const fetchTelemetry = async () => {
     try {
-      const res = await fetch("/api/diagnostics");
-      if (res.ok) {
-        const data = await res.json();
-        setTelemetry(data);
-        setLoading(false);
-        setErrorMsg(null);
-      } else {
-        setLoading(false);
-        setErrorMsg(`API Error: ${res.status} (Backend not ready)`);
-      }
-    } catch (error) {
-      // FIXED: Properly logging the error so SonarCloud doesn't flag unused catch block
-      console.error("Diagnostics fetch error:", error);
+      const data = await readAdminJson<any>("/api/diagnostics");
+      setTelemetry(data);
       setLoading(false);
-      setErrorMsg("Network Error: Cannot connect to Backend telemetry.");
+      setErrorMsg(null);
+    } catch {
+      console.error("Diagnostics fetch failed");
+      setLoading(false);
+      setErrorMsg("Admin diagnostics are currently unavailable.");
     }
   };
 

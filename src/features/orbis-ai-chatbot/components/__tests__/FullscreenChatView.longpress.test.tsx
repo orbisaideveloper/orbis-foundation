@@ -1,14 +1,40 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { FullscreenChatView } from "../FullscreenChatView";
 
 vi.mock("../../storage/ChatStorageManager", () => ({
   chatStorage: {
+    getConsent: vi.fn(() => "declined"),
+    setConsent: vi.fn(),
+    getLearningConsent: vi.fn(() => "declined"),
+    setLearningConsent: vi.fn(),
+    getOrCreateAnonymousProfileId: vi.fn(() => "anonymous-test"),
     init: vi.fn().mockResolvedValue(undefined),
     createConversation: vi.fn().mockResolvedValue(undefined),
     getMessagesByConversation: vi.fn().mockResolvedValue([]),
     saveMessage: vi.fn().mockResolvedValue(undefined),
+    getPendingClarification: vi.fn().mockResolvedValue(null),
+    setPendingClarification: vi.fn().mockResolvedValue(undefined),
+    getCachedResponse: vi.fn().mockResolvedValue(null),
+    saveCachedResponse: vi.fn().mockResolvedValue(undefined),
+    getUsage: vi.fn().mockResolvedValue({
+      budgetBytes: 500 * 1024 * 1024,
+      logicalBytes: 0,
+      deviceUsageBytes: null,
+      deviceQuotaBytes: null,
+      warning: false,
+    }),
+  },
+}));
+
+vi.mock("../../../../core/supabase/client", () => ({
+  supabase: {
+    auth: {
+      getSession: vi
+        .fn()
+        .mockResolvedValue({ data: { session: null }, error: null }),
+    },
   },
 }));
 
@@ -37,16 +63,19 @@ describe("FullscreenChatView long-press message actions", () => {
     ).not.toBeInTheDocument();
 
     fireEvent.pointerDown(bubble, { clientX: 0, clientY: 0, button: 0 });
-    vi.advanceTimersByTime(500);
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
 
-    const copyItem = await screen.findByRole("menuitem", { name: /copy/i });
+    const copyItem = screen.getByRole("menuitem", { name: /copy/i });
     fireEvent.click(copyItem);
 
-    await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        expect.stringContaining("নমস্কার দাদা"),
-      );
+    await act(async () => {
+      await Promise.resolve();
     });
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      expect.stringContaining("নমস্কার দাদা"),
+    );
 
     // Menu closes after the action.
     expect(

@@ -7,6 +7,7 @@ let tavilySearch;
 let brainRuntime;
 
 beforeEach(() => {
+  process.env.TAVILY_API_KEY = "configured-test-key";
   vi.resetModules();
 
   memoryEngine = require("../ai/brain/MemoryEngine.cjs");
@@ -30,12 +31,11 @@ beforeEach(() => {
     }),
   });
 
-  vi.spyOn(tavilySearch, "search").mockResolvedValue(
-    "[stub tavily answer]",
-  );
+  vi.spyOn(tavilySearch, "search").mockResolvedValue("[stub tavily answer]");
 });
 
 afterEach(() => {
+  delete process.env.TAVILY_API_KEY;
   vi.restoreAllMocks();
 });
 
@@ -74,6 +74,28 @@ describe("TASK-020 Phase 1-A: 'ওয়েদার' temporal keyword fix", () 
 });
 
 describe("TASK-020 Phase 1-B: realtime context safety (no silent default location)", () => {
+  it("regression: 'আজকের weather বলো' then 'কলকাতা' reconstructs and completes the weather search", async () => {
+    const first = await AIChatService.processChatRequest([
+      { role: "user", content: "আজকের weather বলো" },
+    ]);
+    expect(first.provider.type).toBe("WEB_SEARCH_CLARIFICATION");
+    expect(first.clarification.pending).toMatchObject({
+      kind: "weather-location",
+      originalRequest: "আজকের weather বলো",
+    });
+
+    const second = await AIChatService.processChatRequest(
+      [{ role: "user", content: "কলকাতা" }],
+      { pendingClarification: first.clarification.pending },
+    );
+    expect(tavilySearch.search).toHaveBeenLastCalledWith(
+      "আজকের weather বলো কলকাতা",
+      "bn",
+    );
+    expect(second.provider.type).toBe("WEB_SEARCH");
+    expect(second.message.content).toContain("[stub tavily answer]");
+  });
+
   it("a weather question with no location asks for clarification and does NOT call Tavily", async () => {
     const result = await AIChatService.processChatRequest([
       { role: "user", content: "আজকের weather report দাও" },
@@ -126,6 +148,16 @@ describe("TASK-020 Phase 1-B: realtime context safety (no silent default locatio
 });
 
 describe("TASK-020 Phase 1-D: Tavily language steering (best-effort)", () => {
+  it("honors the orchestrator route for Bengali sentence punctuation", async () => {
+    const message = "আজকের। খবর বলো";
+    const result = await AIChatService.processChatRequest([
+      { role: "user", content: message },
+    ]);
+    expect(result.provider.type).toBe("WEB_SEARCH");
+    expect(tavilySearch.search).toHaveBeenCalledWith(message, "bn");
+    expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
+  });
+
   it("passes 'bn' for a Bengali message", async () => {
     const message = "শিলিগুড়ির weather টা বলো";
     await AIChatService.processChatRequest([
@@ -160,7 +192,10 @@ describe("TASK-020 Phase 1-E: Ollama anti-fabrication system message", () => {
     vi.spyOn(providerManager, "getActiveProvider").mockReturnValue({
       generateChat: vi.fn().mockImplementation(async (messages) => {
         capturedMessages = messages;
-        return { content: "reply", provider: { name: "Ollama", type: "local" } };
+        return {
+          content: "reply",
+          provider: { name: "Ollama", type: "local" },
+        };
       }),
     });
 
@@ -179,7 +214,10 @@ describe("TASK-020 Phase 1-E: Ollama anti-fabrication system message", () => {
     vi.spyOn(providerManager, "getActiveProvider").mockReturnValue({
       generateChat: vi.fn().mockImplementation(async (messages) => {
         capturedMessages = messages;
-        return { content: "reply", provider: { name: "Ollama", type: "local" } };
+        return {
+          content: "reply",
+          provider: { name: "Ollama", type: "local" },
+        };
       }),
     });
 
@@ -196,7 +234,10 @@ describe("TASK-020 Phase 1-E: Ollama anti-fabrication system message", () => {
     vi.spyOn(providerManager, "getActiveProvider").mockReturnValue({
       generateChat: vi.fn().mockImplementation(async (messages) => {
         capturedMessages = messages;
-        return { content: "reply", provider: { name: "Ollama", type: "local" } };
+        return {
+          content: "reply",
+          provider: { name: "Ollama", type: "local" },
+        };
       }),
     });
 

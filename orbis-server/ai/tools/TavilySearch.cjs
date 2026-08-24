@@ -18,7 +18,6 @@ class TavilySearch {
   async search(query, lang) {
     const apiKey = process.env.TAVILY_API_KEY;
     if (!apiKey) {
-      console.warn("⚠️ [TAVILY] API Key missing. Skipping web search.");
       return null;
     }
 
@@ -29,6 +28,8 @@ class TavilySearch {
       outgoingQuery = `${query} (please answer in English)`;
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
       const response = await fetch("https://api.tavily.com/search", {
         method: "POST",
@@ -40,6 +41,7 @@ class TavilySearch {
           include_answer: true, // Tavily নিজে থেকেই একটি AI সামারি পাঠাবে
           max_results: 3,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) return null;
@@ -55,9 +57,11 @@ class TavilySearch {
       }
 
       return null;
-    } catch (error) {
-      console.error("[TAVILY] Request failed:", error.message);
+    } catch {
+      console.error("[TAVILY] Request failed");
       return null;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }

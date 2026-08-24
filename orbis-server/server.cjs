@@ -3,8 +3,8 @@
  *
  * This file is no longer started by anything (package.json "start",
  * render.yaml, and local dev all now run orbis-server/bridge.cjs alone).
- * Its telemetry logic (Prisma/Postgres connection, /api/metrics,
- * /api/diagnostics, /api/internal/log) has been copied into
+ * Its telemetry logic (Prisma/Postgres connection, /api/metrics and
+ * /api/diagnostics) has been copied into
  * orbis-server/bridge.cjs, which is now the ONE canonical backend process.
  *
  * This file is kept on disk (not deleted) only because knip.json and
@@ -17,9 +17,10 @@
  */
 const {
   getDiagnostics,
-  addSystemLog,
+  sanitizeDiagnosticLogs,
   setDbClient,
 } = require("./telemetry-module.cjs");
+const { requireAuthenticatedAdmin } = require("./admin-auth.cjs");
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -34,10 +35,7 @@ app.use(express.json());
 
 // 🟢 ডিপ ট্র্যাকিং সেন্সর (নাড়ি নক্ষত্র বের করার জন্য)
 app.use((req, res, next) => {
-  if (
-    !req.url.includes("/api/diagnostics") &&
-    !req.url.includes("/api/internal/log")
-  ) {
+  if (!req.url.includes("/api/diagnostics")) {
     console.log(
       `[NETWORK] ${req.method} Request incoming for route: ${req.url}`,
     );
@@ -57,22 +55,11 @@ prisma
     console.log("[DB] Prisma Adapter successfully connected to Supabase!");
     setDbClient(prisma);
   })
-  .catch((err) => {
-    console.error(
-      "[DB_ERROR] Failed to connect Prisma to Supabase:",
-      err.message,
-    );
+  .catch(() => {
+    console.error("[DB_ERROR] Prisma telemetry storage unavailable");
   });
 
-app.post("/api/internal/log", async (req, res) => {
-  const { level, source, message } = req.body;
-  if (message) {
-    await addSystemLog(level, source, message);
-  }
-  res.sendStatus(200);
-});
-
-app.get("/api/metrics", async (req, res) => {
+app.get("/api/metrics", requireAuthenticatedAdmin, async (req, res) => {
   try {
     const latestMetric = await prisma.foundationAdminMetric.findFirst({
       orderBy: { recordedAt: "desc" },
@@ -90,21 +77,15 @@ app.get("/api/metrics", async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 
-app.get("/api/diagnostics", async (req, res) => {
+app.get("/api/diagnostics", requireAuthenticatedAdmin, async (req, res) => {
   try {
     const diag = getDiagnostics();
     const dbLogs = await prisma.foundationSystemLog.findMany({
       take: 100,
       orderBy: { createdAt: "desc" },
     });
-    if (dbLogs && dbLogs.length > 0) {
-      diag.logs = dbLogs.map((l) => ({
-        timestamp: l.timestamp,
-        level: l.level,
-        source: l.source,
-        message: l.message,
-      }));
-    }
+    const safeDbLogs = sanitizeDiagnosticLogs(dbLogs);
+    if (safeDbLogs.length > 0) diag.logs = safeDbLogs;
     res.json(diag);
   } catch (error) {
     res.json(getDiagnostics());

@@ -7,7 +7,7 @@ import { GlassChatCard } from "../GlassChatCard";
 const CARD_TITLE = "ORBIS Neural Cockpit";
 const BRAIN_TITLE = "ORBIS Brain";
 const CHAT_PLACEHOLDER = "ORBIS-কে নির্দেশ দিন...";
-const ONLINE_STATUS = "Online";
+const AVAILABILITY_STATUS = "Check availability in chat";
 const CHAT_PLACEHOLDER_REGEX = /ORBIS-কে নির্দেশ দিন/i;
 const CARD_BUTTON_SELECTOR = '[role="button"]';
 
@@ -16,7 +16,7 @@ describe("GlassChatCard", () => {
     render(<GlassChatCard />);
 
     expect(screen.getByText(CARD_TITLE)).toBeInTheDocument();
-    expect(screen.getByText(ONLINE_STATUS)).toBeInTheDocument();
+    expect(screen.getByText(AVAILABILITY_STATUS)).toBeInTheDocument();
     expect(
       screen.getByPlaceholderText(CHAT_PLACEHOLDER_REGEX),
     ).toBeInTheDocument();

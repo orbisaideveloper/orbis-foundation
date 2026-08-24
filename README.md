@@ -15,8 +15,8 @@ There is exactly **one** backend process/entrypoint: `orbis-server/bridge.cjs`.
 It owns every API route the frontend needs — chat (`/api/chat`), Brain
 (`/api/brain/request`), Termux bridge (`/api/termux/*`), AI provider status
 (`/api/ai/*`), the Observatory (`/api/termux-observatory`), system info
-(`/api/system`, `/api/system-stats`), telemetry (`/api/metrics`,
-`/api/diagnostics`, `/api/internal/log`) — and serves the built frontend
+(`/api/system`, `/api/system-stats`), Admin-only telemetry (`/api/metrics`,
+`/api/diagnostics`) — and serves the built frontend
 (`dist/`).
 
 `orbis-server/server.cjs` and `orbis-server/master-gateway.cjs` are

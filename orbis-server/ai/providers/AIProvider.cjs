@@ -3,6 +3,7 @@ class AIProvider {
     this.name = name;
     this.type = type; // 'local' | 'cloud' | 'internal'
     this.model = model;
+    this.health = { state: "UNKNOWN", checkedAt: null };
   }
 
   async generateChat(messages) {
@@ -18,7 +19,16 @@ class AIProvider {
       name: this.name,
       type: this.type,
       model: this.model,
+      health: { ...this.health },
     };
+  }
+
+  markHealthy() {
+    this.health = { state: "AVAILABLE", checkedAt: Date.now() };
+  }
+
+  markUnavailable() {
+    this.health = { state: "UNAVAILABLE", checkedAt: Date.now() };
   }
 }
 

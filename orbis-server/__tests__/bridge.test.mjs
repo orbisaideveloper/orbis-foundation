@@ -17,12 +17,13 @@ function request(method, path, body) {
         port: activeServer.address().port,
         path,
         method,
-        headers: body === undefined
-          ? {}
-          : {
-              "Content-Type": "application/json",
-              "Content-Length": Buffer.byteLength(payload),
-            },
+        headers:
+          body === undefined
+            ? {}
+            : {
+                "Content-Type": "application/json",
+                "Content-Length": Buffer.byteLength(payload),
+              },
       },
       (res) => {
         const chunks = [];
@@ -75,12 +76,12 @@ describe("ORBiS Server Bridge API", () => {
       },
     });
 
-    vi.spyOn(http.Server.prototype, "listen").mockImplementation(
-      function (...args) {
-        activeServer = this;
-        return originalListen.apply(this, args);
-      },
-    );
+    vi.spyOn(http.Server.prototype, "listen").mockImplementation(function (
+      ...args
+    ) {
+      activeServer = this;
+      return originalListen.apply(this, args);
+    });
 
     bridgeModule = require("../bridge.cjs");
 
@@ -131,7 +132,7 @@ describe("ORBiS Server Bridge API", () => {
     );
   });
 
-  it("POST /api/chat accepts valid messages and returns the chat payload", async () => {
+  it("POST /api/chat rejects requests without a verified session", async () => {
     const messages = [
       {
         role: "user",
@@ -141,24 +142,17 @@ describe("ORBiS Server Bridge API", () => {
 
     const res = await request("POST", "/api/chat", { messages });
 
-    expect(res.status).toBe(200);
-    expect(res.json.message.content).toBe("mocked chat response");
-    expect(res.json.provider.name).toBe("Ollama");
-
-    expect(chatService.processChatRequest).toHaveBeenCalledWith(messages);
+    expect(res.status).toBe(401);
+    expect(chatService.processChatRequest).not.toHaveBeenCalled();
   });
 
-  it("POST /api/chat returns 500 for invalid chat format", async () => {
-    chatService.processChatRequest.mockRejectedValueOnce(
-      new Error("Invalid chat format."),
-    );
-
+  it("POST /api/chat does not validate or expose errors before authentication", async () => {
     const res = await request("POST", "/api/chat", {
       messages: [],
     });
 
-    expect(res.status).toBe(500);
-    expect(res.json.error).toContain("Invalid chat format");
+    expect(res.status).toBe(401);
+    expect(JSON.stringify(res.json)).not.toContain("Invalid chat format");
   });
 
   it("GET /api/termux-observatory returns observatory data", async () => {
@@ -256,21 +250,19 @@ describe("ORBiS Server Bridge API", () => {
     }
   });
 
-  it("POST /api/orbis-command returns connection error when Ollama fetch rejects", async () => {
+  it("POST /api/orbis-command sanitizes provider errors when Ollama fetch rejects", async () => {
     const originalFetch = global.fetch;
 
-    global.fetch = vi
-      .fn()
-      .mockRejectedValue(new Error("connection refused"));
+    global.fetch = vi.fn().mockRejectedValue(new Error("connection refused"));
 
     try {
       const res = await request("POST", "/api/orbis-command", {
         command: "hello",
       });
 
-      expect(res.status).toBe(200);
-      expect(res.json.result).toContain("AI Server Error");
-      expect(res.json.result).toContain("connection refused");
+      expect(res.status).toBe(503);
+      expect(res.json.result).toBe("AI provider unavailable.");
+      expect(res.json.result).not.toContain("connection refused");
     } finally {
       global.fetch = originalFetch;
     }

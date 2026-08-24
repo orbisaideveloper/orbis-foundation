@@ -7,7 +7,7 @@ let chatService;
 
 const originalListen = http.Server.prototype.listen;
 
-function request(method, path, body) {
+function request(method, path, body, requestHeaders = {}) {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? "" : JSON.stringify(body);
 
@@ -17,13 +17,15 @@ function request(method, path, body) {
         port: activeServer.address().port,
         path,
         method,
-        headers:
-          body === undefined
+        headers: {
+          ...requestHeaders,
+          ...(body === undefined
             ? {}
             : {
                 "Content-Type": "application/json",
                 "Content-Length": Buffer.byteLength(payload),
-              },
+              }),
+        },
       },
       (res) => {
         const chunks = [];
@@ -67,12 +69,23 @@ describe("TASK-017: bridge.cjs telemetry routes (absorbed from server.cjs)", () 
       provider: { name: "Ollama", type: "local", model: "tinyllama:latest" },
     });
 
-    vi.spyOn(http.Server.prototype, "listen").mockImplementation(
-      function (...args) {
-        activeServer = this;
-        return originalListen.apply(this, args);
-      },
+    const adminAuth = require("../admin-auth.cjs");
+    vi.spyOn(adminAuth, "requireAuthenticatedAdmin").mockImplementation(
+      (req, res, next) =>
+        req.get("Authorization") === "Bearer verified.admin"
+          ? next()
+          : res.status(401).json({
+              success: false,
+              message: "Authentication required",
+            }),
     );
+
+    vi.spyOn(http.Server.prototype, "listen").mockImplementation(function (
+      ...args
+    ) {
+      activeServer = this;
+      return originalListen.apply(this, args);
+    });
 
     bridgeModule = require("../bridge.cjs");
 
@@ -90,8 +103,17 @@ describe("TASK-017: bridge.cjs telemetry routes (absorbed from server.cjs)", () 
     vi.restoreAllMocks();
   });
 
-  it("GET /api/metrics never crashes the process: it responds 200 (with data or NO_DATA_YET) or 500 (DB unreachable), never anything else", async () => {
-    const res = await request("GET", "/api/metrics");
+  it("rejects unauthenticated Foundation telemetry reads", async () => {
+    const diagnostics = await request("GET", "/api/diagnostics");
+    const metrics = await request("GET", "/api/metrics");
+    expect(diagnostics.status).toBe(401);
+    expect(metrics.status).toBe(401);
+  });
+
+  it("GET /api/metrics remains available to a verified Admin with its existing data or fallback/error shape", async () => {
+    const res = await request("GET", "/api/metrics", undefined, {
+      Authorization: "Bearer verified.admin",
+    });
     expect([200, 500]).toContain(res.status);
     if (res.status === 200) {
       expect(res.json).toBeTruthy();
@@ -100,8 +122,10 @@ describe("TASK-017: bridge.cjs telemetry routes (absorbed from server.cjs)", () 
     }
   });
 
-  it("GET /api/diagnostics always responds 200, even if the DB call fails, and always includes hardware/bridge/logs", async () => {
-    const res = await request("GET", "/api/diagnostics");
+  it("GET /api/diagnostics remains available to a verified Admin with the bounded fallback shape", async () => {
+    const res = await request("GET", "/api/diagnostics", undefined, {
+      Authorization: "Bearer verified.admin",
+    });
     expect(res.status).toBe(200);
     expect(res.json).toHaveProperty("hardware");
     expect(res.json).toHaveProperty("bridge");
@@ -110,31 +134,28 @@ describe("TASK-017: bridge.cjs telemetry routes (absorbed from server.cjs)", () 
   });
 
   it("GET /api/diagnostics reports the actual running port, not a stale hardcoded one", async () => {
-    const res = await request("GET", "/api/diagnostics");
+    const res = await request("GET", "/api/diagnostics", undefined, {
+      Authorization: "Bearer verified.admin",
+    });
     expect(res.json.bridge.bridgeStatus).not.toContain("Port 3000)");
     expect(res.json.bridge.serverStatus).toContain("TASK-017");
   });
 
-  it("POST /api/internal/log with a message returns 200 regardless of DB availability", async () => {
+  it("the obsolete public internal-log write route no longer exists", async () => {
     const res = await request("POST", "/api/internal/log", {
       level: "INFO",
       source: "TEST",
       message: "hello from TASK-017 test",
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
   });
 
-  it("POST /api/internal/log with no message is a no-op that still returns 200", async () => {
-    const res = await request("POST", "/api/internal/log", {});
-    expect(res.status).toBe(200);
-  });
-
-  it("REGRESSION: a telemetry DB being unreachable does not break /api/chat", async () => {
+  it("REGRESSION: a telemetry DB being unreachable does not weaken /api/chat Admin authentication", async () => {
     const res = await request("POST", "/api/chat", {
       messages: [{ role: "user", content: "hello" }],
     });
-    expect(res.status).toBe(200);
-    expect(res.json.message.content).toBe("mocked chat response");
+    expect(res.status).toBe(401);
+    expect(chatService.processChatRequest).not.toHaveBeenCalled();
   });
 
   it("REGRESSION: /api/system-stats (Render health check route) still responds ONLINE", async () => {

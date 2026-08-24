@@ -12,12 +12,19 @@ class OllamaProvider extends AIProvider {
     this.apiKey = process.env.OLLAMA_API_KEY || null;
   }
 
-  async generateChat(messages) {
+  async generateChat(messages, options = {}) {
     const headers = { "Content-Type": "application/json" };
 
     if (this.apiKey) {
       headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
+
+    const timeoutMs = Math.max(
+      1_000,
+      Math.min(Number(options.timeoutMs) || 30_000, 60_000),
+    );
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(`${this.baseUrl}/api/chat`, {
@@ -28,6 +35,7 @@ class OllamaProvider extends AIProvider {
           messages: messages,
           stream: false,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -46,13 +54,24 @@ class OllamaProvider extends AIProvider {
         throw new Error("AI backend returned an empty response.");
       }
 
+      this.markHealthy();
+
       return {
         content,
         provider: this.getMetadata(),
       };
     } catch (error) {
-      console.error(`[${this.name}_PROVIDER] Error:`, error.message);
-      throw new Error(error.message || "Provider connection failed.");
+      this.markUnavailable();
+      console.error(`[${this.name}_PROVIDER] Request failed`);
+      const normalized = new Error(
+        error?.name === "AbortError"
+          ? "PROVIDER_TIMEOUT"
+          : "PROVIDER_UNAVAILABLE",
+      );
+      normalized.code = normalized.message;
+      throw normalized;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }

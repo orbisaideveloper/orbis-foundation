@@ -10,10 +10,26 @@ const { PrismaClient } = require("@prisma/client");
 
 const aiChatService = require("./ai/AIChatService.cjs");
 const providerManager = require("./ai/AIProviderManager.cjs");
+const { requireAuthenticatedAdmin } = require("./admin-auth.cjs");
+const {
+  createChatRateLimiter,
+  validateChatPayload,
+} = require("./chat-api-security.cjs");
+const { createLearningRouter } = require("./learning-api.cjs");
+const {
+  FoundationLearningService,
+} = require("./ai/learning/FoundationLearningService.cjs");
+const {
+  PgLearningRepository,
+} = require("./ai/learning/PgLearningRepository.cjs");
+const {
+  createProviderLearningCandidateGenerator,
+} = require("./ai/learning/ProviderLearningCandidateGenerator.cjs");
 const sourceApi = require("./source-api.cjs");
 const {
   getDiagnostics,
   addSystemLog,
+  sanitizeDiagnosticLogs,
   setDbClient,
 } = require("./telemetry-module.cjs");
 
@@ -83,14 +99,16 @@ const prisma = new PrismaClient({ adapter: telemetryAdapter });
 prisma
   .$connect()
   .then(() => {
-    console.log("[DB] Prisma Adapter successfully connected to Supabase!");
     setDbClient(prisma);
-  })
-  .catch((err) => {
-    console.error(
-      "[DB_ERROR] Failed to connect Prisma to Supabase:",
-      err.message,
+    void addSystemLog(
+      "INFO",
+      "TELEMETRY",
+      "Foundation telemetry database ready",
     );
+    console.log("[DB] Prisma Adapter successfully connected to Supabase!");
+  })
+  .catch(() => {
+    console.error("[DB_ERROR] Prisma telemetry storage unavailable");
   });
 
 async function handleOllamaStream(prompt, res) {
@@ -135,10 +153,10 @@ async function handleOllamaStream(prompt, res) {
       }
     }
     res.end();
-  } catch (err) {
-    console.error("AI Error:", err);
+  } catch {
+    console.error("[OLLAMA_STREAM] Provider unavailable");
     if (!res.headersSent) {
-      return res.json({ result: "⚠️ AI Server Error: " + err.message });
+      return res.status(503).json({ result: "AI provider unavailable." });
     }
     res.write("\n⚠️ AI Connection Interrupted.");
     res.end();
@@ -157,7 +175,15 @@ app.use((error, req, res, next) => {
   }
   return next(error);
 });
-app.use(express.json());
+app.use(express.json({ limit: "1mb", strict: true }));
+app.use((error, req, res, next) => {
+  if (error?.type === "entity.too.large") {
+    return res.status(413).json({
+      error: { category: "invalid_request", code: "REQUEST_TOO_LARGE" },
+    });
+  }
+  return next(error);
+});
 
 /**
  * TASK-012 — Canonical external Brain request entry.
@@ -187,8 +213,8 @@ app.post("/api/brain/request", async (req, res) => {
     const result = await brainRequestGateway.submit(req.body);
 
     return res.status(result.success ? 200 : 400).json(result);
-  } catch (error) {
-    console.error("[BRAIN_API] Request failed:", error);
+  } catch {
+    console.error("[BRAIN_API] Request failed");
 
     return res.status(500).json({
       success: false,
@@ -357,19 +383,10 @@ app.use("/api/system", sourceApi);
 
 // ---------------------------------------------------------------------------
 // TASK-017: One Canonical Backend — telemetry routes absorbed from the now
-// retired orbis-server/server.cjs. Logic is copied unchanged (same Prisma
-// queries, same fallback shapes, same error handling); only the process/
-// port it runs in has changed.
+// retired orbis-server/server.cjs. These Foundation telemetry reads are
+// Admin-only and retain their existing response/fallback shapes.
 // ---------------------------------------------------------------------------
-app.post("/api/internal/log", async (req, res) => {
-  const { level, source, message } = req.body;
-  if (message) {
-    await addSystemLog(level, source, message);
-  }
-  res.sendStatus(200);
-});
-
-app.get("/api/metrics", async (req, res) => {
+app.get("/api/metrics", requireAuthenticatedAdmin, async (req, res) => {
   try {
     const latestMetric = await prisma.foundationAdminMetric.findFirst({
       orderBy: { recordedAt: "desc" },
@@ -385,21 +402,15 @@ app.get("/api/metrics", async (req, res) => {
   }
 });
 
-app.get("/api/diagnostics", async (req, res) => {
+app.get("/api/diagnostics", requireAuthenticatedAdmin, async (req, res) => {
   try {
     const diag = getDiagnostics();
     const dbLogs = await prisma.foundationSystemLog.findMany({
       take: 100,
       orderBy: { createdAt: "desc" },
     });
-    if (dbLogs && dbLogs.length > 0) {
-      diag.logs = dbLogs.map((l) => ({
-        timestamp: l.timestamp,
-        level: l.level,
-        source: l.source,
-        message: l.message,
-      }));
-    }
+    const safeDbLogs = sanitizeDiagnosticLogs(dbLogs);
+    if (safeDbLogs.length > 0) diag.logs = safeDbLogs;
     res.json(diag);
   } catch {
     logSanitizedError("[DB_ERROR] Failed to fetch diagnostics");
@@ -466,36 +477,60 @@ app.get("/api/system-stats", (req, res) => {
 });
 
 app.get("/api/ai/providers/status", (req, res) => {
-  try {
-    const active = providerManager.getActiveProvider();
-    res.json({
-      activeProvider: active.getMetadata(),
-      allProviders: Array.from(providerManager.providers.values()).map((p) =>
-        p.getMetadata(),
-      ),
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  res.json(providerManager.getStatus());
 });
 
-app.post("/api/chat", async (req, res) => {
-  try {
-    const rawMessages = req.body?.messages;
-    const responsePayload = await aiChatService.processChatRequest(rawMessages);
-    return res.json(responsePayload);
-  } catch (error) {
-    console.error("[CHAT_API] Request failed:", error.message);
-    const status =
-      error.message.includes("authentication") ||
-      error.message.includes("unavailable")
-        ? 502
-        : 500;
-    return res
-      .status(status)
-      .json({ error: error.message || "Chat backend request failed." });
-  }
+const chatRateLimiter = createChatRateLimiter();
+
+const learningService = new FoundationLearningService({
+  repository: new PgLearningRepository(
+    telemetryConnectionString ? telemetryPool : null,
+  ),
+  candidateGenerator: createProviderLearningCandidateGenerator(providerManager),
 });
+app.use(
+  "/api/chat/learning",
+  createLearningRouter({
+    service: learningService,
+    authMiddleware: requireAuthenticatedAdmin,
+    rateLimiter: createChatRateLimiter({ maxRequests: 10 }),
+  }),
+);
+
+app.post(
+  "/api/chat",
+  requireAuthenticatedAdmin,
+  chatRateLimiter,
+  async (req, res) => {
+    try {
+      const validation = validateChatPayload(req.body);
+      if (!validation.valid) {
+        const status = validation.code === "CHAT_REQUEST_TOO_LARGE" ? 413 : 400;
+        return res.status(status).json({
+          error: { category: "invalid_request", code: validation.code },
+        });
+      }
+      const rawMessages = req.body?.messages;
+      const responsePayload = await aiChatService.processChatRequest(
+        rawMessages,
+        {
+          pendingClarification: req.body?.pendingClarification,
+        },
+      );
+      return res.json(responsePayload);
+    } catch (error) {
+      console.error("[CHAT_API] Request failed");
+      const code = error?.code || error?.message || "CHAT_BACKEND_UNAVAILABLE";
+      const timeout = code === "PROVIDER_TIMEOUT";
+      return res.status(timeout ? 504 : 503).json({
+        error: {
+          category: timeout ? "timeout" : "service_unavailable",
+          code: timeout ? "PROVIDER_TIMEOUT" : "CHAT_BACKEND_UNAVAILABLE",
+        },
+      });
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // TASK-011: Audit-driven Termux Observatory task discovery

@@ -19,34 +19,10 @@ const SERVER_PORT = 3001;
 
 console.log("🚀 Initializing ORBIS Master Gateway...");
 
-function forwardLogToServer(level, data) {
-  const msg = data.toString().trim();
-  if (!msg) return;
-  const req = http.request({
-    hostname: "127.0.0.1",
-    port: SERVER_PORT,
-    path: "/api/internal/log",
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
-  req.on("error", () => {});
-  req.write(JSON.stringify({ level, source: "BRIDGE", message: msg }));
-  req.end();
-}
-
 // ১. Bridge.cjs রান করানো
 const bridgeProcess = spawn("node", [path.join(__dirname, "bridge.cjs")], {
   env: { ...process.env, PORT: BRIDGE_PORT },
-  stdio: ["inherit", "pipe", "pipe"],
-});
-
-bridgeProcess.stdout.on("data", (data) => {
-  process.stdout.write(data);
-  forwardLogToServer("INFO", data);
-});
-bridgeProcess.stderr.on("data", (data) => {
-  process.stderr.write(data);
-  forwardLogToServer("ERROR", data);
+  stdio: "inherit",
 });
 bridgeProcess.on("exit", (code) => {
   console.error(`\n⚠️ [CRITICAL] Bridge process died with code ${code}\n`);

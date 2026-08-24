@@ -1,7 +1,10 @@
 const providerManager = require("./AIProviderManager.cjs");
 const tavilySearch = require("./tools/TavilySearch.cjs");
-const memoryEngine = require("./brain/MemoryEngine.cjs");
 const capabilityIntentMatcher = require("./brain/ChatCapabilityIntentMatcher.cjs");
+const {
+  foundationChatOrchestrator,
+} = require("./FoundationChatOrchestrator.cjs");
+const { TEMPORAL_WORDS } = require("./ChatCapabilityRegistry.cjs");
 
 /**
  * TASK-013 — AI Chat -> Brain Command Integration
@@ -31,11 +34,8 @@ function loadBrainRequestGateway() {
       brainRequestGateway,
     } = require("../brain-runtime/brain/BrainRequestGateway.js");
     return brainRequestGateway || null;
-  } catch (err) {
-    console.error(
-      "[CHAT_BRAIN_BRIDGE] Brain runtime unavailable:",
-      err.message,
-    );
+  } catch {
+    console.error("[CHAT_BRAIN_BRIDGE] Brain runtime unavailable");
     return null;
   }
 }
@@ -134,8 +134,8 @@ function formatBrainResultAsChatReply(capabilityId, result, lang) {
   }
 
   return bn
-    ? `অনুরোধটি সম্পন্ন করা যায়নি: ${error}`
-    : `The request could not be completed: ${error}`;
+    ? "অনুরোধটি নিরাপদভাবে সম্পন্ন করা যায়নি।"
+    : "The request could not be completed safely.";
 }
 
 function formatApprovalResultAsChatReply(result, lang) {
@@ -172,44 +172,28 @@ function formatApprovalResultAsChatReply(result, lang) {
   }
 
   return bn
-    ? `অনুমোদন সম্পন্ন হয়নি: ${error || "UNKNOWN_ERROR"}`
-    : `The approval flow did not complete: ${error || "UNKNOWN_ERROR"}`;
+    ? "অনুমোদন নিরাপদভাবে সম্পন্ন হয়নি।"
+    : "The approval flow did not complete safely.";
 }
 
 class AIChatService {
-  async processChatRequest(rawMessages) {
-    if (!Array.isArray(rawMessages)) throw new Error("Invalid chat format.");
+  async processChatRequest(rawMessages, context = {}) {
+    return foundationChatOrchestrator.orchestrate(
+      {
+        messages: rawMessages,
+        pendingClarification: context.pendingClarification,
+      },
+      (messages, routeDecision) =>
+        this.executeNormalizedRequest(messages, routeDecision),
+    );
+  }
 
-    const validMessages = rawMessages
-      .filter(
-        (m) =>
-          (m?.role === "user" || m?.role === "assistant") &&
-          typeof m?.content === "string",
-      )
-      .slice(-20);
-
-    const formattedMessages = validMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+  async executeNormalizedRequest(formattedMessages, routeDecision) {
     const lastUserMessage =
       formattedMessages[formattedMessages.length - 1].content;
     const lowerCaseMessage = lastUserMessage.toLowerCase();
 
     try {
-      // ---------------------------------------------------------
-      // STEP 1: ORBIS DIRECT MEMORY
-      // ---------------------------------------------------------
-      const { brainKnowledge, memoryContext } =
-        await memoryEngine.retrieveMemory(lowerCaseMessage);
-
-      if (brainKnowledge) {
-        return {
-          message: { role: "assistant", content: brainKnowledge.content },
-          provider: { name: "ORBIS Brain", type: "INTERNAL_MEMORY" },
-        };
-      }
-
       // ---------------------------------------------------------
       // TASK-019: explicit approval resolution happens before normal
       // capability routing. A bare "yes"/"হ্যাঁ" never authorizes anything.
@@ -281,6 +265,7 @@ class AIChatService {
                   : "Which allow-listed file should I read: package.json or README.md?",
             },
             provider: { name: "ORBIS Brain", type: "BRAIN_CAPABILITY" },
+            clarificationRequired: true,
           };
         }
 
@@ -328,28 +313,7 @@ class AIChatService {
       // other word was added, and this list is not being restructured
       // into a general synonym/transliteration engine (that remains
       // explicitly out of scope for Phase 1).
-      const temporalWords = [
-        "latest",
-        "update",
-        "news",
-        "price",
-        "current",
-        "today",
-        "weather",
-        "খবর",
-        "বর্তমান",
-        "আজকের",
-        "এখন",
-        "সর্বশেষ",
-        "আবহাওয়া",
-        "ওয়েদার",
-        "দাম",
-      ];
-      const regexPattern = new RegExp(
-        `(?:^|\\s|[.,!?])(${temporalWords.join("|")})(?=\\s|[.,!?]|$)`,
-        "i",
-      );
-      const needsWebSearch = regexPattern.test(lowerCaseMessage);
+      const needsWebSearch = routeDecision?.route === "web-search";
 
       if (needsWebSearch) {
         // TASK-020 Phase 1-B: REALTIME CONTEXT SAFETY (bounded, weather-only).
@@ -386,7 +350,7 @@ class AIChatService {
 
         if (isWeatherQuery) {
           const FILLER_WORDS = new Set([
-            ...temporalWords.map((w) => w.toLowerCase()),
+            ...TEMPORAL_WORDS.map((word) => word.toLowerCase()),
             "report",
             "update",
             "please",
@@ -445,6 +409,20 @@ class AIChatService {
           }
         }
 
+        if (routeDecision?.configured === false) {
+          const lang = capabilityIntentMatcher.detectLanguage(lastUserMessage);
+          return {
+            message: {
+              role: "assistant",
+              content:
+                lang === "bn"
+                  ? "লাইভ সার্চ এখন কনফিগার করা নেই। পরে আবার চেষ্টা করুন বা একটি সাধারণ প্রশ্ন করুন।"
+                  : "Live search is not configured right now. Try again later or ask a non-live question.",
+            },
+            provider: { name: "ORBIS Brain (Web)", type: "WEB_UNAVAILABLE" },
+          };
+        }
+
         // TASK-020 Phase 1-D: Tavily language steering (BEST-EFFORT — see
         // TavilySearch.cjs for exactly what this does and does not
         // guarantee).
@@ -463,18 +441,30 @@ class AIChatService {
             provider: { name: "ORBIS Brain (Web)", type: "WEB_SEARCH" },
           };
         }
+
+        const unavailableLang =
+          capabilityIntentMatcher.detectLanguage(lastUserMessage);
+        return {
+          message: {
+            role: "assistant",
+            content:
+              unavailableLang === "bn"
+                ? "লাইভ সার্চ সেবা এখন সাড়া দিচ্ছে না। বর্তমান তথ্য হিসেবে কোনো পুরোনো ফল দেখানো হয়নি।"
+                : "Live search is not responding. No stale result was shown as current.",
+          },
+          provider: { name: "ORBIS Brain (Web)", type: "WEB_UNAVAILABLE" },
+        };
       }
 
       // ---------------------------------------------------------
-      // STEP 3: INDEPENDENT AI (OLLAMA)
+      // STEP 3: PROVIDER-ADAPTER FALLBACK
       // ---------------------------------------------------------
-      const activeProvider = providerManager.getActiveProvider();
       const aiMessages = [...formattedMessages];
 
       // TASK-020 Phase 1-E: Ollama anti-fabrication protection.
       // Exactly one system-role message, prepended here (caller-side,
-      // OllamaProvider.cjs itself is unmodified) before every STEP 3
-      // fallback call. This does not change STEP 1/1.5/2 in any way, and
+      // provider manager) before every STEP 3 fallback call. This does not
+      // change STEP 1/1.5/2 in any way, and
       // is never sent for STEP 1.7-style analysis because no such step
       // exists in Phase 1.
       aiMessages.unshift({
@@ -493,32 +483,18 @@ class AIChatService {
           "making up an answer.",
       });
 
-      if (memoryContext) {
-        aiMessages[aiMessages.length - 1].content +=
-          `\n\n[System Note: Recall these past memories about the user if relevant: ${memoryContext}]`;
-      }
-
-      const providerResponse = await activeProvider.generateChat(aiMessages);
-
-      // ---------------------------------------------------------
-      // STEP 4: BACKGROUND LEARNING ENGINE
-      // ---------------------------------------------------------
-      memoryEngine
-        .learnFromUser(lastUserMessage)
-        .catch((err) =>
-          console.warn("[ORBIS_LEARNING] Background save failed:", err.message),
-        );
+      const providerResponse = await providerManager.generateChat(aiMessages);
 
       return {
         message: { role: "assistant", content: providerResponse.content },
         provider: providerResponse.provider,
       };
     } catch (error) {
-      console.error(
-        "[AI_CHAT_SERVICE] Detailed Request failed:",
-        error.message || error,
-      );
-      throw new Error(`Chat backend request failed: ${error.message || error}`);
+      console.error("[AI_CHAT_SERVICE] Request failed");
+      const code = error?.code || "CHAT_BACKEND_UNAVAILABLE";
+      const normalized = new Error(code);
+      normalized.code = code;
+      throw normalized;
     }
   }
 }
