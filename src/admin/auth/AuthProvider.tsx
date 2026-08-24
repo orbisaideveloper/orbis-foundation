@@ -6,12 +6,22 @@ import React, {
   useMemo,
   useCallback,
   useEffect,
+  useRef,
 } from "react";
 import { IAuthService, Role } from "../../contracts/admin.contracts";
-import { isSupabaseConfigured, supabase } from "../../core/supabase/client";
-import type { Session } from "@supabase/supabase-js";
+import {
+  adminEmail,
+  isAdminAuthConfigured,
+  supabase,
+} from "../../core/supabase/client";
+import type { AuthError, Session } from "@supabase/supabase-js";
 import { checkAdminAccess } from "./adminFetch";
 import { checkPermission } from "./permissions";
+
+const ADMIN_AUTH_NOT_CONFIGURED = "Admin authentication is not configured.";
+const ADMIN_AUTH_UNAVAILABLE = "Admin authentication is unavailable.";
+const INVALID_CREDENTIALS = "Unable to sign in with those credentials.";
+const VERIFY_ADMIN_EMAIL = "Verify the Admin email before signing in.";
 
 // Exporting context to ensure other files can access the exact same instance if needed
 export const AuthContext = createContext<IAuthService | undefined>(undefined);
@@ -22,7 +32,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const [user, setUser] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("GUEST");
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [signupStatus, setSignupStatus] = useState<
+    "IDLE" | "CONFIRMATION_SENT" | "ALREADY_REGISTERED"
+  >("IDLE");
+  const accountCreationPending = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -42,6 +57,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         return;
       }
 
+      if (accountCreationPending.current) {
+        setUser(null);
+        setRole("GUEST");
+        setIsLoading(false);
+        void supabase.auth.signOut();
+        return;
+      }
+
       const sessionUser = session.user.email || session.user.id;
       setUser(sessionUser);
       setRole("GUEST");
@@ -53,9 +76,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         setRole("ADMIN");
       } else if (access === "ACCESS_DENIED") {
         setAuthError("This account does not have Admin access.");
+      } else if (access === "EMAIL_UNVERIFIED") {
+        setAuthError(VERIFY_ADMIN_EMAIL);
+      } else if (access === "CONFIGURATION_MISSING") {
+        setAuthError(ADMIN_AUTH_NOT_CONFIGURED);
       } else if (access === "INVALID_SESSION") {
         setUser(null);
-        setAuthError("Your session is invalid or expired. Please sign in again.");
+        setAuthError(
+          "Your session is invalid or expired. Please sign in again.",
+        );
         await supabase.auth.signOut();
         if (!active || currentVerification !== verificationId) return;
       } else {
@@ -65,10 +94,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       setIsLoading(false);
     };
 
-    if (!isSupabaseConfigured) {
+    if (!isAdminAuthConfigured) {
       setUser(null);
       setRole("GUEST");
-      setAuthError("Admin authentication is not configured.");
+      setAuthError(ADMIN_AUTH_NOT_CONFIGURED);
       setIsLoading(false);
       return () => {
         active = false;
@@ -85,7 +114,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         if (!active) return;
         setUser(null);
         setRole("GUEST");
-        setAuthError("Admin authentication is unavailable.");
+        setAuthError(ADMIN_AUTH_UNAVAILABLE);
         setIsLoading(false);
       });
 
@@ -103,20 +132,104 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
   const login = useCallback(async (email: string, password?: string) => {
     setAuthError(null);
-    if (!isSupabaseConfigured) {
-      setAuthError("Admin authentication is not configured.");
+    setSignupStatus("IDLE");
+    if (!isAdminAuthConfigured || !adminEmail) {
+      setAuthError(ADMIN_AUTH_NOT_CONFIGURED);
       return;
     }
     if (!email.trim() || !password) {
       setAuthError("Email and password are required.");
       return;
     }
+    if (email.trim() !== adminEmail) {
+      setAuthError(INVALID_CREDENTIALS);
+      return;
+    }
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    if (error) setAuthError("Unable to sign in with those credentials.");
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) {
+        setAuthError(
+          error.code === "email_not_confirmed"
+            ? VERIFY_ADMIN_EMAIL
+            : INVALID_CREDENTIALS,
+        );
+      }
+    } catch {
+      setAuthError(ADMIN_AUTH_UNAVAILABLE);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, []);
+
+  const createAdminAccount = useCallback(
+    async (password: string, passwordConfirmation: string) => {
+      setAuthError(null);
+      setSignupStatus("IDLE");
+
+      if (!isAdminAuthConfigured || !adminEmail) {
+        setAuthError(ADMIN_AUTH_NOT_CONFIGURED);
+        return;
+      }
+      if (password !== passwordConfirmation) {
+        setAuthError("Passwords do not match.");
+        return;
+      }
+      if (password.length < 8) {
+        setAuthError("Use a password with at least 8 characters.");
+        return;
+      }
+
+      setIsSubmitting(true);
+      accountCreationPending.current = true;
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: adminEmail,
+          password,
+        });
+
+        if (error) {
+          setAuthError(signupErrorMessage(error));
+          if (error.code === "user_already_exists") {
+            setSignupStatus("ALREADY_REGISTERED");
+          }
+          return;
+        }
+
+        if (data.user && data.user.identities?.length === 0) {
+          setSignupStatus("ALREADY_REGISTERED");
+          setAuthError(
+            "The Admin account is already registered. Sign in instead.",
+          );
+          return;
+        }
+
+        if (data.session) {
+          await supabase.auth.signOut();
+          setAuthError(
+            "Admin email verification must be enabled in Supabase before account creation.",
+          );
+          return;
+        }
+
+        setSignupStatus("CONFIRMATION_SENT");
+      } catch {
+        setAuthError(ADMIN_AUTH_UNAVAILABLE);
+      } finally {
+        accountCreationPending.current = false;
+        setIsSubmitting(false);
+      }
+    },
+    [],
+  );
+
+  const clearAuthFeedback = useCallback(() => {
+    setAuthError(null);
+    setSignupStatus("IDLE");
   }, []);
 
   const logout = useCallback(async () => {
@@ -139,16 +252,42 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       role,
       isAuthenticated: role === "ADMIN",
       isLoading,
+      isSubmitting,
       authError,
+      signupStatus,
       login,
+      createAdminAccount,
+      clearAuthFeedback,
       logout,
       hasPermission,
     }),
-    [user, role, isLoading, authError, login, logout, hasPermission],
+    [
+      user,
+      role,
+      isLoading,
+      isSubmitting,
+      authError,
+      signupStatus,
+      login,
+      createAdminAccount,
+      clearAuthFeedback,
+      logout,
+      hasPermission,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+
+function signupErrorMessage(error: AuthError): string {
+  if (error.code === "user_already_exists") {
+    return "The Admin account is already registered. Sign in instead.";
+  }
+  if (error.code === "weak_password") {
+    return "That password does not meet the Supabase password requirements.";
+  }
+  return "Unable to create the Admin account. Check the password and try again.";
+}
 
 export const useAuth = (): IAuthService => {
   const context = useContext(AuthContext);

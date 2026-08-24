@@ -4,6 +4,8 @@ import type { AdminAccessResponse } from "../../contracts/admin.contracts";
 export type AdminAccessResult =
   | "ADMIN"
   | "ACCESS_DENIED"
+  | "CONFIGURATION_MISSING"
+  | "EMAIL_UNVERIFIED"
   | "INVALID_SESSION"
   | "UNAVAILABLE";
 
@@ -24,6 +26,15 @@ async function fetchWithAccessToken(
   return fetch(input, { ...init, headers });
 }
 
+async function readAccessErrorCode(response: Response): Promise<unknown> {
+  try {
+    const data = (await response.json()) as { code?: unknown };
+    return data.code;
+  } catch {
+    return null;
+  }
+}
+
 export async function checkAdminAccess(
   accessToken: string,
 ): Promise<AdminAccessResult> {
@@ -36,7 +47,16 @@ export async function checkAdminAccess(
     );
 
     if (response.status === 401) return "INVALID_SESSION";
-    if (response.status === 403) return "ACCESS_DENIED";
+    if (response.status === 403) {
+      const code = await readAccessErrorCode(response);
+      return code === "EMAIL_UNVERIFIED" ? "EMAIL_UNVERIFIED" : "ACCESS_DENIED";
+    }
+    if (response.status === 503) {
+      const code = await readAccessErrorCode(response);
+      return code === "ADMIN_AUTH_CONFIGURATION_MISSING"
+        ? "CONFIGURATION_MISSING"
+        : "UNAVAILABLE";
+    }
     if (!response.ok) return "UNAVAILABLE";
 
     const data = (await response.json()) as Partial<AdminAccessResponse>;

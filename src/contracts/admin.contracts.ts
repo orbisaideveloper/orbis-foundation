@@ -13,8 +13,15 @@ export interface IAuthService {
   role: Role;
   isAuthenticated: boolean;
   isLoading?: boolean;
+  isSubmitting?: boolean;
   authError?: string | null;
+  signupStatus?: "IDLE" | "CONFIRMATION_SENT" | "ALREADY_REGISTERED";
   login: (email: string, password?: string) => void | Promise<void>;
+  createAdminAccount?: (
+    password: string,
+    passwordConfirmation: string,
+  ) => void | Promise<void>;
+  clearAuthFeedback?: () => void;
   logout: () => void | Promise<void>;
   hasPermission: (permissionId: string) => boolean;
 }

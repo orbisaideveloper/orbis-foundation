@@ -48,18 +48,35 @@ describe("authenticatedAdminFetch", () => {
       "fetch",
       vi
         .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ code: "EMAIL_UNVERIFIED" }), {
+            status: 403,
+          }),
+        )
         .mockResolvedValueOnce(new Response(null, { status: 403 }))
         .mockResolvedValueOnce(new Response(null, { status: 401 }))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ code: "ADMIN_AUTH_CONFIGURATION_MISSING" }),
+            { status: 503 },
+          ),
+        )
         .mockRejectedValueOnce(new Error("provider detail")),
     );
 
+    await expect(checkAdminAccess("unverified-token")).resolves.toBe(
+      "EMAIL_UNVERIFIED",
+    );
     await expect(checkAdminAccess("non-admin-token")).resolves.toBe(
       "ACCESS_DENIED",
     );
     await expect(checkAdminAccess("expired-token")).resolves.toBe(
       "INVALID_SESSION",
     );
-    await expect(checkAdminAccess("unverified-token")).resolves.toBe(
+    await expect(checkAdminAccess("missing-config-token")).resolves.toBe(
+      "CONFIGURATION_MISSING",
+    );
+    await expect(checkAdminAccess("unavailable-token")).resolves.toBe(
       "UNAVAILABLE",
     );
     await expect(checkAdminAccess("")).resolves.toBe("INVALID_SESSION");

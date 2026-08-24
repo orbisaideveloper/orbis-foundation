@@ -10,7 +10,11 @@ const {
   createAdminAuthMiddleware,
   getBearerToken,
   hasServerControlledAdminMembership,
+  hasConfiguredAdminEmailMembership,
 } = require("../admin-auth.cjs");
+
+const REQUIRED_ADMIN_EMAIL = "orbisaideveloper@gmail.com";
+const VERIFIED_AT = "2026-08-23T00:00:00.000Z";
 
 function createApp(getUser) {
   const createClient = vi.fn(() => ({ auth: { getUser } }));
@@ -27,12 +31,14 @@ beforeEach(() => {
   process.env.SUPABASE_URL = "configured-endpoint";
   process.env.SUPABASE_ANON_KEY = "configured-public-client-value";
   delete process.env.ADMIN_USER_IDS;
+  delete process.env.ADMIN_EMAIL_ALLOWLIST;
 });
 
 afterEach(() => {
   delete process.env.SUPABASE_URL;
   delete process.env.SUPABASE_ANON_KEY;
   delete process.env.ADMIN_USER_IDS;
+  delete process.env.ADMIN_EMAIL_ALLOWLIST;
   vi.restoreAllMocks();
 });
 
@@ -77,6 +83,8 @@ describe("authenticated Admin middleware", () => {
       data: {
         user: {
           id: "ordinary-user",
+          email: "user@example.test",
+          email_confirmed_at: VERIFIED_AT,
           user_metadata: { admin: true, role: "admin" },
           app_metadata: {},
         },
@@ -94,7 +102,14 @@ describe("authenticated Admin middleware", () => {
   it("allows a verified user from the server Admin ID allowlist", async () => {
     process.env.ADMIN_USER_IDS = "first-admin, second-admin";
     const getUser = vi.fn().mockResolvedValue({
-      data: { user: { id: "second-admin", app_metadata: {} } },
+      data: {
+        user: {
+          id: "second-admin",
+          email: "existing-admin@example.test",
+          email_confirmed_at: VERIFIED_AT,
+          app_metadata: {},
+        },
+      },
       error: null,
     });
     const { app, createClient } = createApp(getUser);
@@ -117,12 +132,126 @@ describe("authenticated Admin middleware", () => {
         app_metadata: { role: "ADMIN" },
       }),
     ).toBe(true);
+
+    const getUser = vi.fn().mockResolvedValue({
+      data: {
+        user: {
+          id: "app-admin",
+          email: "trusted-admin@example.test",
+          email_confirmed_at: VERIFIED_AT,
+          app_metadata: { role: "ADMIN" },
+        },
+      },
+      error: null,
+    });
+    const { app } = createApp(getUser);
+    await request(app)
+      .get("/protected")
+      .set("Authorization", "Bearer valid.token")
+      .expect(200);
     expect(
       hasServerControlledAdminMembership({
         id: "app-system",
         app_metadata: { roles: ["viewer", "system"] },
       }),
     ).toBe(true);
+  });
+
+  it("allows only the configured, verified bootstrap Admin email", async () => {
+    process.env.ADMIN_EMAIL_ALLOWLIST = REQUIRED_ADMIN_EMAIL;
+    expect(
+      hasConfiguredAdminEmailMembership({
+        id: "bootstrap-admin",
+        email: REQUIRED_ADMIN_EMAIL,
+        email_confirmed_at: VERIFIED_AT,
+        app_metadata: {},
+      }),
+    ).toBe(true);
+
+    const getUser = vi.fn().mockResolvedValue({
+      data: {
+        user: {
+          id: "bootstrap-admin",
+          email: REQUIRED_ADMIN_EMAIL,
+          email_confirmed_at: VERIFIED_AT,
+          app_metadata: {},
+        },
+      },
+      error: null,
+    });
+    const { app } = createApp(getUser);
+
+    await request(app)
+      .get("/protected")
+      .set("Authorization", "Bearer valid.token")
+      .expect(200);
+  });
+
+  it("denies a wrong email and fails closed without the bootstrap allowlist", async () => {
+    process.env.ADMIN_EMAIL_ALLOWLIST = `wrong@example.test,${REQUIRED_ADMIN_EMAIL}`;
+    const wrongEmail = vi.fn().mockResolvedValue({
+      data: {
+        user: {
+          id: "wrong-email",
+          email: "wrong@example.test",
+          email_confirmed_at: VERIFIED_AT,
+          app_metadata: {},
+        },
+      },
+      error: null,
+    });
+    const { app: wrongEmailApp } = createApp(wrongEmail);
+    await request(wrongEmailApp)
+      .get("/protected")
+      .set("Authorization", "Bearer valid.token")
+      .expect(403);
+
+    delete process.env.ADMIN_EMAIL_ALLOWLIST;
+    const exactEmail = vi.fn().mockResolvedValue({
+      data: {
+        user: {
+          id: "bootstrap-admin",
+          email: REQUIRED_ADMIN_EMAIL,
+          email_confirmed_at: VERIFIED_AT,
+          app_metadata: {},
+        },
+      },
+      error: null,
+    });
+    const { app: missingAllowlistApp } = createApp(exactEmail);
+    const missingAllowlistResponse = await request(missingAllowlistApp)
+      .get("/protected")
+      .set("Authorization", "Bearer valid.token");
+    expect(missingAllowlistResponse.status).toBe(503);
+    expect(missingAllowlistResponse.body.code).toBe(
+      "ADMIN_AUTH_CONFIGURATION_MISSING",
+    );
+  });
+
+  it("denies unverified email even with Admin ID or app_metadata membership", async () => {
+    process.env.ADMIN_USER_IDS = "unverified-admin";
+    const getUser = vi.fn().mockResolvedValue({
+      data: {
+        user: {
+          id: "unverified-admin",
+          email: REQUIRED_ADMIN_EMAIL,
+          email_confirmed_at: null,
+          app_metadata: { role: "admin" },
+        },
+      },
+      error: null,
+    });
+    const { app } = createApp(getUser);
+    const response = await request(app)
+      .get("/protected")
+      .set("Authorization", "Bearer valid.token");
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      success: false,
+      code: "EMAIL_UNVERIFIED",
+      message: "Admin email verification required",
+    });
   });
 
   it("fails closed when configuration or the provider is unavailable", async () => {

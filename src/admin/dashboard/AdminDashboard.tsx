@@ -52,6 +52,9 @@ export function AdminDashboard() {
     status: "Connecting...",
   });
   const [copiedText, setCopiedText] = useState(false);
+  const copyResetTimer = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const [showOutput, setShowOutput] = useState(false);
   const [viewMode, setViewMode] = useState("diagnostic");
@@ -60,6 +63,25 @@ export function AdminDashboard() {
     "অপেক্ষা করুন, রেন্ডার সার্ভার থেকে লাইভ ট্রি আনা হচ্ছে...",
   );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimer.current !== null) {
+        clearTimeout(copyResetTimer.current);
+      }
+    };
+  }, []);
+
+  const markCopied = () => {
+    if (copyResetTimer.current !== null) {
+      clearTimeout(copyResetTimer.current);
+    }
+    setCopiedText(true);
+    copyResetTimer.current = setTimeout(() => {
+      setCopiedText(false);
+      copyResetTimer.current = null;
+    }, 2000);
+  };
 
   const fetchLiveTree = async () => {
     try {
@@ -203,8 +225,7 @@ export function AdminDashboard() {
                         ? liveTree
                         : generateRawTelemetry(activeSubCard, sysStats),
                     );
-                    setCopiedText(true);
-                    setTimeout(() => setCopiedText(false), 2000);
+                    markCopied();
                   }}
                   className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? "bg-emerald-100 text-emerald-700" : "bg-slate-800 hover:bg-slate-700 text-white"}`}
                 >
@@ -331,8 +352,7 @@ export function AdminDashboard() {
               navigator.clipboard.writeText(
                 generateRawTelemetry(targetName, sysStats),
               );
-              setCopiedText(true);
-              setTimeout(() => setCopiedText(false), 2000);
+              markCopied();
             }}
             className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? "bg-emerald-100 text-emerald-700" : "bg-slate-800 hover:bg-slate-700 text-white"}`}
           >
@@ -523,8 +543,7 @@ export function AdminDashboard() {
                       type="button"
                       onClick={() => {
                         navigator.clipboard.writeText(outputData);
-                        setCopiedText(true);
-                        setTimeout(() => setCopiedText(false), 2000);
+                        markCopied();
                       }}
                       className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
                     >
@@ -553,8 +572,7 @@ export function AdminDashboard() {
                       type="button"
                       onClick={() => {
                         navigator.clipboard.writeText(liveTree);
-                        setCopiedText(true);
-                        setTimeout(() => setCopiedText(false), 2000);
+                        markCopied();
                       }}
                       className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
                     >

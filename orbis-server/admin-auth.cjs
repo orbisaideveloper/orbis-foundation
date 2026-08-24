@@ -1,5 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
 
+const REQUIRED_ADMIN_EMAIL = "orbisaideveloper@gmail.com";
+
 function getBearerToken(authorization) {
   if (typeof authorization !== "string") return null;
   const match = authorization.match(/^Bearer ([A-Za-z0-9._~-]+)$/);
@@ -12,6 +14,31 @@ function configuredAdminIds() {
       .split(",")
       .map((id) => id.trim())
       .filter(Boolean),
+  );
+}
+
+function configuredAdminEmails() {
+  return new Set(
+    (process.env.ADMIN_EMAIL_ALLOWLIST || "")
+      .split(",")
+      .map((email) => email.trim())
+      .filter((email) => email === REQUIRED_ADMIN_EMAIL),
+  );
+}
+
+function hasVerifiedEmail(user) {
+  return (
+    typeof user?.email === "string" &&
+    typeof user.email_confirmed_at === "string" &&
+    user.email_confirmed_at.length > 0
+  );
+}
+
+function hasConfiguredAdminEmailMembership(user) {
+  return (
+    hasVerifiedEmail(user) &&
+    user.email === REQUIRED_ADMIN_EMAIL &&
+    configuredAdminEmails().has(user.email)
   );
 }
 
@@ -78,15 +105,36 @@ function createAdminAuthMiddleware(dependencies = {}) {
         });
       }
 
-      if (!hasServerControlledAdminMembership(data.user)) {
+      if (!hasVerifiedEmail(data.user)) {
         return res.status(403).json({
           success: false,
-          message: "Admin access required",
+          code: "EMAIL_UNVERIFIED",
+          message: "Admin email verification required",
         });
       }
 
-      req.adminUser = { id: data.user.id };
-      return next();
+      if (hasServerControlledAdminMembership(data.user)) {
+        req.adminUser = { id: data.user.id };
+        return next();
+      }
+
+      if (hasConfiguredAdminEmailMembership(data.user)) {
+        req.adminUser = { id: data.user.id };
+        return next();
+      }
+
+      if (data.user.email === REQUIRED_ADMIN_EMAIL) {
+        return res.status(503).json({
+          success: false,
+          code: "ADMIN_AUTH_CONFIGURATION_MISSING",
+          message: "Admin authentication unavailable",
+        });
+      }
+
+      return res.status(403).json({
+        success: false,
+        message: "Admin access required",
+      });
     } catch {
       console.error("[AdminAuth] Identity verification unavailable");
       return res.status(503).json({
@@ -100,6 +148,9 @@ function createAdminAuthMiddleware(dependencies = {}) {
 module.exports = {
   createAdminAuthMiddleware,
   getBearerToken,
+  hasConfiguredAdminEmailMembership,
   hasServerControlledAdminMembership,
+  hasVerifiedEmail,
+  REQUIRED_ADMIN_EMAIL,
   requireAuthenticatedAdmin: createAdminAuthMiddleware(),
 };
