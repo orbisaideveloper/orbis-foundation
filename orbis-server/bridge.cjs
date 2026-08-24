@@ -26,14 +26,25 @@ const {
   createProviderLearningCandidateGenerator,
 } = require("./ai/learning/ProviderLearningCandidateGenerator.cjs");
 const sourceApi = require("./source-api.cjs");
+const { getSystemStats } = require("./system-stats.cjs");
+const { buildAdminDiagnosticExport } = require("./admin-diagnostic-export.cjs");
+const { chatCapabilityRegistry } = require("./ai/ChatCapabilityRegistry.cjs");
+const {
+  FoundationDataCapabilityOrchestrator,
+} = require("./ai/FoundationDataCapabilityOrchestrator.cjs");
+const {
+  createFoundationCapabilityRouter,
+} = require("./foundation-capability-api.cjs");
 const {
   getDiagnostics,
   addSystemLog,
+  cleanupExpiredSystemLogs,
   sanitizeDiagnosticLogs,
   setDbClient,
 } = require("./telemetry-module.cjs");
 
 const PORT = process.env.PORT || 3000;
+const TELEMETRY_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const CORS_ALLOWED_ORIGINS = new Set([
   "http://localhost:3000",
   "http://127.0.0.1:3000",
@@ -95,11 +106,19 @@ const telemetryPool = new Pool({
 });
 const telemetryAdapter = new PrismaPg(telemetryPool);
 const prisma = new PrismaClient({ adapter: telemetryAdapter });
+const foundationDataCapabilityOrchestrator =
+  new FoundationDataCapabilityOrchestrator({ prisma });
 
 prisma
   .$connect()
   .then(() => {
     setDbClient(prisma);
+    void cleanupExpiredSystemLogs();
+    const cleanupTimer = setInterval(
+      () => void cleanupExpiredSystemLogs(),
+      TELEMETRY_CLEANUP_INTERVAL_MS,
+    );
+    cleanupTimer.unref();
     void addSystemLog(
       "INFO",
       "TELEMETRY",
@@ -197,7 +216,7 @@ app.use((error, req, res, next) => {
  * Orchestration remains inside TASK-010.
  * Validation/gateway responsibility remains inside TASK-011.
  */
-app.post("/api/brain/request", async (req, res) => {
+app.post("/api/brain/request", requireAuthenticatedAdmin, async (req, res) => {
   try {
     const {
       brainRequestGateway,
@@ -225,6 +244,15 @@ app.post("/api/brain/request", async (req, res) => {
     });
   }
 });
+
+app.use(
+  "/api/admin/capabilities",
+  createFoundationCapabilityRouter({
+    orchestrator: foundationDataCapabilityOrchestrator,
+    authMiddleware: requireAuthenticatedAdmin,
+    rateLimiter: createChatRateLimiter({ maxRequests: 10 }),
+  }),
+);
 
 // ============================================================
 // TASK-006 & TASK-007: REAL TERMUX RUNTIME BRIDGE & CAPABILITY EXECUTION
@@ -418,6 +446,36 @@ app.get("/api/diagnostics", requireAuthenticatedAdmin, async (req, res) => {
   }
 });
 
+app.get(
+  "/api/admin/diagnostic-export",
+  requireAuthenticatedAdmin,
+  async (_req, res) => {
+    try {
+      const report = await buildAdminDiagnosticExport({
+        prisma,
+        providerManager,
+        capabilityRegistry: chatCapabilityRegistry,
+      });
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="orbis-foundation-diagnostic.json"',
+      );
+      res.setHeader("Cache-Control", "no-store");
+      res.json(report);
+      void addSystemLog(
+        "INFO",
+        "ADMIN_AUDIT",
+        "Admin diagnostic export generated",
+      );
+    } catch {
+      res.status(503).json({
+        success: false,
+        message: "Diagnostic export unavailable",
+      });
+    }
+  },
+);
+
 function getDirectoryTree(dirPath, indent = "", changedFiles = []) {
   let result = "";
   if (!fs.existsSync(dirPath)) return "Directory not found";
@@ -442,38 +500,7 @@ function getDirectoryTree(dirPath, indent = "", changedFiles = []) {
 }
 
 app.get("/api/system-stats", (req, res) => {
-  const totalMem = (os.totalmem() / (1024 * 1024 * 1024)).toFixed(2);
-  const freeMem = (os.freemem() / (1024 * 1024 * 1024)).toFixed(2);
-  const usedMem = (totalMem - freeMem).toFixed(2);
-  const loadAvg = os.loadavg();
-  const uptimeSeconds = os.uptime();
-  const hours = Math.floor(uptimeSeconds / 3600);
-  const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-
-  let cpuModel = "Unknown Processor";
-  try {
-    cpuModel = os.cpus()[0].model;
-  } catch (e) {}
-
-  res.json({
-    cpuCores: os.cpus().length,
-    cpuModel,
-    arch: os.arch(),
-    platform: os.platform().toUpperCase(),
-    release: os.release(),
-    hostname: os.hostname(),
-    load: loadAvg[0].toFixed(2),
-    load5m: loadAvg[1].toFixed(2),
-    load15m: loadAvg[2].toFixed(2),
-    totalMem,
-    freeMem,
-    usedMem,
-    ramUsedPercent: ((usedMem / totalMem) * 100).toFixed(1),
-    uptime: `${hours}h ${minutes}m`,
-    processUptime: process.uptime().toFixed(0),
-    heapUsed: (process.memoryUsage().heapUsed / (1024 * 1024)).toFixed(2),
-    status: "ONLINE",
-  });
+  res.json(getSystemStats());
 });
 
 app.get("/api/ai/providers/status", (req, res) => {

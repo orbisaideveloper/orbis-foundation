@@ -5,6 +5,7 @@ const { router: timeMachineRouter } = require("./time-machine-api.cjs");
 const { requireAuthenticatedAdmin } = require("./admin-auth.cjs");
 const {
   MAX_SOURCE_FILE_BYTES,
+  hasBinarySignature,
   isAllowedDirectorySegments,
   isAllowedSourceSegments,
   parseRelativeSourcePath,
@@ -65,7 +66,11 @@ function readSafeTextFile(filePath, stats) {
 
   const content = fs.readFileSync(filePath);
 
-  if (content.length > MAX_SOURCE_FILE_BYTES || content.includes(0)) {
+  if (
+    content.length > MAX_SOURCE_FILE_BYTES ||
+    content.includes(0) ||
+    hasBinarySignature(content)
+  ) {
     return null;
   }
 

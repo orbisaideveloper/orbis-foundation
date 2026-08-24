@@ -1,4 +1,5 @@
 const { chatCapabilityRegistry } = require("./ChatCapabilityRegistry.cjs");
+const capabilityIntentMatcher = require("./brain/ChatCapabilityIntentMatcher.cjs");
 
 const MAX_MESSAGES = 20;
 const MAX_MESSAGE_CHARS = 16_000;
@@ -50,6 +51,9 @@ function normalizePending(rawPending) {
 function clarificationFollowUp(message, pending, now) {
   if (!pending) return { message, state: "none" };
   if (
+    pending.createdAt > now ||
+    pending.expiresAt <= pending.createdAt ||
+    pending.expiresAt - pending.createdAt > MAX_CLARIFICATION_AGE_MS ||
     pending.expiresAt <= now ||
     now - pending.createdAt > MAX_CLARIFICATION_AGE_MS
   ) {
@@ -60,12 +64,34 @@ function clarificationFollowUp(message, pending, now) {
     return { message, state: "cancelled" };
   }
 
+  const weatherRequest = capabilityIntentMatcher.matchWeatherRequest(message);
   const looksClearlyNew =
     message.length > 120 ||
-    /(?:weather|আবহাওয়া|ওয়েদার|news|খবর|price|দাম|system info|সিস্টেম তথ্য|read file|ফাইল পড়)/i.test(
+    /(?:weather|আবহাওয়া|আবহাওয়া|ওয়েদার|ওয়েদার|news|খবর|price|দাম|system info|সিস্টেম তথ্য|read file|ফাইল পড়)/i.test(
       message,
     );
+  if (weatherRequest?.location || (!weatherRequest && looksClearlyNew)) {
+    return { message, state: "replaced" };
+  }
+
+  if (pending.kind === "weather-location") {
+    if (!weatherRequest) {
+      const location =
+        capabilityIntentMatcher.matchWeatherLocationReply(message);
+      if (location) {
+        return {
+          message: `${pending.originalRequest} ${message}`.trim(),
+          state: "resolved",
+        };
+      }
+    }
+  }
+
   if (looksClearlyNew) return { message, state: "replaced" };
+
+  if (pending.kind === "weather-location") {
+    return { message: pending.originalRequest, state: "awaiting" };
+  }
 
   return {
     message: `${pending.originalRequest} ${message}`.trim(),
@@ -73,8 +99,17 @@ function clarificationFollowUp(message, pending, now) {
   };
 }
 
-function pendingFromResponse(response, originalRequest, now) {
+function pendingFromResponse(
+  response,
+  originalRequest,
+  now,
+  priorPending,
+  clarificationState,
+) {
   if (response?.provider?.type === "WEB_SEARCH_CLARIFICATION") {
+    if (priorPending && clarificationState === "awaiting") {
+      return priorPending;
+    }
     return {
       kind: "weather-location",
       originalRequest,
@@ -138,11 +173,16 @@ class FoundationChatOrchestrator {
     const response = await executeRoute(effectiveMessages, {
       ...decision,
       configured: capability?.configured !== false,
+      weatherLocationResolved:
+        pending?.kind === "weather-location" &&
+        clarification.state === "resolved",
     });
     const nextPending = pendingFromResponse(
       response,
       clarification.message,
       now,
+      pending,
+      clarification.state,
     );
 
     return {

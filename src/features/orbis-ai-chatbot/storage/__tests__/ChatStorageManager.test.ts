@@ -53,4 +53,40 @@ describe("ChatStorageManager privacy contract", () => {
     const storage = new ChatStorageManager();
     await expect(storage.init(5)).rejects.toThrow("STORAGE_INIT_TIMEOUT");
   });
+
+  it.each([
+    ["getPendingClarification", "clarifications", ["account-a", "chat-a"]],
+    ["getCachedResponse", "responseCache", ["cache-key"]],
+  ] as const)(
+    "deletes expired records transactionally through %s",
+    async (method, expectedStore, args) => {
+      const deleted: string[] = [];
+      const value = { expiresAt: Date.now() - 1 };
+      const request: Record<string, unknown> = { result: value };
+      const store = {
+        get: vi.fn(() => {
+          queueMicrotask(() => (request.onsuccess as () => void)());
+          return request;
+        }),
+        delete: vi.fn((key: string) => deleted.push(key)),
+      };
+      const transaction: Record<string, any> = {
+        objectStore: vi.fn(() => store),
+      };
+      const storage = new ChatStorageManager();
+      (storage as any).db = {
+        transaction: vi.fn((storeName: string, mode: string) => {
+          expect(storeName).toBe(expectedStore);
+          expect(mode).toBe("readwrite");
+          setTimeout(() => transaction.oncomplete?.(), 0);
+          return transaction;
+        }),
+      };
+
+      await expect((storage[method] as any)(...args)).resolves.toBeNull();
+      expect(deleted).toEqual([
+        method === "getPendingClarification" ? "account-a:chat-a" : "cache-key",
+      ]);
+    },
+  );
 });

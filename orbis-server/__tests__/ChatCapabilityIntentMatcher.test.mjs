@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 
-const { match, matchRequest, detectLanguage } = require("../ai/brain/ChatCapabilityIntentMatcher.cjs");
+const {
+  match,
+  matchRequest,
+  matchWeatherRequest,
+  matchWeatherLocationReply,
+  detectLanguage,
+} = require("../ai/brain/ChatCapabilityIntentMatcher.cjs");
 
 describe("TASK-013: ChatCapabilityIntentMatcher", () => {
   it("matches an English system-info phrase to termux.system.info", () => {
@@ -16,9 +22,7 @@ describe("TASK-013: ChatCapabilityIntentMatcher", () => {
   });
 
   it("is case-insensitive and tolerant of surrounding whitespace", () => {
-    expect(match("   SYSTEM INFORMATION please   ")).toBe(
-      "termux.system.info",
-    );
+    expect(match("   SYSTEM INFORMATION please   ")).toBe("termux.system.info");
   });
 
   it("returns null for normal conversation (never guesses)", () => {
@@ -42,6 +46,29 @@ describe("TASK-013: ChatCapabilityIntentMatcher", () => {
   it("detects Bengali vs English for reply-language selection only", () => {
     expect(detectLanguage("আমার সিস্টেম তথ্য দেখাও")).toBe("bn");
     expect(detectLanguage("show me system information")).toBe("en");
+  });
+});
+
+describe("Task 3A: deterministic weather-location slots", () => {
+  it("does not treat generic Bengali request words as a location", () => {
+    expect(matchWeatherRequest("আজকের ওয়েদারটা একটু বলবে আমাকে")).toEqual({
+      location: null,
+    });
+    expect(matchWeatherLocationReply("বলবে আমাকে")).toBeNull();
+  });
+
+  it("extracts only bounded location slots adjacent to weather intent", () => {
+    expect(matchWeatherRequest("শিলিগুড়ির weather টা বলো")).toEqual({
+      location: "শিলিগুড়ির",
+    });
+    expect(matchWeatherRequest("weather in New York please")).toEqual({
+      location: "new york",
+    });
+  });
+
+  it("validates a short Bengali location follow-up without guessing one", () => {
+    expect(matchWeatherLocationReply("কলকাতা")).toBe("কলকাতা");
+    expect(matchWeatherLocationReply("একটু বলবে আমাকে")).toBeNull();
   });
 });
 

@@ -96,11 +96,160 @@ const CAPABILITY_PHRASES = [
 // Bengali (Bangla) Unicode block: U+0980–U+09FF.
 const BENGALI_RANGE = /[\u0980-\u09FF]/;
 
+const WEATHER_TOKEN =
+  /^(?:weather|আবহাওয়া|আবহাওয়া|ওয়েদার|ওয়েদার)(?:টা|টি)?$/iu;
+const LOCATION_CONNECTORS = new Set([
+  "at",
+  "for",
+  "in",
+  "of",
+  "এর",
+  "তে",
+  "য়",
+  "য়",
+]);
+const NON_LOCATION_WORDS = new Set([
+  "a",
+  "an",
+  "current",
+  "give",
+  "how",
+  "is",
+  "latest",
+  "me",
+  "now",
+  "please",
+  "report",
+  "tell",
+  "the",
+  "today",
+  "today's",
+  "update",
+  "what",
+  "will",
+  "you",
+  "আজ",
+  "আজকে",
+  "আজকের",
+  "আমাকে",
+  "আমি",
+  "আছে",
+  "আপনি",
+  "একটু",
+  "এখন",
+  "কেমন",
+  "কর",
+  "করো",
+  "কি",
+  "কী",
+  "চাই",
+  "টা",
+  "টি",
+  "দাও",
+  "বলবে",
+  "বলো",
+  "বলুন",
+  "রিপোর্ট",
+  "হবে",
+  "জানাও",
+  "জানতে",
+]);
+
 function normalize(text) {
   return String(text || "")
     .toLowerCase()
     .trim()
     .replace(/\s+/g, " ");
+}
+
+function weatherTokens(text) {
+  return normalize(String(text || "").normalize("NFKC"))
+    .replace(/[.!?,;:।()[\]{}]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function isLocationToken(token) {
+  if (!token || WEATHER_TOKEN.test(token)) return false;
+  if (NON_LOCATION_WORDS.has(token) || LOCATION_CONNECTORS.has(token)) {
+    return false;
+  }
+  return /^[\p{L}\p{M}][\p{L}\p{M}.'’\-]*$/u.test(token);
+}
+
+function validatedLocation(tokens) {
+  const value = tokens.join(" ").trim();
+  if (!value || value.length > 80 || tokens.length > 6) return null;
+  return tokens.every(isLocationToken) ? value : null;
+}
+
+function nearestLocationBefore(tokens, weatherIndex) {
+  const end = weatherIndex;
+  if (end === 0 || !isLocationToken(tokens[end - 1])) return null;
+
+  let start = end - 1;
+  while (start > 0 && isLocationToken(tokens[start - 1])) start -= 1;
+  return validatedLocation(tokens.slice(start, end));
+}
+
+function nearestLocationAfter(tokens, weatherIndex) {
+  let start = weatherIndex + 1;
+  if (["report", "update", "রিপোর্ট"].includes(tokens[start])) {
+    start += 1;
+    if (!LOCATION_CONNECTORS.has(tokens[start])) return null;
+  }
+  if (LOCATION_CONNECTORS.has(tokens[start])) start += 1;
+  if (start >= tokens.length || !isLocationToken(tokens[start])) return null;
+
+  let end = start + 1;
+  while (end < tokens.length && isLocationToken(tokens[end])) end += 1;
+  return validatedLocation(tokens.slice(start, end));
+}
+
+/**
+ * Deterministic weather slot parsing. A weather word establishes the intent;
+ * only a bounded, letter-only span adjacent to that word can fill location.
+ * Generic request words never become a location and no city is inferred.
+ */
+function matchWeatherRequest(message) {
+  const tokens = weatherTokens(message);
+  const weatherIndex = tokens.findIndex((token) => WEATHER_TOKEN.test(token));
+  if (weatherIndex < 0) return null;
+
+  return {
+    location:
+      nearestLocationBefore(tokens, weatherIndex) ||
+      nearestLocationAfter(tokens, weatherIndex),
+  };
+}
+
+/** Validate a short clarification reply without geocoding or guessing. */
+function matchWeatherLocationReply(message) {
+  const tokens = weatherTokens(message);
+  if (
+    tokens.length === 0 ||
+    tokens.some((token) => WEATHER_TOKEN.test(token))
+  ) {
+    return null;
+  }
+
+  let start = 0;
+  let end = tokens.length;
+  while (
+    start < end &&
+    (NON_LOCATION_WORDS.has(tokens[start]) ||
+      LOCATION_CONNECTORS.has(tokens[start]))
+  ) {
+    start += 1;
+  }
+  while (
+    end > start &&
+    (NON_LOCATION_WORDS.has(tokens[end - 1]) ||
+      LOCATION_CONNECTORS.has(tokens[end - 1]))
+  ) {
+    end -= 1;
+  }
+  return validatedLocation(tokens.slice(start, end));
 }
 
 /**
@@ -203,4 +352,11 @@ function detectLanguage(message) {
   return BENGALI_RANGE.test(String(message || "")) ? "bn" : "en";
 }
 
-module.exports = { match, matchRequest, matchApprovalDecision, detectLanguage };
+module.exports = {
+  match,
+  matchRequest,
+  matchApprovalDecision,
+  matchWeatherRequest,
+  matchWeatherLocationReply,
+  detectLanguage,
+};

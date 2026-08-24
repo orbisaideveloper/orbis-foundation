@@ -24,12 +24,22 @@ model FoundationAdminMetric {
 }
 
 model FoundationSystemLog {
-  id        String   @id @default(uuid())
-  level     String
-  source    String
-  message   String
-  timestamp String
-  createdAt DateTime @default(now())
+  id             String   @id @default(uuid())
+  level          String
+  source         String
+  message        String
+  timestamp      String
+  category       String   @default("FOUNDATION")
+  severity       String   @default("INFO")
+  fingerprint    String   @unique
+  count          Int      @default(1)
+  firstSeen      DateTime @default(now())
+  lastSeen       DateTime @default(now())
+  retentionUntil DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([retentionUntil])
+  @@index([category, severity, lastSeen])
 }
 
 model FoundationSourceCodeHistory {

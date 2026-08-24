@@ -33,9 +33,11 @@ export function cacheKey(
   profileId: string,
   query: string,
   pending?: PendingClarification | null,
+  conversationId?: string,
 ): string {
   const effective = pending ? `${pending.originalRequest} ${query}` : query;
-  return `${profileId}:${normalizeChatQuery(effective)}`;
+  const partition = pending && conversationId ? `:${conversationId}` : "";
+  return `${profileId}${partition}:${normalizeChatQuery(effective)}`;
 }
 
 interface CacheStoragePort {
@@ -57,12 +59,18 @@ export class DeviceChatRequestCache {
 
   async run(options: {
     profileId: string;
+    conversationId?: string;
     query: string;
     pending?: PendingClarification | null;
     persistent: boolean;
     request: () => Promise<CachedChatResponse["response"]>;
   }): Promise<{ response: CachedChatResponse["response"]; cached: boolean }> {
-    const key = cacheKey(options.profileId, options.query, options.pending);
+    const key = cacheKey(
+      options.profileId,
+      options.query,
+      options.pending,
+      options.conversationId,
+    );
     const now = this.clock();
     const local = options.persistent
       ? await this.storage.getCachedResponse(key)

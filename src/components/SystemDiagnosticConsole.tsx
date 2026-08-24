@@ -1,7 +1,8 @@
 /* eslint-disable sonarjs/no-duplicate-string */
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { readAdminJson } from "../admin/auth/adminFetch";
+import { AnimatedMonitorFrame } from "../admin/dashboard/components/AnimatedMonitorFrame";
 
 export default function SystemDiagnosticConsole() {
   const [isOpen, setIsOpen] = useState(false);
@@ -223,35 +224,23 @@ export default function SystemDiagnosticConsole() {
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center font-sans">
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
+          <AnimatedMonitorFrame
             className="w-full max-w-4xl h-[85vh] bg-slate-50 shadow-2xl rounded-2xl flex flex-col overflow-hidden border border-slate-200"
-          >
-            {/* HEADER */}
-            <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white shadow-sm">
-              <h2 className="text-[16px] font-bold text-slate-800 flex items-center gap-2">
+            contentClassName="flex-1 p-5 overflow-y-auto"
+            headerClassName="bg-white"
+            onClose={() => {
+              setIsOpen(false);
+              setActiveCard(null);
+            }}
+            title={
+              <>
                 <span className="text-xl">📊</span>{" "}
                 {activeCard ? `${activeCard} Log` : "Overview Monitor"}
-              </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsOpen(false);
-                  setActiveCard(null);
-                }}
-                className="bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold text-[12px] hover:bg-slate-200 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-
-            {/* CONTENT AREA */}
-            <div className="flex-1 p-5 overflow-y-auto">
-              {renderContentArea()}
-            </div>
-          </motion.div>
+              </>
+            }
+          >
+            {renderContentArea()}
+          </AnimatedMonitorFrame>
         </div>
       )}
     </AnimatePresence>

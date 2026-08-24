@@ -374,6 +374,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       await persistMessage(userMessage);
       const result = await cache.run({
         profileId: profileIdRef.current,
+        conversationId: conversationIdRef.current,
         query: message,
         pending,
         persistent,

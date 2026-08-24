@@ -25,6 +25,42 @@ const MANIFEST = Object.freeze([
     network: "provider-dependent",
     requiresApproval: false,
   }),
+  Object.freeze({
+    id: "foundation.table.search",
+    kind: "foundation-data-capability",
+    network: false,
+    requiresApproval: true,
+    status: "AVAILABLE",
+    callable: true,
+    executionRoute: "admin-capability-api",
+  }),
+  Object.freeze({
+    id: "foundation.pdf.read",
+    kind: "foundation-data-capability",
+    network: false,
+    requiresApproval: true,
+    status: "AVAILABLE",
+    callable: true,
+    executionRoute: "admin-capability-api",
+  }),
+  Object.freeze({
+    id: "foundation.xlsx.read",
+    kind: "foundation-data-capability",
+    network: false,
+    requiresApproval: true,
+    status: "AVAILABLE",
+    callable: true,
+    executionRoute: "admin-capability-api",
+  }),
+  Object.freeze({
+    id: "foundation.xlsx.create",
+    kind: "foundation-data-capability",
+    network: false,
+    requiresApproval: true,
+    status: "AVAILABLE",
+    callable: true,
+    executionRoute: "admin-capability-api",
+  }),
 ]);
 
 const TEMPORAL_WORDS = Object.freeze([
@@ -46,6 +82,7 @@ const TEMPORAL_WORDS = Object.freeze([
 ]);
 
 function isTemporalRequest(message) {
+  if (capabilityIntentMatcher.matchWeatherRequest(message)) return true;
   const escaped = TEMPORAL_WORDS.map((word) =>
     word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
   );

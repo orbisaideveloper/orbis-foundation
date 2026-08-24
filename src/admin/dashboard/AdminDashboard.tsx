@@ -4,6 +4,8 @@ import SystemLogManager from "../system-logs/SystemLogManager";
 import { GlassChatCard } from "../../features/orbis-ai-chatbot/components/GlassChatCard";
 import { TermuxObservatory } from "./sections/TermuxObservatory";
 import { readAdminJson } from "../auth/adminFetch";
+import { DiagnosticExportActions } from "./DiagnosticExportActions";
+import { AnimatedMonitorFrame } from "./components/AnimatedMonitorFrame";
 
 const SOURCE_TREE_NAME = "Source Tree";
 const MASTER_NODE_NAME = "Master Node";
@@ -508,84 +510,78 @@ export function AdminDashboard() {
         </button>
       </div>
 
+      <DiagnosticExportActions />
+
       <div className="w-full px-5 mt-4 mb-5">
         <GlassChatCard />
       </div>
 
       <AnimatePresence>
         {showOutput && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
+          <AnimatedMonitorFrame
             className="fixed inset-0 bg-white z-[60] flex flex-col"
-          >
-            <div className="px-5 py-4 pt-6 border-b border-slate-100 flex justify-between items-center shadow-sm">
-              <h2 className="text-[16px] font-bold text-teal-700 flex items-center gap-2">
+            contentClassName="flex-1 p-4 overflow-hidden bg-slate-50 flex flex-col gap-4"
+            headerClassName="pt-6"
+            onClose={() => setShowOutput(false)}
+            titleClassName="text-[16px] font-bold text-teal-700 flex items-center gap-2"
+            title={
+              <>
                 <span className="text-xl">💻</span> Terminal Output
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowOutput(false)}
-                className="bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold text-[12px] hover:bg-slate-200 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-            <div className="flex-1 p-4 overflow-hidden bg-slate-50 flex flex-col gap-4">
-              {viewMode === "diagnostic" && (
-                <div className="bg-slate-900 text-emerald-400 p-4 rounded-xl font-mono text-[13px] flex-1 overflow-auto shadow-inner relative flex flex-col">
-                  <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2 sticky top-0 bg-slate-900 z-10">
-                    <span className="text-slate-400 text-[11px]">
-                      ~/orbis/terminal
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(outputData);
-                        markCopied();
-                      }}
-                      className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
-                    >
-                      {copiedText ? "✓ Copied" : "⧉ Copy"}
-                    </button>
-                  </div>
-                  <pre className="whitespace-pre-wrap select-text">
-                    {outputData}
-                  </pre>
+              </>
+            }
+          >
+            {viewMode === "diagnostic" && (
+              <div className="bg-slate-900 text-emerald-400 p-4 rounded-xl font-mono text-[13px] flex-1 overflow-auto shadow-inner relative flex flex-col">
+                <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2 sticky top-0 bg-slate-900 z-10">
+                  <span className="text-slate-400 text-[11px]">
+                    ~/orbis/terminal
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(outputData);
+                      markCopied();
+                    }}
+                    className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
+                  >
+                    {copiedText ? "✓ Copied" : "⧉ Copy"}
+                  </button>
                 </div>
-              )}
+                <pre className="whitespace-pre-wrap select-text">
+                  {outputData}
+                </pre>
+              </div>
+            )}
 
-              {viewMode === "tree" && (
-                <div className="bg-[#0b1120] text-blue-300 p-4 rounded-xl font-mono text-[12px] flex-1 overflow-auto shadow-inner relative flex flex-col">
-                  <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2 sticky top-0 bg-[#0b1120] pt-1 z-10">
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                      </span>
-                      <span className="text-slate-300 font-bold uppercase tracking-wider text-[10px]">
-                        Live System Tree (Render Cloud)
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(liveTree);
-                        markCopied();
-                      }}
-                      className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
-                    >
-                      {copiedText ? "✓ Copied" : "⧉ Copy"}
-                    </button>
+            {viewMode === "tree" && (
+              <div className="bg-[#0b1120] text-blue-300 p-4 rounded-xl font-mono text-[12px] flex-1 overflow-auto shadow-inner relative flex flex-col">
+                <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2 sticky top-0 bg-[#0b1120] pt-1 z-10">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    <span className="text-slate-300 font-bold uppercase tracking-wider text-[10px]">
+                      Live System Tree (Render Cloud)
+                    </span>
                   </div>
-                  <pre className="whitespace-pre-wrap select-text leading-relaxed text-[11px] pb-4">
-                    {liveTree}
-                  </pre>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(liveTree);
+                      markCopied();
+                    }}
+                    className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
+                  >
+                    {copiedText ? "✓ Copied" : "⧉ Copy"}
+                  </button>
                 </div>
-              )}
-            </div>
-          </motion.div>
+                <pre className="whitespace-pre-wrap select-text leading-relaxed text-[11px] pb-4">
+                  {liveTree}
+                </pre>
+              </div>
+            )}
+          </AnimatedMonitorFrame>
         )}
       </AnimatePresence>
 
@@ -747,32 +743,23 @@ export function AdminDashboard() {
 
       <AnimatePresence>
         {activeCard && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
+          <AnimatedMonitorFrame
             className="fixed inset-0 bg-white z-50 flex flex-col"
-          >
-            <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center shadow-sm">
-              <h2 className="text-[16px] font-bold text-slate-800 capitalize flex items-center gap-2">
+            contentClassName="flex-1 p-5 overflow-y-auto bg-slate-50"
+            onClose={() => {
+              setActiveCard(null);
+              setActiveSubCard(null);
+            }}
+            titleClassName="text-[16px] font-bold text-slate-800 capitalize flex items-center gap-2"
+            title={
+              <>
                 <span className="text-xl">📊</span>{" "}
                 {activeCard.replace("_", " ")} Monitor
-              </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveCard(null);
-                  setActiveSubCard(null);
-                }}
-                className="bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold text-[12px] hover:bg-slate-200 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-            <div className="flex-1 p-5 overflow-y-auto bg-slate-50">
-              {renderPremiumModalContent()}
-            </div>
-          </motion.div>
+              </>
+            }
+          >
+            {renderPremiumModalContent()}
+          </AnimatedMonitorFrame>
         )}
       </AnimatePresence>
     </div>

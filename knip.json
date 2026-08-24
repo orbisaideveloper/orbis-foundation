@@ -1,5 +1,12 @@
 {
-  "entry": ["src/main.tsx", "orbis-server/server.cjs"],
+  "entry": ["src/main.tsx", "orbis-server/bridge.cjs"],
   "project": ["src/**/*.{ts,tsx}", "orbis-server/**/*.cjs"],
-  "ignore": ["node_modules/**", "dist/**"]
+  "ignore": [
+    "node_modules/**",
+    "dist/**",
+    "coverage/**",
+    "orbis-server/brain-runtime/**"
+  ],
+  "include": ["dependencies", "unlisted", "unresolved", "binaries"],
+  "treatConfigHintsAsErrors": true
 }

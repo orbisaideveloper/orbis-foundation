@@ -48,7 +48,22 @@ state or inactive dashboard controls.
 
 Capability contract: chat currently wires only allow-listed Termux system info
 and file read (the latter retains explicit approval), configured Tavily search,
-and the Ollama provider adapter. PDF writing/export has no implementation;
-XLSX/PDF attachment helpers only transform browser files and are disabled from
-chat transport; database table scripts are standalone maintenance utilities,
-not a secured searchable Brain capability. None are advertised by the registry.
+and the Ollama provider adapter. Chat attachments remain rejected in both UI
+and API.
+
+Task 3C adds a separate, verified-Admin Foundation capability API. Its four
+registered capabilities are allow-listed Foundation table search, bounded PDF
+text reading, bounded XLSX reading, and bounded XLSX creation. Each operation
+requires a short-lived one-time approval token bound to the exact Admin,
+capability, and input. File bytes are supplied only to that dedicated endpoint,
+processed transiently in memory, and never copied into chat context. Generated
+XLSX bytes are returned as a no-store attachment response for direct download;
+the server does not write output files or persist input/output in PostgreSQL,
+Supabase Storage, telemetry, or chat history.
+
+PDF creation is unavailable because no pinned PDF-writing implementation
+exists. PDF/XLSX conversion is not implemented because no deterministic
+structured conversion exists. Image inspection/editing is unavailable because
+there is no safe local implementation or approved provider transport. The
+status endpoint reports these states but the registry does not advertise them
+as callable capabilities.

@@ -28,6 +28,9 @@ describe("device-local normalized query cache", () => {
     expect(cacheKey("account-a", "কলকাতা", pending)).not.toBe(
       cacheKey("account-b", "কলকাতা", pending),
     );
+    expect(cacheKey("account-a", "কলকাতা", pending, "chat-a")).not.toBe(
+      cacheKey("account-a", "কলকাতা", pending, "chat-b"),
+    );
   });
 
   it("deduplicates concurrent identical requests and never serves expired volatile data", async () => {

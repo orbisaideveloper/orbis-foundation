@@ -29,4 +29,17 @@ describe("active Admin diagnostics callers", () => {
     );
     expect(helper).toContain("supabase.auth.getSession()");
   });
+
+  it("routes the Admin export actions through the authenticated helper", () => {
+    const source = readProjectFile(
+      "src/admin/dashboard/DiagnosticExportActions.tsx",
+    );
+    expect(source).toContain(
+      'const EXPORT_PATH = "/api/admin/diagnostic-export";',
+    );
+    expect(source).toContain(
+      "readAdminJson<Record<string, unknown>>(EXPORT_PATH)",
+    );
+    expect(source).not.toMatch(/fetch\(/);
+  });
 });

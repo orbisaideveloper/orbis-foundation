@@ -89,6 +89,17 @@ const BLOCKED_FILE_EXTENSIONS = new Set([
   ".tmp",
 ]);
 
+const BINARY_SIGNATURES = [
+  Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+  Buffer.from([0xff, 0xd8, 0xff]),
+  Buffer.from("GIF87a", "ascii"),
+  Buffer.from("GIF89a", "ascii"),
+  Buffer.from("%PDF-", "ascii"),
+  Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+  Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+  Buffer.from([0x7f, 0x45, 0x4c, 0x46]),
+];
+
 const RESTRICTED_SEGMENT_PATTERN =
   /(?:^|[-_.])(audit|audits|backup|backups|build|copy|coverage|credential|credentials|database|databases|dist|generated|key|keys|log|logs|node_modules|old|passwd|password|passwords|private[-_]?key|report|reports|secret|secrets|snapshot|snapshots|temp|temporary|tmp|token|tokens)(?:[-_.]|$)/i;
 
@@ -187,6 +198,7 @@ function isAllowedSourcePath(value) {
 function isSafeTextContent(content) {
   if (typeof content !== "string" || content.includes("\0")) return false;
   if (Buffer.byteLength(content, "utf8") > MAX_SOURCE_FILE_BYTES) return false;
+  if (hasBinarySignature(content)) return false;
   return (
     new TextDecoder("utf-8", { fatal: true }).decode(
       new TextEncoder().encode(content),
@@ -194,10 +206,30 @@ function isSafeTextContent(content) {
   );
 }
 
+function hasBinarySignature(content) {
+  if (typeof content === "string") {
+    if (
+      /^(?:\u0089PNG|\uFFFDPNG|GIF8[79]a|%PDF-|PK\u0003\u0004|\u007fELF)/.test(
+        content,
+      )
+    ) {
+      return true;
+    }
+    content = Buffer.from(content, "utf8");
+  }
+  if (!Buffer.isBuffer(content)) return true;
+  return BINARY_SIGNATURES.some(
+    (signature) =>
+      content.length >= signature.length &&
+      content.subarray(0, signature.length).equals(signature),
+  );
+}
+
 module.exports = {
   ALLOWED_ROOT_FILES,
   ALLOWED_SOURCE_ROOTS,
   MAX_SOURCE_FILE_BYTES,
+  hasBinarySignature,
   isAllowedSourceFileName,
   isAllowedDirectorySegments,
   isAllowedSourcePath,

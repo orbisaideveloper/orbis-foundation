@@ -335,30 +335,24 @@ export class ChatStorageManager implements ChatStoragePort {
     profileId: string,
     conversationId: string,
   ): Promise<PendingClarification | null> {
-    const transaction = this.ensureDb().transaction(
-      STORE_CLARIFICATIONS,
-      "readwrite",
-    );
     const key = `${profileId}:${conversationId}`;
-    const store = transaction.objectStore(STORE_CLARIFICATIONS);
-    const value = await requestResult<PendingClarification | undefined>(
-      store.get(key),
+    return this.getUnexpiredRecord<PendingClarification>(
+      STORE_CLARIFICATIONS,
+      key,
     );
-    if (!value || value.expiresAt <= Date.now()) {
-      if (value) store.delete(key);
-      await transactionDone(transaction);
-      return null;
-    }
-    await transactionDone(transaction);
-    return value;
   }
 
   async getCachedResponse(key: string): Promise<CachedChatResponse | null> {
-    const transaction = this.ensureDb().transaction(STORE_CACHE, "readwrite");
-    const store = transaction.objectStore(STORE_CACHE);
-    const value = await requestResult<CachedChatResponse | undefined>(
-      store.get(key),
-    );
+    return this.getUnexpiredRecord<CachedChatResponse>(STORE_CACHE, key);
+  }
+
+  private async getUnexpiredRecord<T extends { expiresAt: number }>(
+    storeName: string,
+    key: string,
+  ): Promise<T | null> {
+    const transaction = this.ensureDb().transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+    const value = await requestResult<T | undefined>(store.get(key));
     if (!value || value.expiresAt <= Date.now()) {
       if (value) store.delete(key);
       await transactionDone(transaction);

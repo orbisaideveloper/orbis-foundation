@@ -75,4 +75,37 @@ describe("authenticated learning endpoints", () => {
     expect(service.list).toHaveBeenCalledTimes(1);
     expect(service.delete).toHaveBeenCalledWith(id);
   });
+
+  it("preserves domain-specific error status and response shapes", async () => {
+    const storageError = new Error("LEARNING_STORAGE_UNAVAILABLE");
+    storageError.code = "LEARNING_STORAGE_UNAVAILABLE";
+    const service = {
+      preview: vi.fn(),
+      approve: vi.fn().mockRejectedValue(storageError),
+      list: vi.fn().mockRejectedValue(new Error("private provider detail")),
+      delete: vi.fn(),
+    };
+    const app = createApp(service);
+    const auth = { Authorization: "Bearer admin.token" };
+
+    const approve = await request(app)
+      .post("/learning/approve")
+      .set(auth)
+      .send({})
+      .expect(503);
+    expect(approve.body).toEqual({
+      error: {
+        category: "learning",
+        code: "LEARNING_STORAGE_UNAVAILABLE",
+      },
+    });
+
+    const records = await request(app)
+      .get("/learning/records")
+      .set(auth)
+      .expect(503);
+    expect(records.body).toEqual({
+      error: { category: "learning", code: "LEARNING_UNAVAILABLE" },
+    });
+  });
 });

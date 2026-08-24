@@ -1,8 +1,12 @@
 const os = require("node:os");
 const { execSync } = require("node:child_process");
+const crypto = require("node:crypto");
+const { getSystemStats } = require("./system-stats.cjs");
 
 const MAX_SYSTEM_LOGS = 100;
 const MAX_LOG_MESSAGE_LENGTH = 240;
+const AGGREGATION_WINDOW_MS = 5 * 60 * 1000;
+const CLEANUP_BATCH_SIZE = 250;
 const ALLOWED_LEVELS = new Set(["INFO", "WARN", "ERROR"]);
 const ALLOWED_SOURCES = new Set([
   "DATABASE",
@@ -10,6 +14,19 @@ const ALLOWED_SOURCES = new Set([
   "BRIDGE",
   "SYSTEM",
   "TELEMETRY",
+  "SECURITY",
+  "ADMIN_AUDIT",
+  "PROVIDER",
+  "BRAIN",
+  "SOURCE_EXPLORER",
+]);
+const RETENTION_DAYS = Object.freeze({ INFO: 7, OPERATIONAL: 30, AUDIT: 90 });
+const ALLOWED_OPERATIONAL_MESSAGES = new Set([
+  "Admin diagnostic export generated",
+  "Foundation database connection degraded",
+  "Foundation telemetry database ready",
+  "Foundation telemetry storage unavailable",
+  "Foundation worker ready",
 ]);
 const SENSITIVE_MESSAGE_PATTERNS = [
   /\bauthorization\s*:/i,
@@ -53,6 +70,7 @@ function sanitizeOperationalMessage(message) {
   if (
     normalized.length === 0 ||
     normalized.length > MAX_LOG_MESSAGE_LENGTH ||
+    !ALLOWED_OPERATIONAL_MESSAGES.has(normalized) ||
     SENSITIVE_MESSAGE_PATTERNS.some((pattern) => pattern.test(normalized))
   ) {
     return null;
@@ -68,12 +86,36 @@ function sanitizeTimestamp(timestamp) {
 
 function sanitizeDiagnosticLog(log) {
   if (!log || typeof log !== "object") return null;
-  const level = normalizeAllowListedValue(log.level, ALLOWED_LEVELS);
-  const source = normalizeAllowListedValue(log.source, ALLOWED_SOURCES);
+  const level = normalizeAllowListedValue(
+    log.severity || log.level,
+    ALLOWED_LEVELS,
+  );
+  const source = normalizeAllowListedValue(
+    log.category || log.source,
+    ALLOWED_SOURCES,
+  );
   const message = sanitizeOperationalMessage(log.message);
   const timestamp = sanitizeTimestamp(log.timestamp);
   if (!level || !source || !message || !timestamp) return null;
-  return { timestamp, level, source, message };
+  const count =
+    Number.isSafeInteger(log.count) && log.count > 0 ? log.count : 1;
+  const firstSeen = sanitizeTimestamp(
+    log.firstSeen instanceof Date ? log.firstSeen.toISOString() : log.firstSeen,
+  );
+  const lastSeen = sanitizeTimestamp(
+    log.lastSeen instanceof Date ? log.lastSeen.toISOString() : log.lastSeen,
+  );
+  return {
+    timestamp,
+    level,
+    source,
+    category: source,
+    severity: level,
+    count,
+    firstSeen: firstSeen || timestamp,
+    lastSeen: lastSeen || timestamp,
+    message,
+  };
 }
 
 function sanitizeDiagnosticLogs(logs) {
@@ -84,30 +126,117 @@ function sanitizeDiagnosticLogs(logs) {
     .filter(Boolean);
 }
 
-async function addSystemLog(level, source, message) {
+function retentionDaysFor(severity, category) {
+  if (category === "SECURITY" || category === "ADMIN_AUDIT") {
+    return RETENTION_DAYS.AUDIT;
+  }
+  return severity === "INFO" ? RETENTION_DAYS.INFO : RETENTION_DAYS.OPERATIONAL;
+}
+
+function eventFingerprint(severity, category, message, now) {
+  const window = Math.floor(now.getTime() / AGGREGATION_WINDOW_MS);
+  return crypto
+    .createHash("sha256")
+    .update(`${severity}\0${category}\0${message}\0${window}`)
+    .digest("hex");
+}
+
+function compactInMemory(entry) {
+  const existing = systemLogs.find(
+    (candidate) => candidate.fingerprint === entry.fingerprint,
+  );
+  if (existing) {
+    existing.count += 1;
+    existing.lastSeen = entry.lastSeen;
+    existing.timestamp = entry.timestamp;
+    return;
+  }
+  systemLogs.unshift(entry);
+  if (systemLogs.length > MAX_SYSTEM_LOGS) systemLogs.pop();
+}
+
+async function addSystemLog(level, source, message, options = {}) {
   try {
     const safeLevel = normalizeAllowListedValue(level, ALLOWED_LEVELS);
     const safeSource = normalizeAllowListedValue(source, ALLOWED_SOURCES);
     const safeMessage = sanitizeOperationalMessage(message);
     if (!safeLevel || !safeSource || !safeMessage) return false;
 
+    const now = options.now instanceof Date ? options.now : new Date();
+    const retentionDays = retentionDaysFor(safeLevel, safeSource);
+    const fingerprint = eventFingerprint(
+      safeLevel,
+      safeSource,
+      safeMessage,
+      now,
+    );
+    const timestamp = now.toISOString();
+    const retentionUntil = new Date(
+      now.getTime() + retentionDays * 24 * 60 * 60 * 1000,
+    );
     const entry = {
-      timestamp: new Date().toISOString(),
+      timestamp,
       level: safeLevel,
       source: safeSource,
+      category: safeSource,
+      severity: safeLevel,
       message: safeMessage,
+      fingerprint,
+      count: 1,
+      firstSeen: timestamp,
+      lastSeen: timestamp,
     };
-    systemLogs.unshift(entry);
-    if (systemLogs.length > MAX_SYSTEM_LOGS) systemLogs.pop();
+    compactInMemory(entry);
 
     try {
-      await dbClient?.foundationSystemLog?.create({ data: entry });
+      await dbClient?.foundationSystemLog?.upsert({
+        where: { fingerprint },
+        create: {
+          ...entry,
+          firstSeen: now,
+          lastSeen: now,
+          retentionUntil,
+        },
+        update: {
+          count: { increment: 1 },
+          timestamp,
+          lastSeen: now,
+          retentionUntil,
+        },
+      });
     } catch {
       // Operational telemetry is best-effort and must never affect the app.
     }
     return true;
   } catch {
     return false;
+  }
+}
+
+async function cleanupExpiredSystemLogs(options = {}) {
+  try {
+    if (!dbClient?.foundationSystemLog) return 0;
+    const now = options.now instanceof Date ? options.now : new Date();
+    const requestedBatch = Number(options.batchSize);
+    const batchSize = Number.isSafeInteger(requestedBatch)
+      ? Math.max(1, Math.min(requestedBatch, CLEANUP_BATCH_SIZE))
+      : CLEANUP_BATCH_SIZE;
+    const expired = await dbClient.foundationSystemLog.findMany({
+      where: { retentionUntil: { lt: now } },
+      orderBy: { retentionUntil: "asc" },
+      take: batchSize,
+      select: { id: true },
+    });
+    const ids = expired
+      .map((row) => row.id)
+      .filter((id) => typeof id === "string");
+    if (ids.length === 0) return 0;
+    const result = await dbClient.foundationSystemLog.deleteMany({
+      where: { id: { in: ids } },
+    });
+    return Math.min(Number(result?.count) || 0, ids.length);
+  } catch {
+    return 0;
   }
 }
 
@@ -119,16 +248,7 @@ function getDiagnostics() {
       .trim();
   } catch (e) {}
 
-  const totalRam = os.totalmem() / 1024 ** 3;
-  const freeRam = os.freemem() / 1024 ** 3;
-  const usedRam = totalRam - freeRam;
-  const cpus = os.cpus();
-  const load =
-    cpus.reduce((acc, cpu) => {
-      const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
-      const idle = cpu.times.idle;
-      return acc + (total - idle) / total;
-    }, 0) / cpus.length;
+  const stats = getSystemStats();
 
   return {
     timestamp: new Date().toISOString(),
@@ -148,17 +268,22 @@ function getDiagnostics() {
       { name: "Bridge API", status: "Online", type: "Express.js" },
     ],
     hardware: {
-      cpu: `${(load * 100).toFixed(2)}% Load`,
-      ram: `${usedRam.toFixed(2)}GB / ${totalRam.toFixed(2)}GB`,
-      arch: os.arch(),
+      cpu: `${stats.load}% Load`,
+      ram: `${stats.usedMem}GB / ${stats.totalMem}GB`,
+      arch: stats.arch,
     },
     logs: sanitizeDiagnosticLogs(systemLogs),
   };
 }
 
 module.exports = {
+  AGGREGATION_WINDOW_MS,
+  CLEANUP_BATCH_SIZE,
   MAX_LOG_MESSAGE_LENGTH,
+  RETENTION_DAYS,
   addSystemLog,
+  cleanupExpiredSystemLogs,
+  eventFingerprint,
   getDiagnostics,
   sanitizeDiagnosticLog,
   sanitizeDiagnosticLogs,

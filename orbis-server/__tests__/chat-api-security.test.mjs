@@ -42,6 +42,17 @@ describe("chat API validation and rate limiting", () => {
         },
       }),
     ).toEqual({ valid: true });
+    expect(
+      validateChatPayload({
+        messages: [{ role: "user", content: "কলকাতা" }],
+        pendingClarification: {
+          kind: "weather-location",
+          originalRequest: "আজকের ওয়েদারটা একটু বলবে আমাকে",
+          createdAt: 1,
+          expiresAt: 10 * 60 * 1000 + 2,
+        },
+      }),
+    ).toEqual({ valid: false, code: "CHAT_INPUT_INVALID" });
   });
 
   it("requires a verified Admin identity before applying the per-user limit", async () => {

@@ -1,6 +1,7 @@
 const CHAT_BODY_LIMIT_BYTES = 64 * 1024;
 const CHAT_RATE_WINDOW_MS = 60_000;
 const CHAT_RATE_MAX_REQUESTS = 20;
+const CHAT_CLARIFICATION_MAX_AGE_MS = 10 * 60 * 1000;
 
 function validateChatPayload(body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -55,6 +56,8 @@ function validateChatPayload(body) {
       pending.originalRequest.length > 16_000 ||
       !Number.isFinite(pending.createdAt) ||
       !Number.isFinite(pending.expiresAt) ||
+      pending.expiresAt <= pending.createdAt ||
+      pending.expiresAt - pending.createdAt > CHAT_CLARIFICATION_MAX_AGE_MS ||
       Object.keys(pending).some(
         (key) =>
           !["kind", "originalRequest", "createdAt", "expiresAt"].includes(key),

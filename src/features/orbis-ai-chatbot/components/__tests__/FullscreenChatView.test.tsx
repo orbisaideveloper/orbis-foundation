@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FullscreenChatView } from "../FullscreenChatView";
 
 const CHAT_PLACEHOLDER = "ORBIS-কে নির্দেশ দিন...";
+const WEATHER_CLARIFICATION_PROMPT = "কোন জায়গার weather?";
+const WEATHER_LOCATION_KIND = "weather-location";
+const BENGALI_WEATHER_REQUEST = "আজকের ওয়েদারটা একটু বলবে আমাকে";
 
 const mocks = vi.hoisted(() => ({
   consent: "declined" as "accepted" | "declined" | null,
@@ -121,7 +124,7 @@ describe("FullscreenChatView", () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        message: { role: "assistant", content: "কোন জায়গার weather?" },
+        message: { role: "assistant", content: WEATHER_CLARIFICATION_PROMPT },
         provider: {
           name: "ORBIS Brain (Web)",
           type: "WEB_SEARCH_CLARIFICATION",
@@ -129,7 +132,7 @@ describe("FullscreenChatView", () => {
         clarification: {
           state: "pending",
           pending: {
-            kind: "weather-location",
+            kind: WEATHER_LOCATION_KIND,
             originalRequest: "আজকের weather বলো",
             createdAt: 1,
             expiresAt: Date.now() + 60_000,
@@ -142,12 +145,62 @@ describe("FullscreenChatView", () => {
     await waitFor(() => expect(input).not.toBeDisabled());
     fireEvent.change(input, { target: { value: "আজকের weather বলো" } });
     fireEvent.click(screen.getByRole("button", { name: /send message/i }));
-    await screen.findByText("কোন জায়গার weather?");
+    await screen.findByText(WEATHER_CLARIFICATION_PROMPT);
     expect(mocks.setPending).toHaveBeenCalledWith(
       "account-1",
       "account-1:default-chat-v2",
-      expect.objectContaining({ kind: "weather-location" }),
+      expect.objectContaining({ kind: WEATHER_LOCATION_KIND }),
     );
+  });
+
+  it("returns session-local pending context on a Bengali location follow-up", async () => {
+    mocks.setPending.mockClear();
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          message: {
+            role: "assistant",
+            content: WEATHER_CLARIFICATION_PROMPT,
+          },
+          provider: {
+            name: "ORBIS Brain (Web)",
+            type: "WEB_SEARCH_CLARIFICATION",
+          },
+          clarification: {
+            state: "pending",
+            pending: {
+              kind: WEATHER_LOCATION_KIND,
+              originalRequest: BENGALI_WEATHER_REQUEST,
+              createdAt: Date.now(),
+              expiresAt: Date.now() + 60_000,
+            },
+          },
+        }),
+      } as Response)
+      .mockResolvedValueOnce(successfulResponse("কলকাতার weather result"));
+    render(<FullscreenChatView onClose={() => {}} />);
+    const input = await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
+
+    fireEvent.change(input, {
+      target: { value: BENGALI_WEATHER_REQUEST },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+    await screen.findByText(WEATHER_CLARIFICATION_PROMPT);
+    fireEvent.change(input, { target: { value: "কলকাতা" } });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+    await screen.findByText("কলকাতার weather result");
+
+    const followUpBody = JSON.parse(
+      String((fetchMock.mock.calls[1][1] as RequestInit).body),
+    );
+    expect(followUpBody.pendingClarification).toEqual(
+      expect.objectContaining({
+        kind: WEATHER_LOCATION_KIND,
+        originalRequest: BENGALI_WEATHER_REQUEST,
+      }),
+    );
+    expect(mocks.setPending).not.toHaveBeenCalled();
   });
 
   it("keeps the greeting and offers recovery when IndexedDB fails", async () => {

@@ -100,6 +100,7 @@ beforeAll(async () => {
   importTimeDatabaseQueryBaseline = fakeDatabaseQueries.length;
 
   app = express();
+  app.use(express.json());
   app.use("/api/system", sourceRouter);
 });
 
@@ -290,6 +291,22 @@ describe("source-api Source Explorer", () => {
         Buffer.from([0x65, 0x78, 0x00, 0x70, 0x6f, 0x72, 0x74]),
       );
       fs.writeFileSync(
+        path.join(fixtureDirectory, "renamed-png.ts"),
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      );
+      fs.mkdirSync(path.join(fixtureDirectory, "generated"));
+      fs.writeFileSync(
+        path.join(fixtureDirectory, "generated", "output.ts"),
+        visibleContent,
+        "utf8",
+      );
+      fs.mkdirSync(path.join(fixtureDirectory, "coverage"));
+      fs.writeFileSync(
+        path.join(fixtureDirectory, "coverage", "index.ts"),
+        visibleContent,
+        "utf8",
+      );
+      fs.writeFileSync(
         path.join(fixtureDirectory, "api-key.ts"),
         secretContent,
         "utf8",
@@ -308,6 +325,9 @@ describe("source-api Source Explorer", () => {
       expect(fixturePaths).toContain(`${fixtureName}/visible.ts`);
       expect(fixturePaths).not.toContain(`${fixtureName}/oversized.ts`);
       expect(fixturePaths).not.toContain(`${fixtureName}/binary.ts`);
+      expect(fixturePaths).not.toContain(`${fixtureName}/renamed-png.ts`);
+      expect(fixturePaths).not.toContain(`${fixtureName}/generated`);
+      expect(fixturePaths).not.toContain(`${fixtureName}/coverage`);
       expect(fixturePaths).not.toContain(`${fixtureName}/api-key.ts`);
       expect(fixturePaths).not.toContain(`${fixtureName}/linked.ts`);
 
@@ -323,6 +343,7 @@ describe("source-api Source Explorer", () => {
       for (const fileName of [
         "oversized.ts",
         "binary.ts",
+        "renamed-png.ts",
         "api-key.ts",
         "linked.ts",
       ]) {
@@ -348,6 +369,25 @@ describe("source-api Source Explorer", () => {
       .expect(200);
 
     expect(fakeDatabaseQueries).toHaveLength(importTimeDatabaseQueryBaseline);
+  });
+
+  it("rejects binary snapshot content before any FoundationTimeMachine insert", async () => {
+    const queryCount = fakeDatabaseQueries.length;
+    const response = await request(app)
+      .post("/api/system/time-machine/sync")
+      .send({
+        filePath: "src/renamed-png.ts",
+        content: "\u0089PNG\r\n\u001a\n",
+        commitId: "binary-fixture",
+        status: "SUCCESS",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      success: false,
+      message: "Valid source snapshot required",
+    });
+    expect(fakeDatabaseQueries).toHaveLength(queryCount);
   });
 
   it("keeps all error responses free of paths, URLs, stacks, and secrets", async () => {

@@ -18,6 +18,13 @@ function statusFor(code) {
   return 400;
 }
 
+function sendLearningError(res, error) {
+  const code = safeCode(error);
+  return res.status(statusFor(code)).json({
+    error: { category: "learning", code },
+  });
+}
+
 function createLearningRouter(options) {
   const router = express.Router();
   const service = options.service;
@@ -32,10 +39,7 @@ function createLearningRouter(options) {
       });
       return res.json(preview);
     } catch (error) {
-      const code = safeCode(error);
-      return res.status(statusFor(code)).json({
-        error: { category: "learning", code },
-      });
+      return sendLearningError(res, error);
     }
   });
 
@@ -48,10 +52,7 @@ function createLearningRouter(options) {
       });
       return res.status(result.duplicate ? 200 : 201).json(result);
     } catch (error) {
-      const code = safeCode(error);
-      return res.status(statusFor(code)).json({
-        error: { category: "learning", code },
-      });
+      return sendLearningError(res, error);
     }
   });
 
@@ -59,10 +60,7 @@ function createLearningRouter(options) {
     try {
       return res.json({ records: await service.list() });
     } catch (error) {
-      const code = safeCode(error);
-      return res.status(statusFor(code)).json({
-        error: { category: "learning", code },
-      });
+      return sendLearningError(res, error);
     }
   });
 
@@ -76,10 +74,7 @@ function createLearningRouter(options) {
       }
       return res.json(result);
     } catch (error) {
-      const code = safeCode(error);
-      return res.status(statusFor(code)).json({
-        error: { category: "learning", code },
-      });
+      return sendLearningError(res, error);
     }
   });
 

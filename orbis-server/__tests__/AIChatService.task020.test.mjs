@@ -74,14 +74,29 @@ describe("TASK-020 Phase 1-A: 'ওয়েদার' temporal keyword fix", () 
 });
 
 describe("TASK-020 Phase 1-B: realtime context safety (no silent default location)", () => {
-  it("regression: 'আজকের weather বলো' then 'কলকাতা' reconstructs and completes the weather search", async () => {
+  it("Task 3A regression: the reported Bengali request cannot treat generic words as a location", async () => {
+    const result = await AIChatService.processChatRequest([
+      { role: "user", content: "আজকের ওয়েদারটা একটু বলবে আমাকে" },
+    ]);
+
+    expect(tavilySearch.search).not.toHaveBeenCalled();
+    expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
+    expect(brainRuntime.brainRequestGateway.submit).not.toHaveBeenCalled();
+    expect(result.provider.type).toBe("WEB_SEARCH_CLARIFICATION");
+    expect(result.clarification.pending).toMatchObject({
+      kind: "weather-location",
+      originalRequest: "আজকের ওয়েদারটা একটু বলবে আমাকে",
+    });
+  });
+
+  it("Task 3A regression: 'কলকাতা' reconstructs the exact reported request and executes once", async () => {
     const first = await AIChatService.processChatRequest([
-      { role: "user", content: "আজকের weather বলো" },
+      { role: "user", content: "আজকের ওয়েদারটা একটু বলবে আমাকে" },
     ]);
     expect(first.provider.type).toBe("WEB_SEARCH_CLARIFICATION");
     expect(first.clarification.pending).toMatchObject({
       kind: "weather-location",
-      originalRequest: "আজকের weather বলো",
+      originalRequest: "আজকের ওয়েদারটা একটু বলবে আমাকে",
     });
 
     const second = await AIChatService.processChatRequest(
@@ -89,11 +104,29 @@ describe("TASK-020 Phase 1-B: realtime context safety (no silent default locatio
       { pendingClarification: first.clarification.pending },
     );
     expect(tavilySearch.search).toHaveBeenLastCalledWith(
-      "আজকের weather বলো কলকাতা",
+      "আজকের ওয়েদারটা একটু বলবে আমাকে কলকাতা",
       "bn",
     );
+    expect(tavilySearch.search).toHaveBeenCalledTimes(1);
     expect(second.provider.type).toBe("WEB_SEARCH");
     expect(second.message.content).toContain("[stub tavily answer]");
+  });
+
+  it("keeps waiting when a generic Bengali follow-up is not a location and bypasses every provider", async () => {
+    const first = await AIChatService.processChatRequest([
+      { role: "user", content: "আজকের ওয়েদারটা একটু বলবে আমাকে" },
+    ]);
+    const originalPending = first.clarification.pending;
+    const second = await AIChatService.processChatRequest(
+      [{ role: "user", content: "বলবে আমাকে" }],
+      { pendingClarification: originalPending },
+    );
+
+    expect(tavilySearch.search).not.toHaveBeenCalled();
+    expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
+    expect(brainRuntime.brainRequestGateway.submit).not.toHaveBeenCalled();
+    expect(second.provider.type).toBe("WEB_SEARCH_CLARIFICATION");
+    expect(second.clarification.pending).toEqual(originalPending);
   });
 
   it("a weather question with no location asks for clarification and does NOT call Tavily", async () => {

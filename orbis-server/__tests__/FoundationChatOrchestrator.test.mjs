@@ -13,16 +13,19 @@ const { chatCapabilityRegistry } = require("../ai/ChatCapabilityRegistry.cjs");
 const NOW = 1_800_000_000_000;
 
 describe("FoundationChatOrchestrator clarification continuity", () => {
-  it("manifests only wired Foundation, Tavily, and provider routes", () => {
+  it("manifests only wired chat routes and callable Admin data routes", () => {
     expect(chatCapabilityRegistry.list().map((item) => item.id)).toEqual([
       "termux.system.info",
       "termux.file.read",
       "web.search.tavily",
       "provider.chat",
+      "foundation.table.search",
+      "foundation.pdf.read",
+      "foundation.xlsx.read",
+      "foundation.xlsx.create",
     ]);
-    expect(JSON.stringify(chatCapabilityRegistry.list())).not.toMatch(
-      /pdf|xlsx|spreadsheet|attachment|image/i,
-    );
+    expect(chatCapabilityRegistry.get("foundation.pdf.create")).toBeNull();
+    expect(chatCapabilityRegistry.get("foundation.image.inspect")).toBeNull();
   });
   it("reconstructs the Bengali weather request from a short location answer", async () => {
     const execute = vi.fn().mockResolvedValue({
@@ -47,6 +50,7 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
       "আজকের weather বলো কলকাতা",
     );
     expect(execute.mock.calls[0][1].route).toBe("web-search");
+    expect(execute.mock.calls[0][1].weatherLocationResolved).toBe(true);
     expect(result.clarification.state).toBe("resolved");
   });
 
@@ -82,7 +86,7 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
       kind: "weather-location",
       originalRequest: "today weather",
       createdAt: NOW - 1_000,
-      expiresAt: NOW + MAX_CLARIFICATION_AGE_MS,
+      expiresAt: NOW - 1_000 + MAX_CLARIFICATION_AGE_MS,
     };
     const orchestrator = new FoundationChatOrchestrator(undefined, () => NOW);
     const execute = vi.fn().mockResolvedValue({
@@ -109,6 +113,7 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
       execute,
     );
     expect(replaced.clarification.state).toBe("replaced");
+    expect(execute.mock.calls.at(-1)[0].at(-1).content).toBe("latest news বলো");
 
     const expired = await orchestrator.orchestrate(
       {
@@ -119,6 +124,61 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
     );
     expect(expired.clarification.state).toBe("expired");
     expect(execute.mock.calls.at(-1)[0].at(-1).content).toBe("কলকাতা");
+  });
+
+  it("keeps an invalid Bengali weather follow-up bounded and never merges it", async () => {
+    const pending = {
+      kind: "weather-location",
+      originalRequest: "আজকের ওয়েদারটা একটু বলবে আমাকে",
+      createdAt: NOW - 1_000,
+      expiresAt: NOW + 60_000,
+    };
+    const execute = vi.fn().mockResolvedValue({
+      message: { role: "assistant", content: "কোন জায়গার weather?" },
+      provider: {
+        name: "ORBIS Brain (Web)",
+        type: "WEB_SEARCH_CLARIFICATION",
+      },
+    });
+    const orchestrator = new FoundationChatOrchestrator(undefined, () => NOW);
+    const result = await orchestrator.orchestrate(
+      {
+        messages: [{ role: "user", content: "বলবে আমাকে" }],
+        pendingClarification: pending,
+      },
+      execute,
+    );
+
+    expect(execute.mock.calls[0][0].at(-1).content).toBe(
+      pending.originalRequest,
+    );
+    expect(result.clarification).toEqual({ state: "pending", pending });
+  });
+
+  it("replaces pending weather only with a complete new weather request", async () => {
+    const execute = vi.fn().mockResolvedValue({
+      message: { role: "assistant", content: "result" },
+      provider: { name: "ORBIS Brain (Web)", type: "WEB_SEARCH" },
+    });
+    const orchestrator = new FoundationChatOrchestrator(undefined, () => NOW);
+    const result = await orchestrator.orchestrate(
+      {
+        messages: [{ role: "user", content: "শিলিগুড়ির weather টা বলো" }],
+        pendingClarification: {
+          kind: "weather-location",
+          originalRequest: "আজকের ওয়েদারটা একটু বলবে আমাকে",
+          createdAt: NOW - 1_000,
+          expiresAt: NOW + 60_000,
+        },
+      },
+      execute,
+    );
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls[0][0].at(-1).content).toBe(
+      "শিলিগুড়ির weather টা বলো",
+    );
+    expect(result.clarification.state).toBe("replaced");
   });
 
   it("records only deterministic route-selection duration", async () => {

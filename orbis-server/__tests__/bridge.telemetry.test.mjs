@@ -106,8 +106,27 @@ describe("TASK-017: bridge.cjs telemetry routes (absorbed from server.cjs)", () 
   it("rejects unauthenticated Foundation telemetry reads", async () => {
     const diagnostics = await request("GET", "/api/diagnostics");
     const metrics = await request("GET", "/api/metrics");
+    const diagnosticExport = await request(
+      "GET",
+      "/api/admin/diagnostic-export",
+    );
+    const brainRequest = await request("POST", "/api/brain/request", {
+      capabilityId: "termux.system.info",
+      input: {},
+    });
+    const capabilityStatus = await request(
+      "GET",
+      "/api/admin/capabilities/status",
+    );
     expect(diagnostics.status).toBe(401);
     expect(metrics.status).toBe(401);
+    expect(diagnosticExport.status).toBe(401);
+    expect(brainRequest.status).toBe(401);
+    expect(capabilityStatus.status).toBe(401);
+    expect(diagnosticExport.json).toEqual({
+      success: false,
+      message: "Authentication required",
+    });
   });
 
   it("GET /api/metrics remains available to a verified Admin with its existing data or fallback/error shape", async () => {
