@@ -4,6 +4,7 @@ import http from "node:http";
 let activeServer;
 let bridgeModule;
 let chatService;
+const originalDatabaseUrl = process.env.DATABASE_URL;
 
 const originalListen = http.Server.prototype.listen;
 
@@ -61,6 +62,8 @@ function request(method, path, body, requestHeaders = {}) {
 describe("TASK-017: bridge.cjs telemetry routes (absorbed from server.cjs)", () => {
   beforeAll(async () => {
     process.env.PORT = "0";
+    process.env.DATABASE_URL =
+      "postgresql://orbis:orbis@127.0.0.1:1/orbis";
 
     chatService = require("../ai/AIChatService.cjs");
 
@@ -101,6 +104,12 @@ describe("TASK-017: bridge.cjs telemetry routes (absorbed from server.cjs)", () 
       await new Promise((resolve) => activeServer.close(resolve));
     }
     vi.restoreAllMocks();
+
+    if (originalDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = originalDatabaseUrl;
+    }
   });
 
   it("rejects unauthenticated Foundation telemetry reads", async () => {
