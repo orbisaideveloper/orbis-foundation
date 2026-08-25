@@ -6,7 +6,7 @@
       "connected_files": [
         "src/admin/dashboard/AdminDashboard.tsx",
         "src/admin/registry/system-map.json",
-        "orbis-server/server.cjs"
+        "orbis-server/bridge.cjs"
       ],
       "last_updated": "Today",
       "active_errors": 0

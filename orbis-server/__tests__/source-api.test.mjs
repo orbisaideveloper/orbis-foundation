@@ -432,11 +432,6 @@ describe("source-api Source Explorer", () => {
       path.join(repositoryRoot, "orbis-server/bridge.cjs"),
       "utf8",
     );
-    const legacyServer = fs.readFileSync(
-      path.join(repositoryRoot, "orbis-server/server.cjs"),
-      "utf8",
-    );
-
     expect(source).not.toMatch(/require\(["']pg["']\)/);
     expect(source).not.toMatch(/\bnew\s+Pool\s*\(/);
     expect(source).not.toMatch(/\bpool\.query\s*\(/);
@@ -452,8 +447,8 @@ describe("source-api Source Explorer", () => {
       source.indexOf("router.use(requireAuthenticatedAdmin)"),
     ).toBeLessThan(source.indexOf('router.get("/access"'));
     expect(bridge).toContain('app.use("/api/system", sourceApi)');
-    expect(legacyServer).toContain(
-      'app.use("/api/system", require("./source-api.cjs"))',
-    );
+    expect(
+      fs.existsSync(path.join(repositoryRoot, "orbis-server/server.cjs")),
+    ).toBe(false);
   });
 });
