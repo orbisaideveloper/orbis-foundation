@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+
+REMOTE_NAME="$1"
+SHOULD_VERIFY=0
+
+while read local_ref local_sha remote_ref remote_sha
+do
+  if [ "$REMOTE_NAME" = "origin" ] &&
+     [ "$remote_ref" = "refs/heads/main" ]; then
+    SHOULD_VERIFY=1
+  fi
+done
+
+if [ "$SHOULD_VERIFY" -ne 1 ]; then
+  echo "ORBIS: not an origin/main push — full gate skipped."
+  exit 0
+fi
+
+echo
+echo "🔒 ORBIS origin/main push detected."
+echo "🔒 Running mandatory full verification..."
+echo
+
+bash scripts/orbis-prepush-verify.sh
