@@ -20,10 +20,9 @@ It owns every API route the frontend needs — chat (`/api/chat`), Brain
 (`dist/`).
 
 `orbis-server/server.cjs` and `orbis-server/master-gateway.cjs` are
-**retired**: nothing starts them anymore. They remain on disk only for
-historical reference (their logic was copied into `bridge.cjs`, not deleted)
-and are clearly marked `DEPRECATED` at the top of each file. Do not add a
-script that launches them again.
+**retired** and no longer exist as active backend entrypoints. Historical
+copies are kept under `docs/archive/retired-backend/` as backup-only text
+files. Do not restore either one as a startup path.
 
 ### Local / Termux development
 

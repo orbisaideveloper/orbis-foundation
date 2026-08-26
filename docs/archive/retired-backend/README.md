@@ -2,11 +2,16 @@
 
 BACKUP ONLY — NOT ACTIVE CODE — DO NOT IMPORT OR EXECUTE.
 
-`server.cjs.backup.txt` is the byte-for-byte archived copy of the retired
-`orbis-server/server.cjs`.
+Archived retired entrypoints:
 
-The canonical ORBIS backend is:
+- `server.cjs.backup.txt`
+- `master-gateway.cjs.backup.txt`
+
+Both files are retained only for historical/recovery reference.
+
+The ONE canonical ORBIS backend is:
 
 `orbis-server/bridge.cjs`
 
-This archive is retained only for historical/recovery reference.
+Do not restore either archived file as an active startup path unless the
+backend architecture is deliberately redesigned and fully re-verified.

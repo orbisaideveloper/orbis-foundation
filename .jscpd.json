@@ -1,13 +1,16 @@
 {
   "threshold": 0,
-  "reporters": ["console"],
+  "reporters": [
+    "console"
+  ],
   "ignore": [
     "node_modules/**",
     "dist/**",
     "build/**",
     "coverage/**",
     "**/*.test.*",
-    "src/archive/**"
+    "src/archive/**",
+    "**/generated/prisma/**"
   ],
   "absolute": false
 }
