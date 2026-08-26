@@ -48,6 +48,16 @@ const CAPABILITY_PHRASES = [
       "সিস্টেম ইনফরমেশন দেখাও",
       "আমার সিস্টেম তথ্য দেখাও",
       "আমার টার্মাক্স সিস্টেম ইনফরমেশন দেখাও",
+      // Hindi / Hinglish / Banglish voice variants
+      "सिस्टम की जानकारी",
+      "सिस्टम जानकारी दिखाओ",
+      "मेरा सिस्टम इन्फो दिखाओ",
+      "टर्मक्स सिस्टम इन्फो",
+      "system ki jankari",
+      "system ka info dikhao",
+      "mera system info dikhao",
+      "system tottho dekhao",
+      "amar system info dekhao",
     ],
   },
   {
@@ -75,6 +85,15 @@ const CAPABILITY_PHRASES = [
       "ফাইলের বিষয়বস্তু দেখাও",
       "লোকাল ফাইল পড়",
       "আমার ফাইল পড়ো",
+      // Hindi / Hinglish / Banglish voice variants
+      "फ़ाइल पढ़ो",
+      "फाइल पढ़ो",
+      "फाइल खोलो",
+      "फाइल का कंटेंट दिखाओ",
+      "file padho",
+      "file kholo",
+      "file ta poro",
+      "file dekhao",
     ],
     // TASK-019: deterministic English/Bengali name variants for each
     // allow-listed file, checked against the normalized message inside
@@ -87,8 +106,10 @@ const CAPABILITY_PHRASES = [
         "package json",
         "প্যাকেজ জেসন",
         "প্যাকেজ.জেসন",
+        "पैकेज जेसन",
+        "package jeson",
       ],
-      "README.md": ["readme.md", "readme", "রিডমি"],
+      "README.md": ["readme.md", "readme", "রিডমি", "रीडमी", "ridmi"],
     },
   },
 ];
@@ -157,8 +178,10 @@ const NON_LOCATION_WORDS = new Set([
 
 function normalize(text) {
   return String(text || "")
+    .normalize("NFKC")
     .toLowerCase()
     .trim()
+    .replace(/[.!?,;:।()[\]{}]/g, " ")
     .replace(/\s+/g, " ");
 }
 

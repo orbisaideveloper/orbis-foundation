@@ -28,6 +28,13 @@ import {
   isShareSupported,
   shareMessageContent,
 } from "../utils/messageActions";
+import {
+  getSpeechRecognitionConstructor,
+  readVoiceResult,
+  VOICE_LANGUAGES,
+  VoiceLanguage,
+  voiceErrorMessage,
+} from "../../voice/browserSpeech";
 
 interface FullscreenChatViewProps {
   onClose: () => void;
@@ -80,6 +87,8 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [voiceLanguage, setVoiceLanguage] = useState<VoiceLanguage>("bn-IN");
+  const [voiceStatus, setVoiceStatus] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
   const [storageState, setStorageState] = useState<StorageState>("loading");
   const [storageError, setStorageError] = useState<string | null>(null);
@@ -474,9 +483,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       recognitionRef.current.stop();
       return;
     }
-    const speechWindow = window as any;
-    const SpeechRecognition =
-      speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    const SpeechRecognition = getSpeechRecognitionConstructor();
     if (!SpeechRecognition) {
       setMessages((current) => [
         ...current,
@@ -490,30 +497,34 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       return;
     }
     const recognition = new SpeechRecognition();
-    recognition.lang = "bn-IN";
+    recognition.lang = voiceLanguage;
     recognition.continuous = false;
     recognition.interimResults = true;
+    recognition.maxAlternatives = 3;
     voiceTranscriptRef.current = "";
     recognition.onresult = (event: any) => {
-      let transcript = "";
-      for (let index = 0; index < event.results.length; index += 1) {
-        transcript += event.results[index][0].transcript;
+      const result = readVoiceResult(event);
+      voiceTranscriptRef.current = result.transcript;
+      setInputText(result.transcript);
+      if (result.transcript) {
+        setVoiceStatus("Transcript দেখে Send চাপুন।");
       }
-      voiceTranscriptRef.current = transcript.trim();
-      setInputText(transcript);
     };
     recognition.onend = () => {
       const transcript = voiceTranscriptRef.current.trim();
       setIsListening(false);
       recognitionRef.current = null;
-      if (transcript) void sendMessage(transcript);
+      if (!transcript)
+        setVoiceStatus("কোনো কথা শোনা যায়নি। আবার চেষ্টা করুন।");
     };
-    recognition.onerror = () => {
+    recognition.onerror = (event: any) => {
       setIsListening(false);
       recognitionRef.current = null;
+      setVoiceStatus(voiceErrorMessage(event?.error));
     };
     recognitionRef.current = recognition;
     setIsListening(true);
+    setVoiceStatus("শুনছি…");
     recognition.start();
   };
 
@@ -849,8 +860,9 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               type="button"
               onClick={toggleVoiceInput}
               disabled={isSending || !ready}
-              aria-label="Voice input"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+              aria-label={isListening ? "Stop voice input" : "Voice input"}
+              aria-pressed={isListening}
+              className={`flex h-10 w-10 items-center justify-center rounded-full text-emerald-600 ${isListening ? "animate-pulse bg-red-100" : "bg-emerald-50 hover:bg-emerald-100"}`}
             >
               {isListening ? (
                 <Square className="h-5 w-5" />
@@ -868,9 +880,35 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               <Send className="h-4 w-4" />
             </button>
           </div>
+          <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-0.5">
+            <select
+              aria-label="Voice language"
+              value={voiceLanguage}
+              disabled={isListening || isSending || !ready}
+              onChange={(event) =>
+                setVoiceLanguage(event.target.value as VoiceLanguage)
+              }
+              className="max-w-[48%] bg-transparent text-[11px] text-slate-500 outline-none"
+            >
+              {VOICE_LANGUAGES.map((language) => (
+                <option key={language.value} value={language.value}>
+                  {language.label}
+                </option>
+              ))}
+            </select>
+            {voiceStatus ? (
+              <span
+                role="status"
+                className="truncate text-right text-[11px] text-slate-500"
+              >
+                {voiceStatus}
+              </span>
+            ) : null}
+          </div>
         </div>
         <p className="mt-2 text-center text-[9px] leading-relaxed text-slate-400">
-          Attachments are not connected yet. ORBIS can make mistakes. Verify important information before taking action.
+          Attachments are not connected yet. ORBIS can make mistakes. Verify
+          important information before taking action.
         </p>
       </div>
 

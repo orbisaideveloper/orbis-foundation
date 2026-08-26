@@ -1,9 +1,15 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { act, render, screen, fireEvent } from "@testing-library/react";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import CommandBar from "../CommandBar";
 
+const VOICE_COMMAND = "আমার সিস্টেম তথ্য দেখাও";
+
 describe("CommandBar Component", () => {
+  afterEach(() => {
+    delete (window as any).SpeechRecognition;
+    delete (window as any).webkitSpeechRecognition;
+  });
   it("renders correctly and handles input submit", () => {
     const mockSubmit = vi.fn();
     render(<CommandBar onCommandSubmit={mockSubmit} />);
@@ -38,5 +44,44 @@ describe("CommandBar Component", () => {
     expect(window.alert).toHaveBeenCalledWith(
       "Browser doesn't support voice input.",
     );
+  });
+
+  it("previews a voice transcript instead of executing it immediately", () => {
+    const mockSubmit = vi.fn();
+    let recognition: any;
+    (window as any).SpeechRecognition = class {
+      lang = "";
+      continuous = true;
+      interimResults = false;
+      maxAlternatives = 1;
+      onstart?: () => void;
+      onend?: () => void;
+      onresult?: (event: any) => void;
+      onerror?: (event: any) => void;
+      constructor() {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        recognition = this;
+      }
+      start() {
+        this.onstart?.();
+      }
+    };
+
+    render(<CommandBar onCommandSubmit={mockSubmit} />);
+    fireEvent.click(screen.getByRole("button", { name: "Start voice input" }));
+    act(() => {
+      recognition.onresult({
+        results: [
+          Object.assign([{ transcript: VOICE_COMMAND, confidence: 0.9 }], {
+            isFinal: true,
+          }),
+        ],
+      });
+    });
+
+    expect(screen.getByDisplayValue(VOICE_COMMAND)).toBeInTheDocument();
+    expect(mockSubmit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("রান"));
+    expect(mockSubmit).toHaveBeenCalledWith(VOICE_COMMAND);
   });
 });

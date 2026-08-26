@@ -132,6 +132,39 @@ describe("TASK-013: AIChatService Brain capability routing (STEP 1.5)", () => {
     expect(result.message.content).toContain("প্ল্যাটফর্ম");
   });
 
+  it.each([
+    "मेरा सिस्टम इन्फो दिखाओ",
+    "system ka info dikhao",
+    "amar system info dekhao",
+  ])("routes multilingual voice-style system commands: %s", async (message) => {
+    const submitSpy = vi
+      .spyOn(brainRuntime.brainRequestGateway, "submit")
+      .mockResolvedValue({
+        success: true,
+        requestId: "voice-command-1",
+        runtime: "TermuxRuntime",
+        output: {
+          platform: "LINUX",
+          architecture: "arm64",
+          nodeVersion: "v22.0.0",
+          termuxVersion: "0.118.0",
+          cpuCores: 8,
+          memoryFreeGB: "1.00",
+          memoryTotalGB: "4.00",
+        },
+        durationMs: 5,
+      });
+
+    await AIChatService.processChatRequest([
+      { role: "user", content: message },
+    ]);
+
+    expect(submitSpy).toHaveBeenCalledWith({
+      capabilityId: "termux.system.info",
+      input: {},
+    });
+  });
+
   it("leaves normal conversation untouched (no Brain call for unmatched messages)", async () => {
     const submitSpy = vi.spyOn(brainRuntime.brainRequestGateway, "submit");
 

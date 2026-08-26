@@ -7,16 +7,20 @@ const CHAT_PLACEHOLDER = "ORBIS-কে নির্দেশ দিন...";
 const WEATHER_CLARIFICATION_PROMPT = "কোন জায়গার weather?";
 const WEATHER_LOCATION_KIND = "weather-location";
 const BENGALI_WEATHER_REQUEST = "আজকের ওয়েদারটা একটু বলবে আমাকে";
+const MOCK_AI_RESPONSE = "This is a mocked AI response.";
 
-const mocks = vi.hoisted(() => ({
-  consent: "declined" as "accepted" | "declined" | null,
-  getSession: vi.fn(),
-  init: vi.fn(),
-  saveMessage: vi.fn(),
-  setPending: vi.fn(),
-  learningConsent: "declined" as "accepted" | "declined" | null,
-  setLearningConsent: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  const declined = "declined" as const;
+  return {
+    consent: declined as "accepted" | "declined" | null,
+    getSession: vi.fn(),
+    init: vi.fn(),
+    saveMessage: vi.fn(),
+    setPending: vi.fn(),
+    learningConsent: declined as "accepted" | "declined" | null,
+    setLearningConsent: vi.fn(),
+  };
+});
 
 vi.mock("../../../../core/supabase/client", () => ({
   supabase: { auth: { getSession: mocks.getSession } },
@@ -50,7 +54,7 @@ vi.mock("../../storage/ChatStorageManager", () => ({
   },
 }));
 
-function successfulResponse(content = "This is a mocked AI response.") {
+function successfulResponse(content = MOCK_AI_RESPONSE) {
   return {
     ok: true,
     json: async () => ({
@@ -65,8 +69,7 @@ describe("FullscreenChatView", () => {
   let fetchMock: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    mocks.consent = "declined";
-    mocks.learningConsent = "declined";
+    mocks.consent = mocks.learningConsent = "declined";
     mocks.getSession.mockResolvedValue({
       data: {
         session: {
@@ -106,9 +109,7 @@ describe("FullscreenChatView", () => {
     fireEvent.change(input, { target: { value: "Hello ORBIS" } });
     fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
-    expect(
-      await screen.findByText("This is a mocked AI response."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(MOCK_AI_RESPONSE)).toBeInTheDocument();
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     expect(new Headers(request.headers).get("Authorization")).toBe(
       "Bearer test-access-token",
@@ -237,6 +238,46 @@ describe("FullscreenChatView", () => {
     expect(
       await screen.findByText("Voice Input support নেই।"),
     ).toBeInTheDocument();
+  });
+
+  it("previews multilingual voice text and waits for explicit Send", async () => {
+    let recognition: any;
+    (window as any).SpeechRecognition = class {
+      lang = "";
+      continuous = true;
+      interimResults = false;
+      maxAlternatives = 1;
+      onresult?: (event: any) => void;
+      onend?: () => void;
+      onerror?: (event: any) => void;
+      constructor() {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        recognition = this;
+      }
+      start() {}
+      stop() {
+        this.onend?.();
+      }
+    };
+
+    render(<FullscreenChatView onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Voice input" }));
+    recognition.onresult({
+      results: [
+        Object.assign(
+          [{ transcript: "ঘনশ্যামকে ১২০ liter देना है", confidence: 0.91 }],
+          { isFinal: true },
+        ),
+      ],
+    });
+    recognition.onend();
+
+    expect(
+      await screen.findByDisplayValue("ঘনশ্যামকে ১২০ liter देना है"),
+    ).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+    expect(await screen.findByText(MOCK_AI_RESPONSE)).toBeInTheDocument();
   });
 
   it("keeps learning consent separate and requires candidate review before approval", async () => {
