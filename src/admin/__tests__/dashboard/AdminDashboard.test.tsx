@@ -16,6 +16,8 @@ const RUNTIME_TITLE = "Runtime";
 const BRAIN_TITLE = "Brain";
 const DIAGNOSTICS_TITLE = "Diagnostics";
 const DATA_PRIVACY_TITLE = "Data & Privacy";
+const DIAGNOSTIC_TIMESTAMP = "2026-08-25T17:00:00.000Z";
+const FOUNDATION_WORKER_READY = "Foundation worker ready";
 
 vi.mock("../../auth/adminFetch", () => ({ readAdminJson: mocks.readAdminJson }));
 
@@ -35,7 +37,7 @@ vi.mock(
 
 const diagnosticExport = {
   schema: "orbis.foundation.admin-diagnostic.v1",
-  generatedAt: "2026-08-25T17:00:00.000Z",
+  generatedAt: DIAGNOSTIC_TIMESTAMP,
   redacted: true,
   version: { commit: "b3b632b", application: "1.0.0" },
   providers: [{ name: "Ollama", type: "local", state: "UNKNOWN" }],
@@ -78,13 +80,13 @@ const diagnosticExport = {
     },
     recentEvents: [
       {
-        timestamp: "2026-08-25T17:00:00.000Z",
+        timestamp: DIAGNOSTIC_TIMESTAMP,
         level: "INFO",
         source: "TELEMETRY",
         category: "TELEMETRY",
         severity: "INFO",
         count: 4,
-        message: "Foundation worker ready",
+        message: FOUNDATION_WORKER_READY,
       },
     ],
   },
@@ -124,6 +126,12 @@ async function goBackToDashboard(): Promise<void> {
 describe("AdminDashboard current control-center coverage", () => {
   beforeEach(() => {
     window.history.replaceState(null, "");
+
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
 
     vi.spyOn(window.history, "back").mockImplementation(() => {
       window.dispatchEvent(new PopStateEvent("popstate"));
@@ -220,8 +228,14 @@ describe("AdminDashboard current control-center coverage", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /Open dashboard menu/i }),
     );
-    expect(screen.getByRole("heading", { name: "More" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "More" })).toBeInTheDocument();
 
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "More" })).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Open dashboard menu/i }),
+    );
     fireEvent.click(screen.getByRole("button", { name: /Close menu/i }));
     expect(screen.queryByRole("heading", { name: "More" })).not.toBeInTheDocument();
   });
@@ -314,4 +328,55 @@ describe("AdminDashboard current control-center coverage", () => {
     });
     await expectDashboardHome();
   });
+  it("resets scroll when a detail view opens", async () => {
+    render(<AdminDashboard />);
+    await expectDashboardHome();
+
+    const runtimeHeading = screen.getByRole("heading", {
+      name: RUNTIME_TITLE,
+      level: 3,
+    });
+    fireEvent.click(runtimeHeading.closest("button")!);
+
+    expect(window.scrollTo).toHaveBeenCalledWith({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+    expect(
+      screen.getByRole("heading", { name: RUNTIME_TITLE }),
+    ).toBeInTheDocument();
+  });
+
+  it("copies all displayed diagnostics with one toolbar action", async () => {
+    render(<AdminDashboard />);
+    await expectDashboardHome();
+
+    const diagnosticsHeading = screen.getByRole("heading", {
+      name: DIAGNOSTICS_TITLE,
+      level: 3,
+    });
+    fireEvent.click(diagnosticsHeading.closest("button")!);
+
+    expect(
+      await screen.findByText(FOUNDATION_WORKER_READY),
+    ).toBeInTheDocument();
+
+    const copyAll = screen.getByRole("button", { name: /Copy all/i });
+    expect(copyAll).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /^Copy$/i })).not.toBeInTheDocument();
+
+    fireEvent.click(copyAll);
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
+    });
+
+    const payload = vi.mocked(navigator.clipboard.writeText).mock.calls[0][0];
+    expect(payload).toContain("[INFO] TELEMETRY");
+    expect(payload).toContain(FOUNDATION_WORKER_READY);
+    expect(payload).toContain(DIAGNOSTIC_TIMESTAMP);
+    expect(payload).toContain("count 4");
+  });
+
 });

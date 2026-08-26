@@ -86,6 +86,12 @@ function jsonResponse(data: unknown) {
 
 describe("AdminDashboard", () => {
   beforeEach(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+
     mocks.readAdminJson.mockReset();
     mocks.readAdminJson.mockImplementation(async (path: string) => {
       if (path === "/api/admin/diagnostic-export") return diagnosticExport;
@@ -195,6 +201,30 @@ describe("AdminDashboard", () => {
       screen.getByText(/Chat interaction is disabled here/i),
     ).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("uses safe mobile spans and one-column detail metrics before sm", async () => {
+    render(<AdminDashboard />);
+    await screen.findByText(/Your ORBIS\. Visible\./i);
+
+    const chatCard = screen
+      .getByRole("heading", { name: "ORBIS Chat", level: 3 })
+      .closest("button");
+    const marketCard = screen
+      .getByRole("heading", { name: "Market Intelligence", level: 3 })
+      .closest("button");
+
+    expect(chatCard).toHaveClass("col-span-4", "md:col-span-2");
+    expect(chatCard).not.toHaveClass("col-span-3");
+    expect(marketCard).toHaveClass("col-span-4", "md:col-span-2");
+    expect(marketCard).not.toHaveClass("col-span-1");
+
+    fireEvent.click(marketCard!);
+    const liveFeedTile = screen.getByText("Live feed").closest("div");
+    expect(liveFeedTile?.parentElement).toHaveClass(
+      "grid-cols-1",
+      "sm:grid-cols-2",
+    );
   });
 
 });

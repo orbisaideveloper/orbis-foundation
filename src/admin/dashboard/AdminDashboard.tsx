@@ -40,6 +40,7 @@ type Availability = "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN";
 const ACTIVE_NAV_STATE_CLASS =
   "bg-gradient-to-br from-emerald-100 to-orange-50 text-slate-700";
 const INACTIVE_NAV_STATE_CLASS = "text-slate-400";
+const DETAIL_GRID_CLASS = "grid grid-cols-1 gap-2.5 sm:grid-cols-2";
 
 interface SystemStats {
   cpuCores: number;
@@ -253,7 +254,7 @@ const StatusPill: React.FC<{ state: Availability; label?: string }> = ({
   label,
 }) => (
   <span
-    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusClasses(state)}`}
+    className={`inline-flex max-w-full min-w-0 items-center gap-1.5 whitespace-normal rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusClasses(state)}`}
   >
     <span
       className={`h-1.5 w-1.5 rounded-full ${
@@ -429,6 +430,7 @@ export function AdminDashboard({
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<string>("Not refreshed");
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
 
   const refreshSystemStats = useCallback(async () => {
     try {
@@ -492,6 +494,10 @@ export function AdminDashboard({
     }
   }, [previewMode]);
 
+  const scrollToTop = useCallback(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
   useEffect(() => {
     void refreshSummary();
   }, [refreshSummary]);
@@ -510,21 +516,46 @@ export function AdminDashboard({
       setChatOpen(false);
       setMoreOpen(false);
       setActiveView("overview");
+      scrollToTop();
     };
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
-  }, []);
+  }, [scrollToTop]);
+
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMoreOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [moreOpen]);
 
   const openView = (view: DashboardView) => {
     setMoreOpen(false);
+    setChatOpen(false);
     setActiveView(view);
     window.history.pushState({ orbisDashboardView: view }, "");
+    scrollToTop();
+  };
+
+  const openOverview = () => {
+    setMoreOpen(false);
+    setChatOpen(false);
+    setActiveView("overview");
+    window.history.replaceState(null, "");
+    scrollToTop();
   };
 
   const openChat = () => {
     setMoreOpen(false);
     setChatOpen(true);
     window.history.pushState({ orbisDashboardView: "chat" }, "");
+    scrollToTop();
   };
 
   const closeOverlay = () => {
@@ -571,6 +602,28 @@ export function AdminDashboard({
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  };
+
+  const copyDiagnosticEvents = async (events: DiagnosticEvent[]) => {
+    const displayedEvents = events.slice(0, 20);
+    if (displayedEvents.length === 0) return;
+
+    const payload = displayedEvents
+      .map(
+        (event) =>
+          `[${event.severity || event.level}] ${event.source}\n` +
+          `${event.message}\n` +
+          `${event.timestamp} · count ${event.count || 1}`,
+      )
+      .join("\n\n");
+
+    try {
+      await navigator.clipboard.writeText(payload);
+      setDiagnosticsCopied(true);
+      window.setTimeout(() => setDiagnosticsCopied(false), 1200);
+    } catch {
+      setDiagnosticsCopied(false);
+    }
   };
 
   const summaryHeader = (
@@ -635,7 +688,7 @@ export function AdminDashboard({
           subtitle="One conversational entry to Brain and enabled capabilities."
           icon={<MessageCircle className="h-5 w-5" />}
           onClick={openChat}
-          className="col-span-3 row-span-2 min-h-[244px] bg-gradient-to-br from-emerald-50/90 via-white to-orange-50/80 md:col-span-2"
+          className="col-span-4 bg-gradient-to-br from-emerald-50/90 via-white to-orange-50/80 md:col-span-2 md:row-span-2 md:min-h-[244px]"
           status={<StatusPill state={providerHealth} label={activeProvider?.name || "Provider not checked"} />}
         />
         <HomeCard
@@ -644,7 +697,7 @@ export function AdminDashboard({
           subtitle="Reserved for the verified market engine and live market feed."
           icon={<TrendingUp className="h-5 w-5" />}
           onClick={() => openView("market")}
-          className="col-span-1 row-span-2 min-h-[244px] md:col-span-2"
+          className="col-span-4 md:col-span-2 md:row-span-2 md:min-h-[244px]"
           status={<StatusPill state="UNAVAILABLE" label="Not connected" />}
         />
         <HomeCard
@@ -716,7 +769,7 @@ export function AdminDashboard({
           </div>
         </div>
       </section>
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className={DETAIL_GRID_CLASS}>
         <MetricTile label="Live feed" value="Unavailable" source="No verified market source" />
         <MetricTile label="Paper trading" value="Not implemented" source="Market module pending" />
         <MetricTile label="Research engine" value="Not implemented" source="Market module pending" />
@@ -727,7 +780,7 @@ export function AdminDashboard({
 
   const renderModules = () => (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className={DETAIL_GRID_CLASS}>
         <MetricTile label="Registered capabilities" value={diagnosticExport?.capabilities.length ?? "Unavailable"} source="Admin diagnostic capability registry" />
         <MetricTile label="Callable + configured" value={configuredCapabilities.length} source="Admin diagnostic capability registry" />
         <MetricTile label="Development registry" value="Not wired" source="No live module registry endpoint" />
@@ -753,7 +806,7 @@ export function AdminDashboard({
 
   const renderRuntime = () => (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className={DETAIL_GRID_CLASS}>
         <MetricTile label="Platform" value={systemStats.platform} source="/api/system-stats" />
         <MetricTile label="Architecture" value={systemStats.arch} source="/api/system-stats" />
         <MetricTile label="CPU cores" value={systemStats.cpuCores} source="/api/system-stats" />
@@ -774,7 +827,7 @@ export function AdminDashboard({
 
   const renderBrain = () => (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className={DETAIL_GRID_CLASS}>
         <MetricTile label="Brain route" value={diagnosticExport?.brain.route || "Unavailable"} source="Admin diagnostic export" />
         <MetricTile label="Gateway artifact" value={diagnosticExport?.brain.gatewayArtifact || "Unavailable"} source="Admin diagnostic export" />
         <MetricTile label="Active provider" value={activeProvider?.name || "Unavailable"} source="/api/ai/providers/status" />
@@ -798,30 +851,46 @@ export function AdminDashboard({
 
   const renderDiagnostics = () => {
     const events = diagnostics?.logs || diagnosticExport?.telemetry.recentEvents || [];
+    const displayedEvents = events.slice(0, 20);
     return (
       <div className="space-y-3">
         {detailError && <p role="alert" className="rounded-xl border border-orange-100 bg-orange-50 p-3 text-xs text-orange-700">{detailError}</p>}
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className={DETAIL_GRID_CLASS}>
           <MetricTile label="Telemetry" value={diagnosticExport?.telemetry.status || "Unavailable"} source="Admin diagnostic export" />
           <MetricTile label="Recent records" value={diagnosticExport?.telemetry.summary.records ?? "Unavailable"} source="Redacted telemetry" />
           <MetricTile label="Occurrences" value={diagnosticExport?.telemetry.summary.occurrences ?? "Unavailable"} source="Aggregated redacted events" />
           <MetricTile label="Git status" value={diagnostics?.gitStatus || diagnosticExport?.version.commit || "Unavailable"} source="Live diagnostics / diagnostic export" />
         </div>
         <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-black text-slate-900">Redacted operational events</h3>
-            <button type="button" onClick={downloadCurrentReport} disabled={previewMode || !diagnosticExport} className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-700 disabled:opacity-40">
-              <Download className="mr-1 inline h-3.5 w-3.5" /> Export
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="min-w-0 flex-1 text-sm font-black text-slate-900">Redacted operational events</h3>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void copyDiagnosticEvents(events)}
+                disabled={displayedEvents.length === 0}
+                className="min-h-[40px] rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-[10px] font-bold text-emerald-700 disabled:opacity-40"
+              >
+                <Copy className="mr-1 inline h-3.5 w-3.5" />
+                {diagnosticsCopied ? "Copied" : "Copy all"}
+              </button>
+              <button
+                type="button"
+                onClick={downloadCurrentReport}
+                disabled={previewMode || !diagnosticExport}
+                className="min-h-[40px] rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-700 disabled:opacity-40"
+              >
+                <Download className="mr-1 inline h-3.5 w-3.5" /> Export
+              </button>
+            </div>
           </div>
           <div className="mt-2">
-            {events.slice(0, 20).map((event) => (
+            {displayedEvents.map((event) => (
               <DetailRow
                 key={`${event.timestamp}-${event.source}-${event.message}`}
                 label={`${event.severity || event.level} · ${event.source}`}
                 value={event.message}
                 source={`${event.timestamp} · count ${event.count || 1}`}
-                copyable
               />
             ))}
             {events.length === 0 && <p className="py-4 text-xs text-slate-400">No redacted operational events are available.</p>}
@@ -833,7 +902,7 @@ export function AdminDashboard({
 
   const renderData = () => (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className={DETAIL_GRID_CLASS}>
         <MetricTile label="Database" value={diagnosticExport?.database.state || "Unavailable"} source="Admin diagnostic export" />
         <MetricTile label="Redaction" value={diagnosticExport?.redacted ? "Enabled" : "Unavailable"} source="Admin diagnostic schema" />
         <MetricTile label="Telemetry" value={diagnosticExport?.telemetry.status || "Unavailable"} source="Admin diagnostic export" />
@@ -864,7 +933,7 @@ export function AdminDashboard({
 
   const renderReleases = () => (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className={DETAIL_GRID_CLASS}>
         <MetricTile label="Application" value={diagnosticExport ? `v${diagnosticExport.version.application}` : "Unavailable"} source="package.json via diagnostic export" />
         <MetricTile label="Commit" value={diagnosticExport?.version.commit || "Unavailable"} source="git rev-parse via diagnostic export" />
         <MetricTile label="Migrations" value={diagnosticExport?.migrations.length ?? "Unavailable"} source="Local migration directory" />
@@ -936,26 +1005,38 @@ export function AdminDashboard({
       </main>
 
       <nav className="fixed bottom-[max(0.45rem,env(safe-area-inset-bottom))] left-1/2 z-40 grid h-[62px] w-[94%] max-w-[590px] -translate-x-1/2 grid-cols-5 rounded-[22px] border border-emerald-100 bg-white/90 p-1.5 shadow-[0_14px_38px_rgba(50,90,58,0.14)] backdrop-blur-2xl md:left-5 md:top-24 md:h-[310px] md:w-[124px] md:translate-x-0 md:grid-cols-1">
-        <button type="button" onClick={() => setActiveView("overview")} className={`rounded-2xl text-[9px] font-semibold ${activeView === "overview" && !chatOpen ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Home className="mx-auto mb-1 h-5 w-5" />Home</button>
-        <button type="button" onClick={openChat} className="rounded-2xl text-[9px] font-semibold text-slate-400"><MessageCircle className="mx-auto mb-1 h-5 w-5" />Chat</button>
-        <button type="button" onClick={() => openView("market")} className={`rounded-2xl text-[9px] font-semibold ${activeView === "market" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><TrendingUp className="mx-auto mb-1 h-5 w-5" />Market</button>
-        <button type="button" onClick={() => openView("modules")} className={`rounded-2xl text-[9px] font-semibold ${activeView === "modules" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Boxes className="mx-auto mb-1 h-5 w-5" />Modules</button>
-        <button type="button" onClick={() => setMoreOpen(true)} className="rounded-2xl text-[9px] font-semibold text-slate-400"><MoreHorizontal className="mx-auto mb-1 h-5 w-5" />More</button>
+        <button type="button" onClick={openOverview} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "overview" && !chatOpen ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Home className="mx-auto mb-1 h-5 w-5" />Home</button>
+        <button type="button" onClick={openChat} className="min-h-[44px] rounded-2xl text-[10px] font-semibold text-slate-400 md:text-[9px]"><MessageCircle className="mx-auto mb-1 h-5 w-5" />Chat</button>
+        <button type="button" onClick={() => openView("market")} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "market" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><TrendingUp className="mx-auto mb-1 h-5 w-5" />Market</button>
+        <button type="button" onClick={() => openView("modules")} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "modules" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Boxes className="mx-auto mb-1 h-5 w-5" />Modules</button>
+        <button type="button" onClick={() => setMoreOpen(true)} className="min-h-[44px] rounded-2xl text-[10px] font-semibold text-slate-400 md:text-[9px]"><MoreHorizontal className="mx-auto mb-1 h-5 w-5" />More</button>
       </nav>
 
       {moreOpen && (
-        <div className="fixed inset-0 z-[70] flex items-end">
+        <div className="fixed inset-0 z-[70] flex items-end md:justify-center">
           <button
             type="button"
             aria-label="Close More menu"
             onClick={() => setMoreOpen(false)}
             className="absolute inset-0 cursor-default bg-slate-900/10 backdrop-blur-[2px]"
           />
-          <section className="relative z-10 w-full rounded-t-[28px] border border-emerald-100 bg-[#fffef9] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="orbis-more-title"
+            className="relative z-10 max-h-[88dvh] w-full overflow-y-auto rounded-t-[28px] border border-emerald-100 bg-[#fffef9] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:mb-5 md:max-w-lg md:rounded-[28px]"
+          >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-black text-slate-900">More</h2>
-              <button type="button" onClick={() => setMoreOpen(false)} aria-label="Close menu" className="rounded-xl p-2 text-slate-400"><X className="h-5 w-5" /></button>
+            <div className="sticky top-0 z-10 flex items-center justify-between bg-[#fffef9] pb-1">
+              <h2 id="orbis-more-title" className="text-sm font-black text-slate-900">More</h2>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                aria-label="Close menu"
+                className="min-h-[44px] min-w-[44px] rounded-xl p-2 text-slate-400"
+              >
+                <X className="mx-auto h-5 w-5" />
+              </button>
             </div>
             <div className="mt-2 divide-y divide-emerald-50">
               {[
