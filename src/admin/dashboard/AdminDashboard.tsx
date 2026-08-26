@@ -368,7 +368,51 @@ const HomeCard: React.FC<HomeCardProps> = ({
   </button>
 );
 
-export function AdminDashboard() {
+interface AdminDashboardProps {
+  previewMode?: boolean;
+}
+
+const ReadOnlyChatPreview: React.FC<{ onClose: () => void }> = ({ onClose }) => (
+  <div
+    role="dialog"
+    aria-modal="true"
+    aria-label="ORBIS Assistant read-only preview"
+    className="fixed inset-0 z-[90] flex flex-col bg-[linear-gradient(180deg,#fffef9_0%,#f6fbf3_100%)] text-slate-800"
+  >
+    <header className="flex items-center gap-3 border-b border-emerald-100 bg-white/90 px-4 py-3 backdrop-blur-xl">
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Back to dashboard"
+        className="rounded-2xl border border-emerald-100 bg-white p-2.5 text-slate-600"
+      >
+        <ArrowLeft className="h-5 w-5" />
+      </button>
+      <div className="min-w-0">
+        <h2 className="text-sm font-black text-slate-900">ORBIS Assistant</h2>
+        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-700">
+          Read-only preview
+        </p>
+      </div>
+    </header>
+    <main className="flex flex-1 items-center justify-center p-5">
+      <section className="w-full max-w-md rounded-[24px] border border-emerald-100 bg-white/90 p-5 text-center shadow-sm">
+        <MessageCircle className="mx-auto h-8 w-8 text-emerald-600" />
+        <h3 className="mt-3 text-base font-black text-slate-900">
+          Chat interaction is disabled here
+        </h3>
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+          This permanent preview is for visual inspection only. It does not
+          send chat requests, approvals, learning actions, or Admin writes.
+        </p>
+      </section>
+    </main>
+  </div>
+);
+
+export function AdminDashboard({
+  previewMode = false,
+}: AdminDashboardProps) {
   const [activeView, setActiveView] = useState<DashboardView>("overview");
   const [chatOpen, setChatOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -401,7 +445,9 @@ export function AdminDashboard() {
     const results = await Promise.allSettled([
       readPublicJson<SystemStats>("/api/system-stats"),
       readPublicJson<ProviderStatus>("/api/ai/providers/status"),
-      readAdminJson<DiagnosticExport>("/api/admin/diagnostic-export"),
+      previewMode
+        ? Promise.resolve<DiagnosticExport | null>(null)
+        : readAdminJson<DiagnosticExport>("/api/admin/diagnostic-export"),
       readPublicJson<ObservatoryResponse>("/api/termux-observatory"),
     ]);
 
@@ -410,7 +456,7 @@ export function AdminDashboard() {
     if (providersResult.status === "fulfilled") {
       setProviderStatus(providersResult.value);
     }
-    if (exportResult.status === "fulfilled") {
+    if (exportResult.status === "fulfilled" && exportResult.value) {
       setDiagnosticExport(exportResult.value);
     }
     if (observatoryResult.status === "fulfilled") {
@@ -428,17 +474,23 @@ export function AdminDashboard() {
 
     setLastRefresh(new Date().toLocaleTimeString());
     setSummaryLoading(false);
-  }, []);
+  }, [previewMode]);
 
   const refreshDiagnostics = useCallback(async () => {
     setDetailError(null);
+
+    if (previewMode) {
+      setDiagnostics(null);
+      return;
+    }
+
     try {
       setDiagnostics(await readAdminJson<DiagnosticsResponse>("/api/diagnostics"));
     } catch {
       setDiagnostics(null);
       setDetailError("Admin diagnostics are unavailable.");
     }
-  }, []);
+  }, [previewMode]);
 
   useEffect(() => {
     void refreshSummary();
@@ -507,7 +559,7 @@ export function AdminDashboard() {
   );
 
   const downloadCurrentReport = () => {
-    if (!diagnosticExport) return;
+    if (previewMode || !diagnosticExport) return;
     const blob = new Blob([JSON.stringify(diagnosticExport, null, 2)], {
       type: "application/json",
     });
@@ -523,6 +575,19 @@ export function AdminDashboard() {
 
   const summaryHeader = (
     <section className="rounded-[24px] border border-emerald-100/70 bg-gradient-to-br from-white via-emerald-50/65 to-orange-50/70 p-5 shadow-[0_16px_40px_rgba(50,90,58,0.08)]">
+      {previewMode && (
+        <div
+          role="status"
+          className="mb-4 flex items-start gap-2 rounded-2xl border border-orange-100 bg-orange-50/80 px-3 py-2.5 text-[10px] font-semibold leading-relaxed text-orange-800"
+        >
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+          <span>
+            Public read-only preview · authenticated Admin/private data is
+            hidden, diagnostic export is disabled, and chat cannot send
+            requests.
+          </span>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-700/75">
@@ -745,7 +810,7 @@ export function AdminDashboard() {
         <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-black text-slate-900">Redacted operational events</h3>
-            <button type="button" onClick={downloadCurrentReport} disabled={!diagnosticExport} className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-700 disabled:opacity-40">
+            <button type="button" onClick={downloadCurrentReport} disabled={previewMode || !diagnosticExport} className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-700 disabled:opacity-40">
               <Download className="mr-1 inline h-3.5 w-3.5" /> Export
             </button>
           </div>
@@ -919,7 +984,12 @@ export function AdminDashboard() {
         </div>
       )}
 
-      {chatOpen && <FullscreenChatView onClose={closeOverlay} />}
+      {chatOpen &&
+        (previewMode ? (
+          <ReadOnlyChatPreview onClose={closeOverlay} />
+        ) : (
+          <FullscreenChatView onClose={closeOverlay} />
+        ))}
     </div>
   );
 }

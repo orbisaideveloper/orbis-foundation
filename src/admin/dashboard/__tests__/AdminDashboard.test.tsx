@@ -171,4 +171,30 @@ describe("AdminDashboard", () => {
       screen.getByRole("dialog", { name: /ORBIS Assistant test view/i }),
     ).toBeInTheDocument();
   });
+  it("keeps the permanent public preview read-only", async () => {
+    render(<AdminDashboard previewMode />);
+
+    expect(
+      screen.getByText(/Public read-only preview/i),
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText(/System ONLINE/i)).toBeInTheDocument();
+    });
+
+    expect(mocks.readAdminJson).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Chat$/i }));
+
+    expect(
+      screen.getByRole("dialog", {
+        name: /ORBIS Assistant read-only preview/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Chat interaction is disabled here/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
 });

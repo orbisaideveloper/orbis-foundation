@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import App from "./App";
 import "@testing-library/jest-dom";
@@ -26,10 +26,27 @@ if (typeof global !== "undefined") {
 // -----------------------------------
 
 describe("App Component", () => {
+  afterEach(() => {
+    window.history.replaceState({}, "", "/");
+  });
+
   it("renders the application correctly", async () => {
     render(<App />);
     expect(
       (await screen.findAllByText(/Orbis Foundation/i))[0],
     ).toBeInTheDocument();
   });
+  it("serves the permanent read-only dashboard preview at /preview", async () => {
+    window.history.replaceState({}, "", "/preview");
+
+    render(<App />);
+
+    expect(
+      (await screen.findAllByText(/read-only preview/i)).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("button", { name: /^Sign in$/i }),
+    ).not.toBeInTheDocument();
+  });
+
 });

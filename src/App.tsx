@@ -1,5 +1,6 @@
 import React from "react";
 import AdminViews from "./admin/AdminViews";
+import AdminDashboard from "./admin/dashboard/AdminDashboard";
 import { AdminCoreProvider } from "./admin/providers/AdminCoreProvider";
 import { AuthGuard } from "./admin/auth/AuthGuard";
 import { useAuth } from "./admin/auth/AuthProvider";
@@ -168,12 +169,54 @@ export function AuthenticatedAdminApp() {
   );
 }
 
+
+function ReadOnlyPreviewApp() {
+  React.useEffect(() => {
+    const previousTitle = document.title;
+    document.title = "ORBIS Foundation — Read-only Preview";
+
+    const existingRobots = document.querySelector<HTMLMetaElement>(
+      'meta[name="robots"]',
+    );
+    const robots = existingRobots ?? document.createElement("meta");
+    const previousRobotsContent = existingRobots?.content ?? "";
+
+    if (!existingRobots) {
+      robots.name = "robots";
+      document.head.appendChild(robots);
+    }
+    robots.content = "noindex,nofollow,noarchive";
+
+    return () => {
+      document.title = previousTitle;
+      if (existingRobots) {
+        robots.content = previousRobotsContent;
+      } else {
+        robots.remove();
+      }
+    };
+  }, []);
+
+  return <AdminDashboard previewMode />;
+}
+
+function isReadOnlyPreviewPath(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.pathname.replace(/\/+$/, "") === "/preview";
+}
+
 function App() {
+  const previewMode = isReadOnlyPreviewPath();
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans selection:bg-green-100">
-      <AdminCoreProvider>
-        <AuthenticatedAdminApp />
-      </AdminCoreProvider>
+      {previewMode ? (
+        <ReadOnlyPreviewApp />
+      ) : (
+        <AdminCoreProvider>
+          <AuthenticatedAdminApp />
+        </AdminCoreProvider>
+      )}
     </div>
   );
 }
