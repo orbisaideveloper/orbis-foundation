@@ -32,10 +32,6 @@ vi.mock("../../../core/supabase/client", () => ({
   },
 }));
 
-vi.mock("../../../components/SystemDiagnosticConsole", () => ({
-  default: () => <div>system-diagnostic-console</div>,
-}));
-
 vi.mock("../../AdminViews", () => ({
   default: () => <div>admin-views</div>,
 }));
@@ -114,7 +110,7 @@ describe("AuthProvider Supabase session integration", () => {
     );
 
     expect(await screen.findByText(ADMIN_VIEWS_TEXT)).toBeInTheDocument();
-    expect(screen.getByText("system-diagnostic-console")).toBeInTheDocument();
+    expect(screen.queryByText("system-diagnostic-console")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/system/access",
       expect.objectContaining({ headers: expect.any(Headers) }),

@@ -1,4 +1,3 @@
-import SystemDiagnosticConsole from "./components/SystemDiagnosticConsole";
 import React from "react";
 import AdminViews from "./admin/AdminViews";
 import { AdminCoreProvider } from "./admin/providers/AdminCoreProvider";
@@ -164,7 +163,6 @@ export function AuthenticatedAdminApp() {
 
   return (
     <AuthGuard>
-      <SystemDiagnosticConsole />
       <AdminViews />
     </AuthGuard>
   );

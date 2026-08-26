@@ -5,6 +5,7 @@ import {
   Database,
   Mic,
   MoreVertical,
+  Plus,
   Send,
   Sparkles,
   Square,
@@ -524,8 +525,8 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         : "Not checked";
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#F8FAFC] font-sans dark:bg-[#0B1120]">
-      <header className="z-10 flex items-center justify-between border-b border-gray-200/60 bg-white/80 px-6 py-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-black/40">
+    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[radial-gradient(circle_at_0_0,rgba(255,225,180,0.72),transparent_34%),radial-gradient(circle_at_100%_100%,rgba(211,247,213,0.78),transparent_34%),linear-gradient(155deg,#fff3df,#fff9ed_48%,#edfbea)] font-sans">
+      <header className="z-10 flex shrink-0 items-center justify-between border-b border-emerald-100/70 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-2xl sm:px-6 sm:py-4">
         <div className="flex items-center gap-4">
           <button
             type="button"
@@ -536,14 +537,14 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
             <ArrowLeft className="h-6 w-6" />
           </button>
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-amber-500 shadow-md">
-              <Sparkles className="h-4 w-4 text-white" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-orange-100 bg-gradient-to-br from-emerald-50 via-white to-orange-100 shadow-sm">
+              <Sparkles className="h-4 w-4 text-emerald-600" />
             </div>
             <div>
-              <h2 className="text-[17px] font-bold text-gray-800 dark:text-white">
-                ORBIS Brain
+              <h2 className="text-[17px] font-bold text-slate-800">
+                ORBIS Assistant
               </h2>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 {healthLabel}
               </span>
             </div>
@@ -568,6 +569,33 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           </button>
         </div>
       </header>
+
+      <div className="z-10 shrink-0 border-b border-orange-100/70 bg-[#fff8e9]/80 px-3 py-2 backdrop-blur-xl sm:px-6">
+        <div className="mx-auto flex max-w-4xl gap-2 overflow-x-auto [scrollbar-width:none]">
+          <button
+            type="button"
+            onClick={() => setInputText("আমার Termux system info দেখাও")}
+            className="shrink-0 rounded-full border border-emerald-100 bg-white/85 px-3 py-1.5 text-[10px] font-semibold text-emerald-700"
+          >
+            System info
+          </button>
+          <button
+            type="button"
+            onClick={() => setInputText("আজকের weather বলো")}
+            className="shrink-0 rounded-full border border-orange-100 bg-white/85 px-3 py-1.5 text-[10px] font-semibold text-orange-700"
+          >
+            Weather
+          </button>
+          <button
+            type="button"
+            disabled
+            title="Market Intelligence is not connected yet"
+            className="shrink-0 cursor-not-allowed rounded-full border border-slate-200 bg-white/60 px-3 py-1.5 text-[10px] font-semibold text-slate-400"
+          >
+            Market research · Not connected
+          </button>
+        </div>
+      </div>
 
       {storageState === "loading" && (
         <p
@@ -762,7 +790,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         </section>
       )}
 
-      <div className="flex-1 space-y-6 overflow-y-auto p-4 md:p-8">
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-transparent p-4 pb-6 md:p-8">
         {messages.map((message) => (
           <ChatMessageBubble
             key={message.id}
@@ -791,9 +819,18 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         />
       )}
 
-      <div className="p-4 pb-6">
-        <div className="mx-auto max-w-4xl rounded-[28px] border border-gray-300/60 bg-white p-1.5 shadow-lg dark:border-gray-700 dark:bg-[#1E293B]">
+      <div className="z-10 shrink-0 border-t border-orange-100/70 bg-[#fff4e2]/90 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-2xl sm:px-4">
+        <div className="mx-auto max-w-4xl rounded-[24px] border border-orange-100 bg-white/90 p-1.5 shadow-[0_10px_30px_rgba(103,93,70,0.10)]">
           <div className="flex items-end gap-2">
+            <button
+              type="button"
+              disabled
+              aria-label="Attachments unavailable"
+              title="Attachments are not connected yet"
+              className="flex h-10 w-10 shrink-0 cursor-not-allowed items-center justify-center rounded-full bg-slate-50 text-slate-300"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
             <textarea
               rows={1}
               value={inputText}
@@ -806,14 +843,14 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               }}
               placeholder="ORBIS-কে নির্দেশ দিন..."
               disabled={isSending || !ready}
-              className="max-h-32 min-h-[44px] flex-1 resize-none bg-transparent px-3 py-3 text-[15.5px] outline-none disabled:opacity-60 dark:text-white"
+              className="max-h-32 min-h-[44px] flex-1 resize-none bg-transparent px-2 py-3 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 disabled:opacity-60"
             />
             <button
               type="button"
               onClick={toggleVoiceInput}
               disabled={isSending || !ready}
               aria-label="Voice input"
-              className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
             >
               {isListening ? (
                 <Square className="h-5 w-5" />
@@ -826,15 +863,14 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               onClick={() => void sendMessage()}
               disabled={!inputText.trim() || isSending || !ready}
               aria-label="Send message"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white disabled:opacity-50"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-200 text-slate-700 shadow-sm hover:bg-orange-300 disabled:opacity-50"
             >
               <Send className="h-4 w-4" />
             </button>
           </div>
         </div>
-        <p className="mt-2 text-center text-[10px] text-gray-400">
-          Attachments are not supported and are never sent. ORBIS can make
-          mistakes.
+        <p className="mt-2 text-center text-[9px] leading-relaxed text-slate-400">
+          Attachments are not connected yet. ORBIS can make mistakes. Verify important information before taking action.
         </p>
       </div>
 

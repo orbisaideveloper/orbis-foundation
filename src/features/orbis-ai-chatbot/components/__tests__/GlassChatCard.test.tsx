@@ -1,15 +1,30 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { GlassChatCard } from "../GlassChatCard";
 
-/* eslint-disable sonarjs/no-duplicate-string */
 const CARD_TITLE = "ORBIS Neural Cockpit";
-const BRAIN_TITLE = "ORBIS Brain";
+const BRAIN_TITLE = "ORBIS Assistant";
 const CHAT_PLACEHOLDER = "ORBIS-কে নির্দেশ দিন...";
 const AVAILABILITY_STATUS = "Check availability in chat";
 const CHAT_PLACEHOLDER_REGEX = /ORBIS-কে নির্দেশ দিন/i;
 const CARD_BUTTON_SELECTOR = '[role="button"]';
+const DIALOG_LABEL = "ORBIS Assistant test view";
+const BACK_LABEL = "Back from ORBIS Assistant";
+
+vi.mock("../FullscreenChatView", () => ({
+  FullscreenChatView: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label={DIALOG_LABEL}>
+      <header>
+        <button type="button" aria-label={BACK_LABEL} onClick={onClose}>
+          Back
+        </button>
+        <span>{BRAIN_TITLE}</span>
+      </header>
+      <textarea placeholder={CHAT_PLACEHOLDER} readOnly />
+    </div>
+  ),
+}));
 
 describe("GlassChatCard", () => {
   it("renders the card correctly", () => {
@@ -28,9 +43,7 @@ describe("GlassChatCard", () => {
     const card = screen.getByText(CARD_TITLE).closest(CARD_BUTTON_SELECTOR)!;
     fireEvent.click(card);
 
-    expect(
-      document.querySelector(`textarea[placeholder="${CHAT_PLACEHOLDER}"]`),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: DIALOG_LABEL })).toBeInTheDocument();
     expect(screen.getByText(BRAIN_TITLE)).toBeInTheDocument();
   });
 
@@ -38,30 +51,29 @@ describe("GlassChatCard", () => {
     render(<GlassChatCard />);
 
     const card = screen.getByText(CARD_TITLE).closest(CARD_BUTTON_SELECTOR)!;
-
     fireEvent.keyDown(card, { key: "Enter" });
 
-    expect(screen.getByText(BRAIN_TITLE)).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: DIALOG_LABEL })).toBeInTheDocument();
   });
 
   it("opens fullscreen chat when Space is pressed", () => {
     render(<GlassChatCard />);
 
     const card = screen.getByText(CARD_TITLE).closest(CARD_BUTTON_SELECTOR)!;
-
     fireEvent.keyDown(card, { key: " " });
 
-    expect(screen.getByText(BRAIN_TITLE)).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: DIALOG_LABEL })).toBeInTheDocument();
   });
 
   it("does not open fullscreen chat for unrelated keys", () => {
     render(<GlassChatCard />);
 
     const card = screen.getByText(CARD_TITLE).closest(CARD_BUTTON_SELECTOR)!;
-
     fireEvent.keyDown(card, { key: "Escape" });
 
-    expect(screen.queryByText("ORBIS Brain")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: DIALOG_LABEL }),
+    ).not.toBeInTheDocument();
   });
 
   it("closes fullscreen chat when the back button is clicked", () => {
@@ -70,17 +82,13 @@ describe("GlassChatCard", () => {
     const card = screen.getByText(CARD_TITLE).closest(CARD_BUTTON_SELECTOR)!;
     fireEvent.click(card);
 
-    expect(screen.getByText(BRAIN_TITLE)).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: DIALOG_LABEL })).toBeInTheDocument();
 
-    const backButton = screen
-      .getByText("ORBIS Brain")
-      .closest("header")
-      ?.querySelector("button");
-
-    expect(backButton).toBeTruthy();
-    fireEvent.click(backButton!);
+    fireEvent.click(screen.getByRole("button", { name: BACK_LABEL }));
 
     expect(screen.getByText(CARD_TITLE)).toBeInTheDocument();
-    expect(screen.queryByText("ORBIS Brain")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: DIALOG_LABEL }),
+    ).not.toBeInTheDocument();
   });
 });

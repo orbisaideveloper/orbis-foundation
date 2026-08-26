@@ -18,7 +18,9 @@ describe("active Admin diagnostics callers", () => {
     "src/admin/dashboard/AdminDashboard.tsx",
   ])("routes %s through the established authenticated helper", (file) => {
     const source = readProjectFile(file);
-    expect(source).toContain('readAdminJson<any>("/api/diagnostics")');
+    expect(source).toMatch(
+      /readAdminJson(?:<[^>]+>)?\(\s*["']\/api\/diagnostics["']\s*\)/,
+    );
     expect(source).not.toMatch(/fetch\(\s*["']\/api\/diagnostics/);
   });
 

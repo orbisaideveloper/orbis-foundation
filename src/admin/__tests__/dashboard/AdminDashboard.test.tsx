@@ -1,294 +1,317 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminDashboard from "../../dashboard/AdminDashboard";
-import "@testing-library/jest-dom";
-const NEURAL_COCKPIT_TITLE = "ORBIS Neural Cockpit";
 
-// --- 100% SAFE GLOBAL FETCH MOCK ---
-if (typeof global !== "undefined") {
-  global.fetch = function () {
-    return Promise.resolve({
-      json: function () {
-        return Promise.resolve({
-          status: "ONLINE",
-          uptime: "99.99%",
-          ramUsedPercent: "45",
-          load: "12.4",
-          arch: "x64",
-          release: "1.0.0",
-          platform: "linux",
-          cpuCores: 8,
-          result: "Mock Tree",
-        });
+const mocks = vi.hoisted(() => ({ readAdminJson: vi.fn() }));
+const TERMUX_SYSTEM_INFO = "termux.system.info";
+const MARKET_INTELLIGENCE_TITLE = "Market Intelligence";
+const RUNTIME_TITLE = "Runtime";
+const BRAIN_TITLE = "Brain";
+const DIAGNOSTICS_TITLE = "Diagnostics";
+const DATA_PRIVACY_TITLE = "Data & Privacy";
+
+vi.mock("../../auth/adminFetch", () => ({ readAdminJson: mocks.readAdminJson }));
+
+vi.mock(
+  "../../../features/orbis-ai-chatbot/components/FullscreenChatView",
+  () => ({
+    FullscreenChatView: ({ onClose }: { onClose: () => void }) => (
+      <div role="dialog" aria-label="ORBIS Assistant compatibility view">
+        ORBIS Assistant
+        <button type="button" onClick={onClose}>
+          Back
+        </button>
+      </div>
+    ),
+  }),
+);
+
+const diagnosticExport = {
+  schema: "orbis.foundation.admin-diagnostic.v1",
+  generatedAt: "2026-08-25T17:00:00.000Z",
+  redacted: true,
+  version: { commit: "b3b632b", application: "1.0.0" },
+  providers: [{ name: "Ollama", type: "local", state: "UNKNOWN" }],
+  capabilities: [
+    {
+      id: TERMUX_SYSTEM_INFO,
+      kind: "foundation-capability",
+      configured: true,
+      status: "AVAILABLE",
+      callable: true,
+      executionRoute: "internal",
+    },
+    {
+      id: "foundation.pdf.read",
+      kind: "foundation-data-capability",
+      configured: true,
+      status: "AVAILABLE",
+      callable: true,
+      executionRoute: "admin-capability-api",
+    },
+  ],
+  brain: {
+    route: "/api/brain/request",
+    registered: true,
+    gatewayArtifact: "available",
+  },
+  database: {
+    state: "connected",
+    foundationTableCounts: [
+      { table: "FoundationSystemLog", count: 4, status: "available" },
+    ],
+  },
+  telemetry: {
+    status: "available",
+    summary: {
+      occurrences: 4,
+      records: 1,
+      bySeverity: { INFO: 4 },
+      byCategory: { TELEMETRY: 4 },
+    },
+    recentEvents: [
+      {
+        timestamp: "2026-08-25T17:00:00.000Z",
+        level: "INFO",
+        source: "TELEMETRY",
+        category: "TELEMETRY",
+        severity: "INFO",
+        count: 4,
+        message: "Foundation worker ready",
       },
-    });
-  } as any;
+    ],
+  },
+  migrations: [{ name: "20260825000000_test", localStatus: "present" }],
+  runtime: {
+    node: "v26.4.0",
+    platform: "LINUX",
+    architecture: "arm64",
+    processUptimeSeconds: 100,
+    cpuCores: 8,
+    cpuModel: "test cpu",
+    memoryTotalGb: 8,
+    memoryUsedGb: 2,
+  },
+  exclusions: ["credentials-and-environment-values"],
+};
+
+function jsonResponse(data: unknown): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => data,
+  } as Response;
 }
-// -----------------------------------
 
-describe("AdminDashboard Full Coverage Tests", () => {
+async function expectDashboardHome(): Promise<void> {
+  await waitFor(() => {
+    expect(screen.getByText(/Your ORBIS\. Visible\./i)).toBeInTheDocument();
+  });
+}
+
+async function goBackToDashboard(): Promise<void> {
+  fireEvent.click(screen.getByRole("button", { name: /Back to dashboard/i }));
+  await expectDashboardHome();
+}
+
+describe("AdminDashboard current control-center coverage", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    global.fetch = vi.fn().mockImplementation((url: string) => {
-      if (url === "/api/orbis-command") {
-        return Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({ result: "Mocked Command Success Response" }),
+    window.history.replaceState(null, "");
+
+    vi.spyOn(window.history, "back").mockImplementation(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    mocks.readAdminJson.mockReset();
+    mocks.readAdminJson.mockImplementation(async (path: string) => {
+      if (path === "/api/admin/diagnostic-export") return diagnosticExport;
+      if (path === "/api/diagnostics") {
+        return {
+          gitStatus: "dashboard implementation (b3b632b)",
+          logs: diagnosticExport.telemetry.recentEvents,
+        };
+      }
+      throw new Error(`unexpected admin path: ${path}`);
+    });
+
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const path = String(input);
+      if (path.includes("/api/system-stats")) {
+        return jsonResponse({
+          cpuCores: 8,
+          cpuModel: "test cpu",
+          arch: "arm64",
+          platform: "LINUX",
+          release: "test-release",
+          load: "0.25",
+          load5m: "0.20",
+          load15m: "0.15",
+          totalMem: "8.00",
+          freeMem: "6.00",
+          usedMem: "2.00",
+          ramUsedPercent: "25.0",
+          uptime: "12h 10m",
+          processUptime: "100",
+          heapUsed: "42.00",
+          status: "ONLINE",
         });
       }
-      return Promise.reject(new Error("API Failure"));
-    });
-
-    Object.assign(navigator, {
-      clipboard: {
-        writeText: vi.fn().mockResolvedValue(undefined),
-      },
-    });
-  });
-
-  it("renders all main 8 grid cards and updates live data", async () => {
-    const { unmount } = render(<AdminDashboard />);
-    expect(
-      screen.getAllByText(
-        (content, element) =>
-          element?.textContent?.includes("Orbis Foundation") || false,
-      )[0],
-    ).toBeInTheDocument();
-    expect(screen.getAllByText(/Overview/i)[0]).toBeInTheDocument();
-    expect(screen.getAllByText(/Runtime/i)[0]).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(screen.getByText(NEURAL_COCKPIT_TITLE)).toBeInTheDocument();
-    });
-    unmount();
-  });
-
-  it("opens and closes sidebar via overlay backdrop and close button", () => {
-    render(<AdminDashboard />);
-    const hamburgerBtn = screen.getAllByRole("button")[0];
-    fireEvent.click(hamburgerBtn);
-
-    expect(screen.getByText(/System Settings/i)).toBeInTheDocument();
-
-    const backdrop = document.querySelector(".fixed.inset-0.bg-black\\/20");
-    if (backdrop) fireEvent.click(backdrop);
-
-    fireEvent.click(screen.getAllByRole("button")[0]);
-    const closeBtn = screen.getByText("✕");
-    fireEvent.click(closeBtn);
-  });
-
-  it("opens terminal output from sidebar buttons", () => {
-    render(<AdminDashboard />);
-    fireEvent.click(screen.getAllByRole("button")[0]);
-
-    const diagSidebarBtn = screen.getByText("ডায়াগনস্টিক টার্মিনাল");
-    fireEvent.click(diagSidebarBtn);
-    expect(screen.getByText("Terminal Output")).toBeInTheDocument();
-
-    const closeTermBtn = screen.getByText("Close");
-    fireEvent.click(closeTermBtn);
-
-    fireEvent.click(screen.getAllByRole("button")[0]);
-    const treeSidebarBtn = screen.getAllByText("লাইভ ডিপেন্ডেন্সি ট্রি")[0];
-    fireEvent.click(treeSidebarBtn);
-    expect(
-      screen.getByText("Live System Tree (Render Cloud)"),
-    ).toBeInTheDocument();
-  });
-
-  it("opens the ORBIS Neural Chatbot fullscreen view", async () => {
-    render(<AdminDashboard />);
-
-    const card = screen
-      .getByText(NEURAL_COCKPIT_TITLE)
-      .closest('[role="button"]');
-
-    expect(card).toBeTruthy();
-
-    fireEvent.click(card!);
-
-    await waitFor(() => {
-      expect(screen.getByText("ORBIS Brain")).toBeInTheDocument();
-    });
-
-    expect(
-      screen.getAllByPlaceholderText("ORBIS-কে নির্দেশ দিন...")[1],
-    ).toBeInTheDocument();
-  });
-
-  it("triggers quick access dependency tree and copies live tree text", async () => {
-    render(<AdminDashboard />);
-    const treeQuickBtn = screen.getByRole("button", {
-      name: /লাইভ ডিপেন্ডেন্সি ট্রি/i,
-    });
-    fireEvent.click(treeQuickBtn);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Live System Tree (Render Cloud)"),
-      ).toBeInTheDocument();
-    });
-
-    const copyBtn = screen.getAllByText(/Copy/i)[0];
-    fireEvent.click(copyBtn);
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      "Mocked Command Success Response",
-    );
-  });
-
-  it("tests all remaining grid card modal streams", async () => {
-    render(<AdminDashboard />);
-
-    const cardsToTest = [
-      "Engine",
-      "Health",
-      "Brain Sync",
-      "AI Agents",
-      "Release",
-      "Modules",
-    ];
-
-    for (const cardTitle of cardsToTest) {
-      const card = screen.queryByText(cardTitle);
-      if (!card) continue;
-
-      fireEvent.click(card);
-
-      const modal = await screen.findByText(
-        /Accessing secure node/i,
-        {},
-        { timeout: 1500 },
-      );
-
-      expect(modal).toBeInTheDocument();
-
-      const closeButtons = screen.getAllByRole("button", {
-        name: /Close/i,
-      });
-
-      fireEvent.click(closeButtons[closeButtons.length - 1]);
-
-      await waitFor(
-        () => {
-          expect(
-            screen.queryByText(/Accessing secure node/i),
-          ).not.toBeInTheDocument();
-        },
-        { timeout: 1500 },
-      );
-    }
-  }, 15000);
-
-  it("handles all overview sub-cards and test fallback log content", async () => {
-    render(<AdminDashboard />);
-    const overviewCard = screen.getAllByText("Overview")[0];
-    fireEvent.click(overviewCard);
-
-    await waitFor(() => {
-      //       expect(screen.getByText('Microservices')).toBeInTheDocument();
-    });
-
-    const subCards = ["Architecture"];
-
-    for (const sub of subCards) {
-      const subCard = screen.queryByText(sub);
-      if (!subCard) continue;
-
-      fireEvent.click(subCard);
-
-      const dataLog = screen.queryByText(new RegExp(`${sub} Data Log`, "i"));
-
-      if (!dataLog) continue;
-
-      expect(dataLog).toBeInTheDocument();
-
-      const copySubLogBtn = screen.getAllByText(/Copy|Copied/i)[0];
-      if (copySubLogBtn) {
-        fireEvent.click(copySubLogBtn);
-        expect(navigator.clipboard.writeText).toHaveBeenCalled();
+      if (path.includes("/api/ai/providers/status")) {
+        return jsonResponse({
+          activeProvider: {
+            name: "Ollama",
+            type: "local",
+            model: "tinyllama:latest",
+            health: { state: "UNKNOWN", checkedAt: null },
+          },
+          allProviders: [],
+        });
       }
-
-      //       fireEvent.click(screen.getByText('← Back'));
-    }
-
-    // removed SOURCE MAP test
-    await waitFor(() => {
-      // removed Source Tree Data Log test
+      if (path.includes("/api/termux-observatory")) {
+        return jsonResponse({ auditedTasks: 20, next: "Awaiting TASK-021" });
+      }
+      throw new Error(`unexpected public path: ${path}`);
     });
-
-    //     fireEvent.click(screen.getByText('← Back'));
-    const closeBtn = screen.queryByRole("button", { name: /Close/i });
-    if (closeBtn) {
-      fireEvent.click(closeBtn);
-    } else {
-      const buttons = screen.getAllByRole("button");
-      const modalClose = buttons.find(
-        (b) =>
-          /close|×|✕/i.test(b.textContent || "") ||
-          b.getAttribute("aria-label")?.match(/close/i),
-      );
-      if (modalClose) fireEvent.click(modalClose);
-    }
   });
 
-  it("opens the ORBIS Neural Chatbot with keyboard interaction", async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.history.replaceState(null, "");
+  });
+
+  it("renders the approved home surface without retired dashboard labels", async () => {
     render(<AdminDashboard />);
 
-    const card = screen
-      .getByText(NEURAL_COCKPIT_TITLE)
-      .closest('[role="button"]');
-
-    expect(card).toBeTruthy();
-
-    fireEvent.keyDown(card!, { key: "Enter" });
-
-    await waitFor(() => {
-      expect(screen.getByText("ORBIS Brain")).toBeInTheDocument();
-    });
-
     expect(
-      screen.getAllByPlaceholderText("ORBIS-কে নির্দেশ দিন...")[1],
+      screen.getByRole("heading", { name: "ORBIS FOUNDATION" }),
+    ).toBeInTheDocument();
+    await expectDashboardHome();
+
+    for (const name of [
+      "ORBIS Chat",
+      MARKET_INTELLIGENCE_TITLE,
+      "Modules",
+      RUNTIME_TITLE,
+      BRAIN_TITLE,
+      DIAGNOSTICS_TITLE,
+      DATA_PRIVACY_TITLE,
+      "Releases",
+    ]) {
+      expect(
+        screen.getAllByRole("button", { name: new RegExp(name, "i") }).length,
+      ).toBeGreaterThan(0);
+    }
+
+    expect(screen.queryByText(/ORBIS Neural Cockpit/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ডায়াগনস্টিক টার্মিনাল/i)).not.toBeInTheDocument();
+  });
+
+  it("opens and closes the new More sheet with accessible controls", async () => {
+    render(<AdminDashboard />);
+    await expectDashboardHome();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Open dashboard menu/i }),
+    );
+    expect(screen.getByRole("heading", { name: "More" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Close menu/i }));
+    expect(screen.queryByRole("heading", { name: "More" })).not.toBeInTheDocument();
+  });
+
+  it("opens current module detail surfaces and returns through browser history", async () => {
+    render(<AdminDashboard />);
+    await expectDashboardHome();
+
+    const openHomeCard = (name: string) => {
+      const heading = screen.getByRole("heading", { name, level: 3 });
+      const button = heading.closest("button");
+      expect(button).not.toBeNull();
+      fireEvent.click(button!);
+    };
+
+    openHomeCard(MARKET_INTELLIGENCE_TITLE);
+    expect(
+      screen.getByRole("heading", { name: MARKET_INTELLIGENCE_TITLE }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Market Intelligence is not connected yet/i),
+    ).toBeInTheDocument();
+
+    await goBackToDashboard();
+
+    openHomeCard(RUNTIME_TITLE);
+    expect(
+      screen.getByRole("heading", { name: RUNTIME_TITLE }),
+    ).toBeInTheDocument();
+
+    await goBackToDashboard();
+
+    openHomeCard(BRAIN_TITLE);
+    expect(
+      screen.getByRole("heading", { name: BRAIN_TITLE }),
+    ).toBeInTheDocument();
+
+    await goBackToDashboard();
+
+    openHomeCard(DIAGNOSTICS_TITLE);
+    expect(
+      screen.getByRole("heading", { name: DIAGNOSTICS_TITLE }),
+    ).toBeInTheDocument();
+
+    await goBackToDashboard();
+
+    openHomeCard(DATA_PRIVACY_TITLE);
+    expect(
+      screen.getByRole("heading", { name: DATA_PRIVACY_TITLE }),
     ).toBeInTheDocument();
   });
 
-  it("handles fetch errors gracefully in executeOrbisCommand and fetchLiveTree", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    global.fetch = vi.fn().mockRejectedValue(new Error("Network Error"));
-
+  it("opens and closes ORBIS Assistant through the real dashboard history contract", async () => {
     render(<AdminDashboard />);
-    const treeQuickBtn = screen.getByRole("button", {
-      name: /লাইভ ডিপেন্ডেন্সি ট্রি/i,
-    });
-    fireEvent.click(treeQuickBtn);
+    await expectDashboardHome();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Chat$/i }));
+    expect(
+      screen.getByRole("dialog", {
+        name: /ORBIS Assistant compatibility view/i,
+      }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
 
     await waitFor(() => {
       expect(
-        screen.getByText(
-          "[ERROR] Live Tree Fetch Failed. Check API connection.",
-        ),
-      ).toBeInTheDocument();
-      expect(consoleSpy).toHaveBeenCalled();
+        screen.queryByRole("dialog", {
+          name: /ORBIS Assistant compatibility view/i,
+        }),
+      ).not.toBeInTheDocument();
     });
 
-    consoleSpy.mockRestore();
+    await expectDashboardHome();
   });
 
-  it("handles browser popstate event listener", async () => {
+  it("closes an open detail surface on browser popstate", async () => {
     render(<AdminDashboard />);
-    const runtimeCard = screen.getByText("Runtime", { selector: "h3" });
-    fireEvent.click(runtimeCard);
+    await expectDashboardHome();
 
-    await waitFor(() => {
-      expect(screen.getByText(/runtime Monitor/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Modules$/i }));
+    expect(await screen.findByText(TERMUX_SYSTEM_INFO)).toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
     });
 
-    window.dispatchEvent(new Event("popstate"));
-
     await waitFor(() => {
-      expect(screen.queryByText(/runtime Monitor/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(TERMUX_SYSTEM_INFO)).not.toBeInTheDocument();
     });
+    await expectDashboardHome();
   });
 });

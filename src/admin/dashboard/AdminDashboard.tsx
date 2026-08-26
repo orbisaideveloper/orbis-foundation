@@ -1,826 +1,927 @@
-import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import SystemLogManager from "../system-logs/SystemLogManager";
-import { GlassChatCard } from "../../features/orbis-ai-chatbot/components/GlassChatCard";
-import { TermuxObservatory } from "./sections/TermuxObservatory";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  ArrowLeft,
+  Boxes,
+  Brain,
+  CheckCircle2,
+  ChevronRight,
+  Copy,
+  Cpu,
+  Database,
+  Download,
+  GitBranch,
+  Home,
+  MessageCircle,
+  MoreHorizontal,
+  RefreshCw,
+  Server,
+  Settings,
+  ShieldCheck,
+  TrendingUp,
+  WifiOff,
+  X,
+} from "lucide-react";
 import { readAdminJson } from "../auth/adminFetch";
-import { DiagnosticExportActions } from "./DiagnosticExportActions";
-import { AnimatedMonitorFrame } from "./components/AnimatedMonitorFrame";
+import { FullscreenChatView } from "../../features/orbis-ai-chatbot/components/FullscreenChatView";
 
-const SOURCE_TREE_NAME = "Source Tree";
-const MASTER_NODE_NAME = "Master Node";
+type DashboardView =
+  | "overview"
+  | "market"
+  | "modules"
+  | "runtime"
+  | "brain"
+  | "diagnostics"
+  | "data"
+  | "releases";
 
-const LiveStatusText = () => {
-  const [status, setStatus] = React.useState(
-    "আপনার সিস্টেমের প্রতিটি মডিউল সফলভাবে সিঙ্ক হয়েছে। ORBIS Foundation-এর কোর ইঞ্জিন এখন অপটিমাল পারফরম্যান্সে চলছে।",
-  );
-  React.useEffect(() => {
-    readAdminJson<any>("/api/diagnostics")
-      .then((d) => {
-        if (d?.gitStatus && d.gitStatus !== "Unknown")
-          setStatus(
-            `[ লাইভ ] ${d.gitStatus} | Bridge: ${d.bridge.bridgeStatus}`,
-          );
-      })
-      .catch(() => {});
-  }, []);
-  return (
-    <p className="text-[12px] text-slate-600 leading-relaxed font-bold mt-1 bg-green-100/50 p-1.5 rounded-md border border-green-200 inline-block">
-      {status}
+type Availability = "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN";
+
+const ACTIVE_NAV_STATE_CLASS =
+  "bg-gradient-to-br from-emerald-100 to-orange-50 text-slate-700";
+const INACTIVE_NAV_STATE_CLASS = "text-slate-400";
+
+interface SystemStats {
+  cpuCores: number;
+  cpuModel: string;
+  arch: string;
+  platform: string;
+  release: string;
+  load: string;
+  load5m: string;
+  load15m: string;
+  totalMem: string;
+  freeMem: string;
+  usedMem: string;
+  ramUsedPercent: string;
+  uptime: string;
+  processUptime: string;
+  heapUsed: string;
+  status: string;
+}
+
+interface ProviderHealth {
+  state?: string;
+  checkedAt?: number | null;
+}
+
+interface ProviderMetadata {
+  name?: string;
+  type?: string;
+  model?: string;
+  health?: ProviderHealth;
+}
+
+interface ProviderStatus {
+  activeProvider: ProviderMetadata | null;
+  allProviders: ProviderMetadata[];
+}
+
+interface DiagnosticCapability {
+  id: string;
+  kind: string;
+  configured: boolean;
+  status: string;
+  callable: boolean;
+  executionRoute: string;
+}
+
+interface DiagnosticProvider {
+  name: string;
+  type: string;
+  state: string;
+}
+
+interface DiagnosticTableCount {
+  table: string;
+  count: number | null;
+  status: string;
+}
+
+interface DiagnosticEvent {
+  timestamp: string;
+  level: string;
+  source: string;
+  category: string;
+  severity: string;
+  count: number;
+  message: string;
+}
+
+interface DiagnosticExport {
+  schema: string;
+  generatedAt: string;
+  redacted: boolean;
+  version: {
+    commit: string;
+    application: string;
+  };
+  providers: DiagnosticProvider[];
+  capabilities: DiagnosticCapability[];
+  brain: {
+    route: string;
+    registered: boolean;
+    gatewayArtifact: string;
+  };
+  database: {
+    state: string;
+    foundationTableCounts: DiagnosticTableCount[];
+  };
+  telemetry: {
+    status: string;
+    summary: {
+      occurrences: number;
+      records: number;
+      bySeverity: Record<string, number>;
+      byCategory: Record<string, number>;
+    };
+    recentEvents: DiagnosticEvent[];
+  };
+  migrations: Array<{
+    name: string;
+    localStatus: string;
+    databaseStatus: string;
+  }>;
+  runtime: {
+    node: string;
+    platform: string;
+    architecture: string;
+    processUptimeSeconds: number;
+    cpuCores: number;
+    cpuModel: string;
+    memoryTotalGb: number;
+    memoryUsedGb: number;
+  };
+  exclusions: string[];
+}
+
+interface DiagnosticsResponse {
+  timestamp?: string;
+  gitStatus?: string;
+  logs?: DiagnosticEvent[];
+}
+
+interface ObservatoryTask {
+  task?: string;
+  status?: string;
+  objective?: string;
+  commit?: string;
+  auditFile?: string;
+}
+
+interface ObservatoryResponse {
+  title?: string;
+  completed?: number;
+  auditedTasks?: number;
+  next?: string;
+  tasks?: ObservatoryTask[];
+}
+
+const EMPTY_SYSTEM_STATS: SystemStats = {
+  cpuCores: 0,
+  cpuModel: "Unavailable",
+  arch: "unknown",
+  platform: "UNKNOWN",
+  release: "unknown",
+  load: "0.00",
+  load5m: "0.00",
+  load15m: "0.00",
+  totalMem: "0.00",
+  freeMem: "0.00",
+  usedMem: "0.00",
+  ramUsedPercent: "0.0",
+  uptime: "Unavailable",
+  processUptime: "0",
+  heapUsed: "0.00",
+  status: "UNAVAILABLE",
+};
+
+const VIEW_TITLES: Record<DashboardView, string> = {
+  overview: "Overview",
+  market: "Market Intelligence",
+  modules: "Modules",
+  runtime: "Runtime",
+  brain: "Brain",
+  diagnostics: "Diagnostics",
+  data: "Data & Privacy",
+  releases: "Releases",
+};
+
+function normalizeAvailability(value?: string): Availability {
+  if (value === "AVAILABLE" || value === "ONLINE" || value === "connected") {
+    return "AVAILABLE";
+  }
+  if (
+    value === "UNAVAILABLE" ||
+    value === "OFFLINE" ||
+    value === "unavailable"
+  ) {
+    return "UNAVAILABLE";
+  }
+  return "UNKNOWN";
+}
+
+function statusClasses(state: Availability): string {
+  if (state === "AVAILABLE") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (state === "UNAVAILABLE") {
+    return "border-orange-200 bg-orange-50 text-orange-700";
+  }
+  return "border-slate-200 bg-white/80 text-slate-500";
+}
+
+function formatCheckedAt(value?: number | null): string {
+  if (!value) return "Not checked";
+  return new Date(value).toLocaleString();
+}
+
+function formatNumber(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value.toLocaleString()
+    : "Unavailable";
+}
+
+async function readPublicJson<T>(path: string): Promise<T> {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  return (await response.json()) as T;
+}
+
+const StatusPill: React.FC<{ state: Availability; label?: string }> = ({
+  state,
+  label,
+}) => (
+  <span
+    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusClasses(state)}`}
+  >
+    <span
+      className={`h-1.5 w-1.5 rounded-full ${
+        state === "AVAILABLE"
+          ? "bg-emerald-500"
+          : state === "UNAVAILABLE"
+            ? "bg-orange-400"
+            : "bg-slate-300"
+      }`}
+    />
+    {label || state}
+  </span>
+);
+
+const MetricTile: React.FC<{
+  label: string;
+  value: React.ReactNode;
+  source: string;
+}> = ({ label, value, source }) => (
+  <div className="min-h-[102px] rounded-[20px] border border-emerald-100/70 bg-white/85 p-4 shadow-[0_10px_28px_rgba(50,90,58,0.07)]">
+    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700/80">
+      {label}
     </p>
+    <div className="mt-3 break-words text-[18px] font-black text-slate-800">
+      {value}
+    </div>
+    <p className="mt-1 text-[9px] text-slate-400">{source}</p>
+  </div>
+);
+
+const DetailRow: React.FC<{
+  label: string;
+  value: string;
+  source: string;
+  copyable?: boolean;
+}> = ({ label, value, source, copyable = false }) => {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    if (!copyable) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-emerald-50 py-3 last:border-b-0">
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold text-slate-500">{label}</p>
+        <p className="mt-1 break-words text-[13px] font-bold text-slate-800">
+          {value}
+        </p>
+        <p className="mt-1 text-[8px] text-slate-400">{source}</p>
+      </div>
+      {copyable && (
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="shrink-0 rounded-xl border border-emerald-100 bg-emerald-50/70 px-2.5 py-2 text-[10px] font-bold text-emerald-700"
+        >
+          <Copy className="mr-1 inline h-3.5 w-3.5" />
+          {copied ? "Copied" : "Copy"}
+        </button>
+      )}
+    </div>
   );
 };
 
+interface HomeCardProps {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  className?: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  status?: React.ReactNode;
+}
+
+const HomeCard: React.FC<HomeCardProps> = ({
+  eyebrow,
+  title,
+  subtitle,
+  className = "",
+  icon,
+  onClick,
+  status,
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`group relative min-h-[116px] overflow-hidden rounded-[22px] border border-emerald-100/70 bg-white/85 p-4 text-left shadow-[0_12px_32px_rgba(50,90,58,0.08)] transition active:scale-[0.985] ${className}`}
+  >
+    <span className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-emerald-300 via-white to-orange-200" />
+    <div className="flex items-start justify-between gap-3">
+      <span className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700/80">
+        {eyebrow}
+      </span>
+      <span className="rounded-xl bg-emerald-50/80 p-2 text-emerald-700">
+        {icon}
+      </span>
+    </div>
+    <h3 className="mt-5 text-[16px] font-black text-slate-900">{title}</h3>
+    <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{subtitle}</p>
+    <div className="mt-3 flex items-center justify-between gap-2">
+      <div>{status}</div>
+      <ChevronRight className="h-4 w-4 text-emerald-600" />
+    </div>
+  </button>
+);
+
 export function AdminDashboard() {
-  const [activeCard, setActiveCard] = useState<string | null>(null);
-  const [activeSubCard, setActiveSubCard] = useState<string | null>(null);
-  const [sysStats, setSysStats] = useState({
-    load: "0",
-    load5m: "0",
-    load15m: "0",
-    ramUsedPercent: "0",
-    totalMem: "0",
-    usedMem: "0",
-    freeMem: "0",
-    uptime: "0",
-    processUptime: "0",
-    cpuCores: 0,
-    cpuModel: "...",
-    arch: "...",
-    platform: "...",
-    release: "...",
-    hostname: "...",
-    heapUsed: "0",
-    status: "Connecting...",
+  const [activeView, setActiveView] = useState<DashboardView>("overview");
+  const [chatOpen, setChatOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [systemStats, setSystemStats] = useState<SystemStats>(EMPTY_SYSTEM_STATS);
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus>({
+    activeProvider: null,
+    allProviders: [],
   });
-  const [copiedText, setCopiedText] = useState(false);
-  const copyResetTimer = React.useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const [diagnosticExport, setDiagnosticExport] =
+    useState<DiagnosticExport | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsResponse | null>(null);
+  const [observatory, setObservatory] = useState<ObservatoryResponse | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<string>("Not refreshed");
 
-  const [showOutput, setShowOutput] = useState(false);
-  const [viewMode, setViewMode] = useState("diagnostic");
-  const [outputData] = useState("");
-  const [liveTree, setLiveTree] = useState(
-    "অপেক্ষা করুন, রেন্ডার সার্ভার থেকে লাইভ ট্রি আনা হচ্ছে...",
-  );
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-
-  useEffect(() => {
-    return () => {
-      if (copyResetTimer.current !== null) {
-        clearTimeout(copyResetTimer.current);
-      }
-    };
-  }, []);
-
-  const markCopied = () => {
-    if (copyResetTimer.current !== null) {
-      clearTimeout(copyResetTimer.current);
-    }
-    setCopiedText(true);
-    copyResetTimer.current = setTimeout(() => {
-      setCopiedText(false);
-      copyResetTimer.current = null;
-    }, 2000);
-  };
-
-  const fetchLiveTree = async () => {
+  const refreshSystemStats = useCallback(async () => {
     try {
-      const response = await fetch("/api/orbis-command", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: "সোর্স কোড দেখাও" }),
-      });
-      const data = await response.json();
-      setLiveTree(data.result);
-    } catch (error) {
-      console.error(error);
-      setLiveTree("[ERROR] Live Tree Fetch Failed. Check API connection.");
+      setSystemStats(await readPublicJson<SystemStats>("/api/system-stats"));
+    } catch {
+      setSystemStats((current) => ({ ...current, status: "UNAVAILABLE" }));
     }
-  };
-
-  useEffect(() => {
-    if (activeCard === "overview") {
-      fetch("/api/system-stats")
-        .then((res) => res.json())
-        .then((data) => setSysStats(data))
-        .catch(() =>
-          setSysStats((s) => ({ ...s, status: "OFFLINE", load: "ERR" })),
-        );
-    }
-  }, [activeCard]);
-
-  useEffect(() => {
-    if (showOutput || activeSubCard === SOURCE_TREE_NAME) {
-      fetchLiveTree();
-    }
-  }, [showOutput, activeSubCard]);
-
-  useEffect(() => {
-    if (activeSubCard || activeCard) {
-      window.history.pushState({ modal: true }, "");
-      const handlePop = () => {
-        setActiveSubCard(null);
-        setActiveCard(null);
-      };
-      window.addEventListener("popstate", handlePop);
-      return () => window.removeEventListener("popstate", handlePop);
-    }
-  }, [activeSubCard, activeCard]);
-
-  const [data, setData] = useState({
-    engine: "Loading...",
-    uptime: "---",
-    health: "Checking...",
-    db: "N/A",
-    ai: "Scanning...",
-    latency: "---",
-    sync: "---",
-    phase: "03",
-    runtime: "Node.js",
-    runtimeVer: "v24.18.0",
-    release: "v4.1.10",
-    releaseType: "Automated CI/CD",
-    core: "Active",
-    coreStatus: "All nominal",
-  });
-
-  useEffect(() => {
-    let isMounted = true;
-    const fetchRealData = async () => {
-      if (isMounted) {
-        try {
-          const res = await fetch("/api/system-stats");
-          const stats = await res.json();
-          setData({
-            engine: stats.status,
-            uptime: stats.uptime,
-            health:
-              Number.parseFloat(stats.ramUsedPercent) < 85
-                ? "Optimal"
-                : "Warning",
-            db: "Secured",
-            ai: "Active",
-            latency: stats.load + "ms",
-            sync: "Synced",
-            phase: "04",
-            runtime: "Node.js",
-            runtimeVer: stats.arch,
-            release: stats.release.substring(0, 15),
-            releaseType: stats.platform,
-            core: stats.cpuCores + " Cores",
-            coreStatus:
-              Number.parseFloat(stats.load) < 5 ? "All nominal" : "High Load",
-          });
-          setSysStats(stats);
-        } catch (err) {
-          console.error(err);
-        }
-      }
-    };
-    fetchRealData();
-    const interval = setInterval(fetchRealData, 5000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
   }, []);
 
-  const getTargetName = (card: string | null) => {
-    if (!card) return "";
-    const map: Record<string, string> = {
-      health: "Health",
-      engine: "Engine",
-      core: "Architecture",
-      runtime: "Microservices",
-      release: MASTER_NODE_NAME,
-    };
-    return map[card] || card;
-  };
+  const refreshSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    setSummaryError(null);
 
-  const renderPremiumModalContent = () => {
-    if (activeCard === "overview") {
-      if (activeSubCard) {
-        return (
-          <div className="flex flex-col h-full animate-in fade-in zoom-in duration-200">
-            <button
-              type="button"
-              onClick={() => setActiveSubCard(null)}
-              className="mb-3 text-[13px] text-slate-600 font-bold hover:text-slate-900 flex items-center gap-1.5 w-fit bg-slate-200/60 px-3 py-1.5 rounded-lg transition-colors active:scale-95"
-            >
-              ← Back
-            </button>
-            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                  {activeSubCard} Data Log
-                  <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse border border-emerald-200">
-                    LIVE
-                  </span>
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(
-                      activeSubCard === SOURCE_TREE_NAME
-                        ? liveTree
-                        : generateRawTelemetry(activeSubCard, sysStats),
-                    );
-                    markCopied();
-                  }}
-                  className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? "bg-emerald-100 text-emerald-700" : "bg-slate-800 hover:bg-slate-700 text-white"}`}
-                >
-                  {copiedText ? "✓ Copied" : "⧉ Copy"}
-                </button>
-              </div>
-              <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
-                <pre className="font-mono text-[12px] text-emerald-400 whitespace-pre-wrap leading-relaxed select-text">
-                  {activeSubCard === SOURCE_TREE_NAME
-                    ? liveTree
-                    : generateRawTelemetry(activeSubCard, sysStats)
-                        .replace(
-                          /CPU: 12% \| RAM: 45%/g,
-                          `CPU: ${sysStats.load}% | RAM: ${sysStats.ramUsedPercent}%`,
-                        )
-                        .replace(
-                          /Current Server Load: 12\.4%/g,
-                          `Current Server Load: ${sysStats.load}%`,
-                        )
-                        .replace(
-                          /Phase 04 active/g,
-                          `System Uptime: ${sysStats.uptime}`,
-                        )
-                        .replace(
-                          /14 active services/g,
-                          `${sysStats.cpuCores} CPU Cores Active on ${sysStats.platform}`,
-                        )}
-                </pre>
-              </div>
-            </div>
-          </div>
-        );
-      }
+    const results = await Promise.allSettled([
+      readPublicJson<SystemStats>("/api/system-stats"),
+      readPublicJson<ProviderStatus>("/api/ai/providers/status"),
+      readAdminJson<DiagnosticExport>("/api/admin/diagnostic-export"),
+      readPublicJson<ObservatoryResponse>("/api/termux-observatory"),
+    ]);
 
-      return (
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => setActiveSubCard("System Phase")}
-            className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
-          >
-            <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">
-              System Phase
-            </h4>
-            <p className="text-lg font-black text-slate-800 mt-0.5">
-              Phase {data.phase}
-            </p>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubCard("Architecture")}
-            className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
-          >
-            <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">
-              Architecture
-            </h4>
-            <p className="text-lg font-black text-slate-800 mt-0.5">
-              {sysStats.cpuCores} Cores ({sysStats.arch})
-            </p>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubCard("Microservices")}
-            className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
-          >
-            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
-              Microservices
-            </h4>
-            <p className="text-lg font-black text-slate-800 mt-0.5">
-              {sysStats.ramUsedPercent}%
-            </p>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubCard(MASTER_NODE_NAME)}
-            className="text-left bg-white border border-green-100 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
-          >
-            <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">
-              Master Node
-            </h4>
-            <p className="text-lg font-black text-green-700 mt-0.5">
-              {sysStats.platform}
-            </p>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubCard("API Gateway")}
-            className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
-          >
-            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
-              API Gateway
-            </h4>
-            <p className="text-lg font-black text-slate-800 mt-0.5">
-              {sysStats.status}
-            </p>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSubCard("Avg Load")}
-            className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-3 flex flex-col justify-center cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
-          >
-            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
-              Avg Load
-            </h4>
-            <p className="text-lg font-black text-slate-800 mt-0.5">
-              {sysStats.load}%
-            </p>
-          </button>
-        </div>
+    const [statsResult, providersResult, exportResult, observatoryResult] = results;
+    if (statsResult.status === "fulfilled") setSystemStats(statsResult.value);
+    if (providersResult.status === "fulfilled") {
+      setProviderStatus(providersResult.value);
+    }
+    if (exportResult.status === "fulfilled") {
+      setDiagnosticExport(exportResult.value);
+    }
+    if (observatoryResult.status === "fulfilled") {
+      setObservatory(observatoryResult.value);
+    }
+
+    const failureCount = results.filter((item) => item.status === "rejected").length;
+    if (failureCount === results.length) {
+      setSummaryError("Live dashboard sources are unavailable.");
+    } else if (failureCount > 0) {
+      setSummaryError(
+        `${failureCount} live source${failureCount === 1 ? " is" : "s are"} unavailable. Available fields remain live.`,
       );
     }
 
-    const targetName = getTargetName(activeCard);
+    setLastRefresh(new Date().toLocaleTimeString());
+    setSummaryLoading(false);
+  }, []);
+
+  const refreshDiagnostics = useCallback(async () => {
+    setDetailError(null);
+    try {
+      setDiagnostics(await readAdminJson<DiagnosticsResponse>("/api/diagnostics"));
+    } catch {
+      setDiagnostics(null);
+      setDetailError("Admin diagnostics are unavailable.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshSummary();
+  }, [refreshSummary]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => void refreshSystemStats(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [refreshSystemStats]);
+
+  useEffect(() => {
+    if (activeView === "diagnostics") void refreshDiagnostics();
+  }, [activeView, refreshDiagnostics]);
+
+  useEffect(() => {
+    const handlePop = () => {
+      setChatOpen(false);
+      setMoreOpen(false);
+      setActiveView("overview");
+    };
+    window.addEventListener("popstate", handlePop);
+    return () => window.removeEventListener("popstate", handlePop);
+  }, []);
+
+  const openView = (view: DashboardView) => {
+    setMoreOpen(false);
+    setActiveView(view);
+    window.history.pushState({ orbisDashboardView: view }, "");
+  };
+
+  const openChat = () => {
+    setMoreOpen(false);
+    setChatOpen(true);
+    window.history.pushState({ orbisDashboardView: "chat" }, "");
+  };
+
+  const closeOverlay = () => {
+    if (window.history.state?.orbisDashboardView) {
+      window.history.back();
+      return;
+    }
+    setChatOpen(false);
+    setActiveView("overview");
+  };
+
+  const activeProvider = providerStatus.activeProvider;
+  const providerHealth = normalizeAvailability(activeProvider?.health?.state);
+  const systemAvailability = normalizeAvailability(systemStats.status);
+  const databaseAvailability = normalizeAvailability(
+    diagnosticExport?.database.state,
+  );
+  const brainAvailability: Availability =
+    diagnosticExport?.brain.registered &&
+    diagnosticExport.brain.gatewayArtifact === "available"
+      ? "AVAILABLE"
+      : diagnosticExport
+        ? "UNAVAILABLE"
+        : "UNKNOWN";
+
+  const configuredCapabilities = useMemo(
+    () =>
+      diagnosticExport?.capabilities.filter(
+        (capability) => capability.configured && capability.callable,
+      ) || [],
+    [diagnosticExport],
+  );
+
+  const downloadCurrentReport = () => {
+    if (!diagnosticExport) return;
+    const blob = new Blob([JSON.stringify(diagnosticExport, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `orbis-foundation-diagnostic-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const summaryHeader = (
+    <section className="rounded-[24px] border border-emerald-100/70 bg-gradient-to-br from-white via-emerald-50/65 to-orange-50/70 p-5 shadow-[0_16px_40px_rgba(50,90,58,0.08)]">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-700/75">
+            ORBIS Foundation Control Center
+          </p>
+          <h2 className="mt-3 text-[30px] font-black leading-none tracking-[-0.04em] text-slate-900">
+            Your ORBIS. Visible.
+          </h2>
+          <p className="mt-3 max-w-xl text-[12px] leading-relaxed text-slate-500">
+            Live values come from connected Foundation services. Missing data is
+            shown as unavailable instead of being invented.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void refreshSummary()}
+          disabled={summaryLoading}
+          aria-label="Refresh dashboard data"
+          className="rounded-2xl border border-emerald-100 bg-white/85 p-3 text-emerald-700 shadow-sm disabled:opacity-50"
+        >
+          <RefreshCw className={`h-5 w-5 ${summaryLoading ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <StatusPill state={systemAvailability} label={`System ${systemStats.status}`} />
+        <StatusPill state={brainAvailability} label={`Brain ${brainAvailability}`} />
+        <StatusPill state={databaseAvailability} label={`Database ${diagnosticExport?.database.state || "Unknown"}`} />
+        <span className="text-[9px] text-slate-400">Refreshed: {lastRefresh}</span>
+      </div>
+      {summaryError && (
+        <p role="status" className="mt-3 rounded-xl border border-orange-100 bg-orange-50/75 px-3 py-2 text-[10px] text-orange-700">
+          {summaryError}
+        </p>
+      )}
+    </section>
+  );
+
+  const renderHome = () => (
+    <>
+      {summaryHeader}
+      <section className="mt-3 grid grid-cols-4 gap-2.5 md:grid-cols-6">
+        <HomeCard
+          eyebrow="01 / Assistant"
+          title="ORBIS Chat"
+          subtitle="One conversational entry to Brain and enabled capabilities."
+          icon={<MessageCircle className="h-5 w-5" />}
+          onClick={openChat}
+          className="col-span-3 row-span-2 min-h-[244px] bg-gradient-to-br from-emerald-50/90 via-white to-orange-50/80 md:col-span-2"
+          status={<StatusPill state={providerHealth} label={activeProvider?.name || "Provider not checked"} />}
+        />
+        <HomeCard
+          eyebrow="02"
+          title="Market Intelligence"
+          subtitle="Reserved for the verified market engine and live market feed."
+          icon={<TrendingUp className="h-5 w-5" />}
+          onClick={() => openView("market")}
+          className="col-span-1 row-span-2 min-h-[244px] md:col-span-2"
+          status={<StatusPill state="UNAVAILABLE" label="Not connected" />}
+        />
+        <HomeCard
+          eyebrow="03"
+          title="Modules"
+          subtitle={`${configuredCapabilities.length} callable capabilities currently registered.`}
+          icon={<Boxes className="h-5 w-5" />}
+          onClick={() => openView("modules")}
+          className="col-span-2 md:col-span-2"
+          status={<StatusPill state={diagnosticExport ? "AVAILABLE" : "UNKNOWN"} label="Capability registry" />}
+        />
+        <HomeCard
+          eyebrow="04"
+          title="Runtime"
+          subtitle={`${systemStats.platform} · ${systemStats.arch} · ${systemStats.cpuCores} cores`}
+          icon={<Cpu className="h-5 w-5" />}
+          onClick={() => openView("runtime")}
+          className="col-span-2 md:col-span-2"
+          status={<StatusPill state={systemAvailability} label={systemStats.uptime} />}
+        />
+        <HomeCard
+          eyebrow="05"
+          title="Brain"
+          subtitle="Gateway artifact, provider health and authorization surface."
+          icon={<Brain className="h-5 w-5" />}
+          onClick={() => openView("brain")}
+          className="col-span-2 md:col-span-2"
+          status={<StatusPill state={brainAvailability} />}
+        />
+        <HomeCard
+          eyebrow="06"
+          title="Diagnostics"
+          subtitle={`${diagnosticExport?.telemetry.summary.records ?? 0} redacted recent telemetry records.`}
+          icon={<Activity className="h-5 w-5" />}
+          onClick={() => openView("diagnostics")}
+          className="col-span-2 md:col-span-2"
+          status={<StatusPill state={normalizeAvailability(diagnosticExport?.telemetry.status)} label={diagnosticExport?.telemetry.status || "Unknown"} />}
+        />
+        <HomeCard
+          eyebrow="07"
+          title="Data & Privacy"
+          subtitle="Foundation table counts, storage state and redaction policy."
+          icon={<Database className="h-5 w-5" />}
+          onClick={() => openView("data")}
+          className="col-span-2 md:col-span-2"
+          status={<StatusPill state={databaseAvailability} label={diagnosticExport?.database.state || "Unknown"} />}
+        />
+        <HomeCard
+          eyebrow="08"
+          title="Releases"
+          subtitle={`Commit ${diagnosticExport?.version.commit || "Unavailable"}`}
+          icon={<GitBranch className="h-5 w-5" />}
+          onClick={() => openView("releases")}
+          className="col-span-2 md:col-span-2"
+          status={<StatusPill state={diagnosticExport ? "AVAILABLE" : "UNKNOWN"} label={`v${diagnosticExport?.version.application || "?"}`} />}
+        />
+      </section>
+    </>
+  );
+
+  const renderMarket = () => (
+    <div className="space-y-3">
+      <section className="rounded-[24px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/70 p-5 shadow-sm">
+        <div className="flex items-center gap-3">
+          <span className="rounded-2xl bg-orange-50 p-3 text-orange-500"><TrendingUp className="h-6 w-6" /></span>
+          <div>
+            <h3 className="text-lg font-black text-slate-900">Market Intelligence is not connected yet</h3>
+            <p className="mt-1 text-[11px] text-slate-500">No live market endpoint or broker feed is exposed by the current Foundation backend, so this screen intentionally shows no prices, P&amp;L, confidence or signals.</p>
+          </div>
+        </div>
+      </section>
+      <div className="grid grid-cols-2 gap-2.5">
+        <MetricTile label="Live feed" value="Unavailable" source="No verified market source" />
+        <MetricTile label="Paper trading" value="Not implemented" source="Market module pending" />
+        <MetricTile label="Research engine" value="Not implemented" source="Market module pending" />
+        <MetricTile label="Market storage" value="Not implemented" source="Market module pending" />
+      </div>
+    </div>
+  );
+
+  const renderModules = () => (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2.5">
+        <MetricTile label="Registered capabilities" value={diagnosticExport?.capabilities.length ?? "Unavailable"} source="Admin diagnostic capability registry" />
+        <MetricTile label="Callable + configured" value={configuredCapabilities.length} source="Admin diagnostic capability registry" />
+        <MetricTile label="Development registry" value="Not wired" source="No live module registry endpoint" />
+        <MetricTile label="Published registry" value="Not wired" source="No live module registry endpoint" />
+      </div>
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+        <h3 className="text-sm font-black text-slate-900">Current capability registry</h3>
+        <div className="mt-2">
+          {(diagnosticExport?.capabilities || []).map((capability) => (
+            <DetailRow
+              key={capability.id}
+              label={`${capability.kind} · ${capability.status}`}
+              value={capability.id}
+              source={`${capability.executionRoute} · configured=${String(capability.configured)} · callable=${String(capability.callable)}`}
+              copyable
+            />
+          ))}
+          {!diagnosticExport && <p className="py-4 text-xs text-slate-400">Capability registry unavailable.</p>}
+        </div>
+      </section>
+    </div>
+  );
+
+  const renderRuntime = () => (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2.5">
+        <MetricTile label="Platform" value={systemStats.platform} source="/api/system-stats" />
+        <MetricTile label="Architecture" value={systemStats.arch} source="/api/system-stats" />
+        <MetricTile label="CPU cores" value={systemStats.cpuCores} source="/api/system-stats" />
+        <MetricTile label="Memory used" value={`${systemStats.usedMem} / ${systemStats.totalMem} GB`} source="/api/system-stats" />
+        <MetricTile label="Load average" value={systemStats.load} source="OS 1-minute load average" />
+        <MetricTile label="Uptime" value={systemStats.uptime} source="OS uptime" />
+      </div>
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+        <h3 className="text-sm font-black text-slate-900">Runtime boundaries</h3>
+        <DetailRow label="Current backend runtime" value={`${systemStats.platform} ${systemStats.release}`} source="/api/system-stats" copyable />
+        <DetailRow label="Node runtime" value={diagnosticExport?.runtime.node || "Unavailable"} source="Admin diagnostic export" copyable />
+        <DetailRow label="Physical Android phone link" value="Not exposed by current backend" source="No authenticated cloud-to-phone pairing telemetry exists yet" />
+        <DetailRow label="Audit-driven runtime tasks" value={formatNumber(observatory?.auditedTasks)} source="/api/termux-observatory" />
+        <DetailRow label="Next audited task" value={observatory?.next || "Unavailable"} source="/api/termux-observatory" copyable />
+      </section>
+    </div>
+  );
+
+  const renderBrain = () => (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2.5">
+        <MetricTile label="Brain route" value={diagnosticExport?.brain.route || "Unavailable"} source="Admin diagnostic export" />
+        <MetricTile label="Gateway artifact" value={diagnosticExport?.brain.gatewayArtifact || "Unavailable"} source="Admin diagnostic export" />
+        <MetricTile label="Active provider" value={activeProvider?.name || "Unavailable"} source="/api/ai/providers/status" />
+        <MetricTile label="Provider health" value={activeProvider?.health?.state || "UNKNOWN"} source={`Checked: ${formatCheckedAt(activeProvider?.health?.checkedAt)}`} />
+      </div>
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+        <h3 className="text-sm font-black text-slate-900">Providers</h3>
+        {(providerStatus.allProviders || []).map((provider) => (
+          <DetailRow
+            key={`${provider.name}-${provider.model}`}
+            label={`${provider.type || "unknown"} · ${provider.health?.state || "UNKNOWN"}`}
+            value={`${provider.name || "Unnamed"} · ${provider.model || "model unavailable"}`}
+            source={`Last health check: ${formatCheckedAt(provider.health?.checkedAt)}`}
+            copyable
+          />
+        ))}
+        {providerStatus.allProviders.length === 0 && <p className="py-4 text-xs text-slate-400">No provider metadata available.</p>}
+      </section>
+    </div>
+  );
+
+  const renderDiagnostics = () => {
+    const events = diagnostics?.logs || diagnosticExport?.telemetry.recentEvents || [];
     return (
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex-1 flex flex-col h-full">
-        <div className="flex justify-between items-center mb-3">
-          <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2 capitalize">
-            <span className="text-xl">📡</span> Live Stream:{" "}
-            {activeCard?.replace("_", " ")}
-          </h3>
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(
-                generateRawTelemetry(targetName, sysStats),
-              );
-              markCopied();
-            }}
-            className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? "bg-emerald-100 text-emerald-700" : "bg-slate-800 hover:bg-slate-700 text-white"}`}
-          >
-            {copiedText ? "✓ Copied" : "⧉ Copy Data"}
-          </button>
+      <div className="space-y-3">
+        {detailError && <p role="alert" className="rounded-xl border border-orange-100 bg-orange-50 p-3 text-xs text-orange-700">{detailError}</p>}
+        <div className="grid grid-cols-2 gap-2.5">
+          <MetricTile label="Telemetry" value={diagnosticExport?.telemetry.status || "Unavailable"} source="Admin diagnostic export" />
+          <MetricTile label="Recent records" value={diagnosticExport?.telemetry.summary.records ?? "Unavailable"} source="Redacted telemetry" />
+          <MetricTile label="Occurrences" value={diagnosticExport?.telemetry.summary.occurrences ?? "Unavailable"} source="Aggregated redacted events" />
+          <MetricTile label="Git status" value={diagnostics?.gitStatus || diagnosticExport?.version.commit || "Unavailable"} source="Live diagnostics / diagnostic export" />
         </div>
-        <div className="bg-slate-900 rounded-lg p-4 flex-1 overflow-auto select-text cursor-text shadow-inner">
-          <pre className="font-mono text-[12px] text-teal-300 whitespace-pre-wrap leading-relaxed">
-            {`[SYSTEM] Accessing secure node: ${activeCard}...\n[STATUS] Connection established.\n\n`}
-            {generateRawTelemetry(targetName, sysStats)}
-          </pre>
-        </div>
+        <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-black text-slate-900">Redacted operational events</h3>
+            <button type="button" onClick={downloadCurrentReport} disabled={!diagnosticExport} className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-700 disabled:opacity-40">
+              <Download className="mr-1 inline h-3.5 w-3.5" /> Export
+            </button>
+          </div>
+          <div className="mt-2">
+            {events.slice(0, 20).map((event) => (
+              <DetailRow
+                key={`${event.timestamp}-${event.source}-${event.message}`}
+                label={`${event.severity || event.level} · ${event.source}`}
+                value={event.message}
+                source={`${event.timestamp} · count ${event.count || 1}`}
+                copyable
+              />
+            ))}
+            {events.length === 0 && <p className="py-4 text-xs text-slate-400">No redacted operational events are available.</p>}
+          </div>
+        </section>
       </div>
     );
   };
 
-  return (
-    <div className="w-full min-h-screen bg-[#F8FAFC] flex flex-col relative pb-6 font-sans">
-      <AnimatePresence>
-        {isSidebarOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsSidebarOpen(false)}
-              className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ x: "-100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "-100%" }}
-              transition={{ type: "spring", bounce: 0, duration: 0.3 }}
-              className="fixed inset-y-0 left-0 w-64 bg-white shadow-2xl z-50 flex flex-col"
-            >
-              <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                  <span>🧠</span> Menu
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setIsSidebarOpen(false)}
-                  className="bg-slate-200 text-slate-600 h-8 w-8 rounded-full font-bold flex items-center justify-center hover:bg-slate-300"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="p-4 flex flex-col gap-2">
-                <button
-                  type="button"
-                  className="text-left px-4 py-3 rounded-xl bg-green-50 text-green-700 font-semibold border border-green-100"
-                >
-                  📊 Dashboard
-                </button>
-                <button
-                  type="button"
-                  className="text-left px-4 py-3 rounded-xl text-slate-600 font-medium hover:bg-slate-50"
-                >
-                  ⚙️ System Settings
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSidebarOpen(false);
-                    setViewMode("diagnostic");
-                    setShowOutput(true);
-                  }}
-                  className="text-left px-4 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 flex items-center gap-3"
-                >
-                  <span className="text-lg">💻</span> ডায়াগনস্টিক টার্মিনাল
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSidebarOpen(false);
-                    setViewMode("tree");
-                    setShowOutput(true);
-                  }}
-                  className="text-left px-4 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 flex items-center gap-3"
-                >
-                  <span className="text-lg">🗂️</span> লাইভ ডিপেন্ডেন্সি ট্রি
-                </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      <header className="flex items-center justify-between px-5 py-4 bg-white sticky top-0 z-10 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setIsSidebarOpen(true)}
-            className="text-slate-500 hover:text-slate-700 p-1"
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            </svg>
-          </button>
-          <h1 className="text-[16px] font-bold text-slate-800 flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all">
-            <div className="relative w-6 h-6 flex items-center justify-center">
-              <img
-                src="/orbis-logo.png"
-                alt="Orbis"
-                className="absolute inset-0 w-full h-full object-contain z-10"
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                }}
-              />
-              <span className="text-xl relative z-0">🧠</span>
-            </div>
-            <span>Orbis Foundation Admin Dashboard</span>
-          </h1>
+  const renderData = () => (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2.5">
+        <MetricTile label="Database" value={diagnosticExport?.database.state || "Unavailable"} source="Admin diagnostic export" />
+        <MetricTile label="Redaction" value={diagnosticExport?.redacted ? "Enabled" : "Unavailable"} source="Admin diagnostic schema" />
+        <MetricTile label="Telemetry" value={diagnosticExport?.telemetry.status || "Unavailable"} source="Admin diagnostic export" />
+        <MetricTile label="Storage scope" value="Foundation tables only" source="Diagnostic export allow-list" />
+      </div>
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+        <h3 className="text-sm font-black text-slate-900">Foundation table counts</h3>
+        {(diagnosticExport?.database.foundationTableCounts || []).map((table) => (
+          <DetailRow
+            key={table.table}
+            label={table.status}
+            value={`${table.table}: ${formatNumber(table.count)}`}
+            source="Admin diagnostic database count"
+            copyable
+          />
+        ))}
+      </section>
+      <section className="rounded-[22px] border border-orange-100 bg-orange-50/55 p-4">
+        <h3 className="flex items-center gap-2 text-sm font-black text-slate-900"><ShieldCheck className="h-4 w-4 text-emerald-600" /> Diagnostic privacy exclusions</h3>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(diagnosticExport?.exclusions || []).map((item) => (
+            <span key={item} className="rounded-full border border-orange-100 bg-white/80 px-2.5 py-1 text-[9px] text-slate-600">{item}</span>
+          ))}
         </div>
-        <div className="flex items-center gap-2 bg-green-50/80 px-2.5 py-1.5 rounded-full border border-green-100">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-          </span>
-          <span className="text-[11px] font-bold text-green-700 uppercase tracking-wide">
-            Live
-          </span>
+      </section>
+    </div>
+  );
+
+  const renderReleases = () => (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2.5">
+        <MetricTile label="Application" value={diagnosticExport ? `v${diagnosticExport.version.application}` : "Unavailable"} source="package.json via diagnostic export" />
+        <MetricTile label="Commit" value={diagnosticExport?.version.commit || "Unavailable"} source="git rev-parse via diagnostic export" />
+        <MetricTile label="Migrations" value={diagnosticExport?.migrations.length ?? "Unavailable"} source="Local migration directory" />
+        <MetricTile label="Generated" value={diagnosticExport?.generatedAt ? new Date(diagnosticExport.generatedAt).toLocaleString() : "Unavailable"} source="Diagnostic export timestamp" />
+      </div>
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+        <h3 className="text-sm font-black text-slate-900">Release evidence</h3>
+        <DetailRow label="Current commit" value={diagnosticExport?.version.commit || "Unavailable"} source="Admin diagnostic export" copyable />
+        <DetailRow label="Application version" value={diagnosticExport?.version.application || "Unavailable"} source="package.json" copyable />
+        <DetailRow label="Latest audit target" value={observatory?.next || "Unavailable"} source="/api/termux-observatory" copyable />
+        <DetailRow label="Published-release registry" value="Not wired" source="No live published-release registry endpoint" />
+      </section>
+    </div>
+  );
+
+  const renderActiveView = () => {
+    switch (activeView) {
+      case "market":
+        return renderMarket();
+      case "modules":
+        return renderModules();
+      case "runtime":
+        return renderRuntime();
+      case "brain":
+        return renderBrain();
+      case "diagnostics":
+        return renderDiagnostics();
+      case "data":
+        return renderData();
+      case "releases":
+        return renderReleases();
+      default:
+        return renderHome();
+    }
+  };
+
+  const detailOpen = activeView !== "overview";
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_0_0,rgba(220,248,220,0.9),transparent_30%),radial-gradient(circle_at_100%_0,rgba(255,238,210,0.9),transparent_30%),linear-gradient(180deg,#fffef9_0%,#f6fbf3_100%)] pb-24 text-slate-800 md:pb-8 md:pl-36">
+      <header className="sticky top-0 z-30 border-b border-emerald-100/70 bg-white/80 px-4 py-3 backdrop-blur-2xl">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="truncate text-[15px] font-black tracking-[0.12em] text-slate-900">ORBIS FOUNDATION</h1>
+            <p className="mt-0.5 text-[8px] tracking-[0.08em] text-slate-400">BUILD · OBSERVE · EVOLVE</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {systemAvailability === "AVAILABLE" ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <WifiOff className="h-4 w-4 text-orange-400" />}
+            <button type="button" onClick={() => setMoreOpen(true)} aria-label="Open dashboard menu" className="rounded-2xl border border-emerald-100 bg-white/80 p-2.5 text-slate-500">
+              <MoreHorizontal className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="px-5 mt-5 mb-2">
-        <button
-          type="button"
-          onClick={() =>
-            window.dispatchEvent(new CustomEvent("open-telemetry-modal"))
-          }
-          className="w-full text-left cursor-pointer hover:shadow-md hover:scale-[1.01] transition-all p-4 rounded-[20px] bg-gradient-to-br from-green-50 to-emerald-50/50 border border-green-100/60 shadow-sm relative overflow-hidden"
-        >
-          <div className="flex items-start gap-3 relative z-10">
-            <span className="text-xl mt-0.5">☀️</span>
+      <main className="mx-auto max-w-6xl px-3 py-3 sm:px-5">
+        {detailOpen && (
+          <div className="mb-3 flex items-center gap-3">
+            <button type="button" onClick={closeOverlay} className="rounded-2xl border border-emerald-100 bg-white/85 p-2.5 text-slate-600" aria-label="Back to dashboard">
+              <ArrowLeft className="h-5 w-5" />
+            </button>
             <div>
-              <h2 className="text-[15px] font-bold text-slate-800 mb-1">
-                সিস্টেম লাইভ এবং প্রস্তুত
-              </h2>
-              <LiveStatusText />
+              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-emerald-700/75">ORBIS Control Center</p>
+              <h2 className="text-xl font-black text-slate-900">{VIEW_TITLES[activeView]}</h2>
             </div>
           </div>
-        </button>
-      </div>
-
-      <DiagnosticExportActions />
-
-      <div className="w-full px-5 mt-4 mb-5">
-        <GlassChatCard />
-      </div>
-
-      <AnimatePresence>
-        {showOutput && (
-          <AnimatedMonitorFrame
-            className="fixed inset-0 bg-white z-[60] flex flex-col"
-            contentClassName="flex-1 p-4 overflow-hidden bg-slate-50 flex flex-col gap-4"
-            headerClassName="pt-6"
-            onClose={() => setShowOutput(false)}
-            titleClassName="text-[16px] font-bold text-teal-700 flex items-center gap-2"
-            title={
-              <>
-                <span className="text-xl">💻</span> Terminal Output
-              </>
-            }
-          >
-            {viewMode === "diagnostic" && (
-              <div className="bg-slate-900 text-emerald-400 p-4 rounded-xl font-mono text-[13px] flex-1 overflow-auto shadow-inner relative flex flex-col">
-                <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2 sticky top-0 bg-slate-900 z-10">
-                  <span className="text-slate-400 text-[11px]">
-                    ~/orbis/terminal
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(outputData);
-                      markCopied();
-                    }}
-                    className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
-                  >
-                    {copiedText ? "✓ Copied" : "⧉ Copy"}
-                  </button>
-                </div>
-                <pre className="whitespace-pre-wrap select-text">
-                  {outputData}
-                </pre>
-              </div>
-            )}
-
-            {viewMode === "tree" && (
-              <div className="bg-[#0b1120] text-blue-300 p-4 rounded-xl font-mono text-[12px] flex-1 overflow-auto shadow-inner relative flex flex-col">
-                <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2 sticky top-0 bg-[#0b1120] pt-1 z-10">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                    </span>
-                    <span className="text-slate-300 font-bold uppercase tracking-wider text-[10px]">
-                      Live System Tree (Render Cloud)
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(liveTree);
-                      markCopied();
-                    }}
-                    className="bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md text-[10px] font-bold transition-all shadow-sm"
-                  >
-                    {copiedText ? "✓ Copied" : "⧉ Copy"}
-                  </button>
-                </div>
-                <pre className="whitespace-pre-wrap select-text leading-relaxed text-[11px] pb-4">
-                  {liveTree}
-                </pre>
-              </div>
-            )}
-          </AnimatedMonitorFrame>
         )}
-      </AnimatePresence>
+        {renderActiveView()}
+      </main>
 
-      <div className="px-5 mb-4">
-        <button
-          type="button"
-          onClick={() => {
-            setViewMode("tree");
-            setShowOutput(true);
-          }}
-          className="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 p-3 rounded-[16px] text-[13px] font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-indigo-100 active:scale-95 transition-all"
-        >
-          <span className="text-lg">🗂️</span> লাইভ ডিপেন্ডেন্সি ট্রি
-        </button>
-      </div>
+      <nav className="fixed bottom-[max(0.45rem,env(safe-area-inset-bottom))] left-1/2 z-40 grid h-[62px] w-[94%] max-w-[590px] -translate-x-1/2 grid-cols-5 rounded-[22px] border border-emerald-100 bg-white/90 p-1.5 shadow-[0_14px_38px_rgba(50,90,58,0.14)] backdrop-blur-2xl md:left-5 md:top-24 md:h-[310px] md:w-[124px] md:translate-x-0 md:grid-cols-1">
+        <button type="button" onClick={() => setActiveView("overview")} className={`rounded-2xl text-[9px] font-semibold ${activeView === "overview" && !chatOpen ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Home className="mx-auto mb-1 h-5 w-5" />Home</button>
+        <button type="button" onClick={openChat} className="rounded-2xl text-[9px] font-semibold text-slate-400"><MessageCircle className="mx-auto mb-1 h-5 w-5" />Chat</button>
+        <button type="button" onClick={() => openView("market")} className={`rounded-2xl text-[9px] font-semibold ${activeView === "market" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><TrendingUp className="mx-auto mb-1 h-5 w-5" />Market</button>
+        <button type="button" onClick={() => openView("modules")} className={`rounded-2xl text-[9px] font-semibold ${activeView === "modules" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Boxes className="mx-auto mb-1 h-5 w-5" />Modules</button>
+        <button type="button" onClick={() => setMoreOpen(true)} className="rounded-2xl text-[9px] font-semibold text-slate-400"><MoreHorizontal className="mx-auto mb-1 h-5 w-5" />More</button>
+      </nav>
 
-      <div className="px-5 grid grid-cols-2 gap-3.5">
-        <motion.div
-          whileTap={{ scale: 0.96 }}
-          onClick={() => setActiveCard("overview")}
-          className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-orange-50 p-1.5 rounded-lg">
-              <span className="text-sm">🏛️</span>
+      {moreOpen && (
+        <div className="fixed inset-0 z-[70] flex items-end">
+          <button
+            type="button"
+            aria-label="Close More menu"
+            onClick={() => setMoreOpen(false)}
+            className="absolute inset-0 cursor-default bg-slate-900/10 backdrop-blur-[2px]"
+          />
+          <section className="relative z-10 w-full rounded-t-[28px] border border-emerald-100 bg-[#fffef9] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl">
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-black text-slate-900">More</h2>
+              <button type="button" onClick={() => setMoreOpen(false)} aria-label="Close menu" className="rounded-xl p-2 text-slate-400"><X className="h-5 w-5" /></button>
             </div>
-            <h3 className="text-[12px] font-bold text-slate-600">Overview</h3>
-          </div>
-          <div>
-            <p className="text-xl font-black text-slate-800">
-              Phase {data.phase}
-            </p>
-            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-              Modular Arch
-            </p>
-          </div>
-        </motion.div>
-
-        <motion.div
-          whileTap={{ scale: 0.96 }}
-          onClick={() => setActiveCard("engine")}
-          className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-blue-50 p-1.5 rounded-lg">
-              <span className="text-sm">⚙️</span>
+            <div className="mt-2 divide-y divide-emerald-50">
+              {[
+                ["brain", "Brain", Brain],
+                ["runtime", "Runtime", Server],
+                ["diagnostics", "Diagnostics", Activity],
+                ["data", "Data & Privacy", Database],
+                ["releases", "Releases", GitBranch],
+              ].map(([key, label, Icon]) => {
+                const RowIcon = Icon as React.ComponentType<{ className?: string }>;
+                return (
+                  <button key={String(key)} type="button" onClick={() => openView(key as DashboardView)} className="flex w-full items-center gap-3 py-3 text-left text-sm font-semibold text-slate-700">
+                    <span className="rounded-xl bg-emerald-50 p-2 text-emerald-700"><RowIcon className="h-4 w-4" /></span>
+                    <span className="flex-1">{String(label)}</span>
+                    <ChevronRight className="h-4 w-4 text-slate-300" />
+                  </button>
+                );
+              })}
+              <button type="button" disabled className="flex w-full cursor-not-allowed items-center gap-3 py-3 text-left text-sm font-semibold text-slate-400">
+                <span className="rounded-xl bg-orange-50 p-2 text-orange-500"><Settings className="h-4 w-4" /></span>
+                <span className="flex-1">Settings</span>
+                <span className="text-[9px] text-slate-400">Not implemented</span>
+              </button>
             </div>
-            <h3 className="text-[12px] font-bold text-slate-600">Engine</h3>
-          </div>
-          <div>
-            <p className="text-xl font-black text-slate-800">{data.engine}</p>
-            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-              Uptime: {data.uptime}
-            </p>
-          </div>
-        </motion.div>
+          </section>
+        </div>
+      )}
 
-        <SystemLogManager />
-
-        <motion.div
-          whileTap={{ scale: 0.96 }}
-          onClick={() => setActiveCard("brain")}
-          className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-rose-50 p-1.5 rounded-lg">
-              <span className="text-sm">🧠</span>
-            </div>
-            <h3 className="text-[12px] font-bold text-slate-600">Brain Sync</h3>
-          </div>
-          <div>
-            <p className="text-xl font-black text-slate-800">{data.sync}</p>
-            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-              Neural Sync
-            </p>
-          </div>
-        </motion.div>
-
-        <motion.div
-          whileTap={{ scale: 0.96 }}
-          onClick={() => setActiveCard("ai")}
-          className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-purple-50 p-1.5 rounded-lg">
-              <span className="text-sm">🤖</span>
-            </div>
-            <h3 className="text-[12px] font-bold text-slate-600">AI Agents</h3>
-          </div>
-          <div>
-            <p className="text-xl font-black text-slate-800">{data.ai}</p>
-            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-              Latency: {data.latency}
-            </p>
-          </div>
-        </motion.div>
-
-        <motion.div
-          whileTap={{ scale: 0.96 }}
-          onClick={() => setActiveCard("runtime")}
-          className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-yellow-50 p-1.5 rounded-lg">
-              <span className="text-sm">⚡</span>
-            </div>
-            <h3 className="text-[12px] font-bold text-slate-600">Runtime</h3>
-          </div>
-          <div>
-            <p className="text-xl font-black text-slate-800">{data.runtime}</p>
-            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-              {data.runtimeVer}
-            </p>
-          </div>
-        </motion.div>
-
-        <motion.div
-          whileTap={{ scale: 0.96 }}
-          onClick={() => setActiveCard("release")}
-          className="cursor-pointer bg-white border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-indigo-50 p-1.5 rounded-lg">
-              <span className="text-sm">🚀</span>
-            </div>
-            <h3 className="text-[12px] font-bold text-slate-600">Release</h3>
-          </div>
-          <div>
-            <p className="text-xl font-black text-slate-800">{data.release}</p>
-            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-              {data.releaseType}
-            </p>
-          </div>
-        </motion.div>
-
-        <motion.div
-          whileTap={{ scale: 0.96 }}
-          onClick={() => setActiveCard("core")}
-          className="cursor-pointer bg-gradient-to-br from-orange-50/50 to-green-50/30 border border-slate-100 shadow-sm rounded-[20px] p-4 flex flex-col justify-between min-h-[110px]"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-amber-100/50 p-1.5 rounded-lg">
-              <span className="text-sm">📦</span>
-            </div>
-            <h3 className="text-[12px] font-bold text-slate-700">Modules</h3>
-          </div>
-          <div>
-            <p className="text-xl font-black text-slate-800">{data.core}</p>
-            <p className="text-[11px] font-semibold text-green-600/80 mt-0.5">
-              {data.coreStatus}
-            </p>
-          </div>
-        </motion.div>
-      </div>
-
-      <div className="px-5 mt-4 w-full">
-        <TermuxObservatory />
-      </div>
-
-      <AnimatePresence>
-        {activeCard && (
-          <AnimatedMonitorFrame
-            className="fixed inset-0 bg-white z-50 flex flex-col"
-            contentClassName="flex-1 p-5 overflow-y-auto bg-slate-50"
-            onClose={() => {
-              setActiveCard(null);
-              setActiveSubCard(null);
-            }}
-            titleClassName="text-[16px] font-bold text-slate-800 capitalize flex items-center gap-2"
-            title={
-              <>
-                <span className="text-xl">📊</span>{" "}
-                {activeCard.replace("_", " ")} Monitor
-              </>
-            }
-          >
-            {renderPremiumModalContent()}
-          </AnimatedMonitorFrame>
-        )}
-      </AnimatePresence>
+      {chatOpen && <FullscreenChatView onClose={closeOverlay} />}
     </div>
   );
 }
+
 export default AdminDashboard;
-
-export const generateRawTelemetry = (target: string | null, sysStats: any) => {
-  if (!target) return "Awaiting module selection...";
-  const timestamp = new Date().toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    dateStyle: "medium",
-    timeStyle: "medium",
-  });
-  const header = `[RAW HARDWARE TELEMETRY] - ${timestamp} (IST)\nTarget Node: ${target}\nStatus: LIVE DATA STREAM\n------------------------------------------------\n`;
-
-  switch (target) {
-    case "System Phase":
-    case "Overview":
-    case "SYSTEM UPTIME":
-      return (
-        header +
-        `> OS Platform: ${sysStats.platform} (${sysStats.release})\n> Server Hostname: ${sysStats.hostname}\n> OS Uptime: ${sysStats.uptime}\n> Node Process Uptime: ${sysStats.processUptime} Seconds\n> Status: ${sysStats.status}`
-      );
-    case "Architecture":
-    case "CPU ARCH":
-      return (
-        header +
-        `> Architecture: ${sysStats.arch}\n> CPU Model: ${sysStats.cpuModel}\n> Total Cores: ${sysStats.cpuCores} Logical Threads\n> Node.js Heap Allocated: ${sysStats.heapUsed} MB`
-      );
-    case "Microservices":
-    case "RAM USAGE":
-      return (
-        header +
-        `> Total RAM: ${sysStats.totalMem} GB\n> Used RAM: ${sysStats.usedMem} GB (${sysStats.ramUsedPercent}%)\n> Free RAM: ${sysStats.freeMem} GB\n> Memory Status: ${Number.parseFloat(sysStats.ramUsedPercent) > 85 ? "WARNING: HIGH LOAD" : "OPTIMAL"}`
-      );
-    case MASTER_NODE_NAME:
-    case "OS PLATFORM":
-    case "Health":
-      return (
-        header +
-        `> Kernel / Release: ${sysStats.release}\n> System Type: ${sysStats.platform}\n> Process Arch: ${sysStats.arch}\n> Hardware Sync: COMPLETE`
-      );
-    case "API Gateway":
-    case "SERVER STATUS":
-    case "Engine":
-      return (
-        header +
-        `> Backend API: ${sysStats.status}\n> Process Active Memory: ${sysStats.heapUsed} MB\n> Server OS Uptime: ${sysStats.uptime}`
-      );
-    case "Avg Load":
-    case "CPU LOAD":
-      return (
-        header +
-        `> CPU Load Average (1 min): ${sysStats.load}\n> CPU Load Average (5 min): ${sysStats.load5m}\n> CPU Load Average (15 min): ${sysStats.load15m}\n> Core Distribution: ${sysStats.cpuCores > 0 ? ((Number.parseFloat(sysStats.load) / sysStats.cpuCores) * 100).toFixed(1) : 0}% per core`
-      );
-    default:
-      return (
-        header +
-        `> Requesting raw data for ${target}...\n> Metrics Snapshot: \n` +
-        JSON.stringify(sysStats, null, 2)
-      );
-  }
-};

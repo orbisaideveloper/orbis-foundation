@@ -31,7 +31,7 @@ describe("AdminViews Component", () => {
     expect(
       screen.getAllByText(
         (content, element) =>
-          element?.textContent?.includes("Orbis Foundation") || false,
+          element?.textContent?.includes("ORBIS FOUNDATION") || false,
       )[0],
     ).toBeInTheDocument();
   });
