@@ -19,7 +19,7 @@ export function AnimatedMonitorFrame({
   onClose,
   title,
   titleClassName = "text-[16px] font-bold text-slate-800 flex items-center gap-2",
-}: AnimatedMonitorFrameProps) {
+}: Readonly<AnimatedMonitorFrameProps>) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 50 }}

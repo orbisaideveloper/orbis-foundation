@@ -14,7 +14,8 @@ const MAX_TAGS = 5;
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 
 const PERSONAL_OR_SECRET_PATTERNS = [
-  /\b(?:i am|i'm|my|mine|me|we|our|username|user id|account id|email|phone|mobile|password|passcode|secret|token|api[ _-]?key|bearer)\b/i,
+  /\b(?:i am|i'm|my|mine|me|we|our|username|user id|account id|email|phone|mobile|password|passcode|secret|token|bearer)\b/i,
+  /\bapi[ _-]?key\b/i,
   /(?:আমি|আমার|আমাকে|আমরা|আমাদের|নাম|ইমেইল|ফোন|মোবাইল|পাসওয়ার্ড|পাসওয়ার্ড|টোকেন|গোপন)/u,
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
   /(?:\+?\d[\d\s().-]{7,}\d)/,

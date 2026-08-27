@@ -197,7 +197,7 @@ function isLocationToken(token) {
   if (NON_LOCATION_WORDS.has(token) || LOCATION_CONNECTORS.has(token)) {
     return false;
   }
-  return /^[\p{L}\p{M}][\p{L}\p{M}.'’\-]*$/u.test(token);
+  return /^[\p{L}\p{M}][\p{L}\p{M}.'’-]*$/u.test(token);
 }
 
 function validatedLocation(tokens) {
@@ -346,13 +346,96 @@ function matchRequest(message) {
   };
 }
 
-const APPROVAL_TOKEN =
-  /(?:approve|approved|confirm|confirmed|yes|reject|rejected|deny|denied|no|cancel|cancelled|approval|token|অনুমোদন|টোকেন|হ্যাঁ|ঠিক\s+আছে|না|বাতিল|প্রত্যাখ্যান)\s*[:#]?\s*([A-Za-z0-9_-]{20,})/i;
+const APPROVAL_PREFIXES = Object.freeze([
+  "approve",
+  "approved",
+  "confirm",
+  "confirmed",
+  "yes",
+  "reject",
+  "rejected",
+  "deny",
+  "denied",
+  "no",
+  "cancel",
+  "cancelled",
+  "approval",
+  "token",
+  "অনুমোদন",
+  "টোকেন",
+  "হ্যাঁ",
+  "ঠিক আছে",
+  "না",
+  "বাতিল",
+  "প্রত্যাখ্যান",
+]);
+
+function isApprovalTokenCharacter(character) {
+  const code = character.charCodeAt(0);
+  return (
+    character === "_" ||
+    character === "-" ||
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122)
+  );
+}
+
+function skipWhitespace(text, index) {
+  let nextIndex = index;
+  while (nextIndex < text.length && text[nextIndex].trim() === "") {
+    nextIndex += 1;
+  }
+  return nextIndex;
+}
+
+function readApprovalToken(text, prefixEnd) {
+  let tokenStart = skipWhitespace(text, prefixEnd);
+  if (text[tokenStart] === ":" || text[tokenStart] === "#") {
+    tokenStart = skipWhitespace(text, tokenStart + 1);
+  }
+
+  let tokenEnd = tokenStart;
+  while (
+    tokenEnd < text.length &&
+    isApprovalTokenCharacter(text[tokenEnd])
+  ) {
+    tokenEnd += 1;
+  }
+  const token = text.slice(tokenStart, tokenEnd);
+  return token.length >= 20 ? token : null;
+}
+
+function approvalTokenFromMessage(message) {
+  const text = String(message || "");
+  const normalizedText = text.toLowerCase();
+  let searchStart = 0;
+  while (searchStart < normalizedText.length) {
+    const prefixIndexes = APPROVAL_PREFIXES.map((prefix) => ({
+      prefix,
+      index: normalizedText.indexOf(prefix, searchStart),
+    })).filter(({ index }) => index !== -1);
+    if (prefixIndexes.length === 0) return null;
+
+    const nextPrefixIndex = Math.min(
+      ...prefixIndexes.map(({ index }) => index),
+    );
+    const matchingPrefixes = prefixIndexes
+      .filter(({ index }) => index === nextPrefixIndex)
+      .map(({ prefix }) => prefix)
+      .sort((left, right) => right.length - left.length);
+    for (const prefix of matchingPrefixes) {
+      const token = readApprovalToken(text, nextPrefixIndex + prefix.length);
+      if (token) return token;
+    }
+    searchStart = nextPrefixIndex + 1;
+  }
+  return null;
+}
 
 function matchApprovalDecision(message) {
   const text = String(message || "");
-  const matchResult = text.match(APPROVAL_TOKEN);
-  const token = matchResult?.[1] || null;
+  const token = approvalTokenFromMessage(text);
   if (!token) return null;
 
   const approve =

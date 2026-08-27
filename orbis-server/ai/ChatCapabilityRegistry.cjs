@@ -84,10 +84,10 @@ const TEMPORAL_WORDS = Object.freeze([
 function isTemporalRequest(message) {
   if (capabilityIntentMatcher.matchWeatherRequest(message)) return true;
   const escaped = TEMPORAL_WORDS.map((word) =>
-    word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    word.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`),
   );
   return new RegExp(
-    `(?:^|\\s|[.,!?।])(${escaped.join("|")})(?=\\s|[.,!?।]|$)`,
+    String.raw`(?:^|\s|[.,!?।])(${escaped.join("|")})(?=\s|[.,!?।]|$)`,
     "i",
   ).test(String(message || "").toLowerCase());
 }

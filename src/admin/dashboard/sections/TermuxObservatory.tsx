@@ -81,7 +81,7 @@ export const TermuxObservatory: React.FC = () => {
   async function load() {
     try {
       const r = await fetch("/api/termux-observatory");
-      if (!r.ok) throw Error("API");
+      if (!r.ok) throw new Error("API");
       setD(await r.json());
       setErr("");
     } catch (e) {

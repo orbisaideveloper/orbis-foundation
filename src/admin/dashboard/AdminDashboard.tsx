@@ -243,6 +243,27 @@ function statusClasses(state: Availability): string {
   return "border-slate-200 bg-white/80 text-slate-500";
 }
 
+function statusIndicatorClass(state: Availability): string {
+  switch (state) {
+    case "AVAILABLE":
+      return "bg-emerald-500";
+    case "UNAVAILABLE":
+      return "bg-orange-400";
+    default:
+      return "bg-slate-300";
+  }
+}
+
+function getBrainAvailability(
+  diagnosticExport: DiagnosticExport | null,
+): Availability {
+  if (!diagnosticExport) return "UNKNOWN";
+  return diagnosticExport.brain.registered &&
+    diagnosticExport.brain.gatewayArtifact === "available"
+    ? "AVAILABLE"
+    : "UNAVAILABLE";
+}
+
 function formatCheckedAt(value?: number | null): string {
   if (!value) return "Not checked";
   return new Date(value).toLocaleString();
@@ -269,11 +290,7 @@ const StatusPill: React.FC<{ state: Availability; label?: string }> = ({
   >
     <span
       className={`h-1.5 w-1.5 rounded-full ${
-        state === "AVAILABLE"
-          ? "bg-emerald-500"
-          : state === "UNAVAILABLE"
-            ? "bg-orange-400"
-            : "bg-slate-300"
+        statusIndicatorClass(state)
       }`}
     />
     {label || state}
@@ -385,11 +402,11 @@ interface AdminDashboardProps {
 }
 
 const ReadOnlyChatPreview: React.FC<{ onClose: () => void }> = ({ onClose }) => (
-  <div
-    role="dialog"
+  <dialog
+    open
     aria-modal="true"
     aria-label="ORBIS Assistant read-only preview"
-    className="fixed inset-0 z-[90] flex flex-col bg-[linear-gradient(180deg,#fffef9_0%,#f6fbf3_100%)] text-slate-800"
+    className="fixed inset-0 z-[90] m-0 flex h-dvh max-h-none w-screen max-w-none flex-col bg-[linear-gradient(180deg,#fffef9_0%,#f6fbf3_100%)] text-slate-800"
   >
     <header className="flex items-center gap-3 border-b border-emerald-100 bg-white/90 px-4 py-3 backdrop-blur-xl">
       <button
@@ -419,12 +436,12 @@ const ReadOnlyChatPreview: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         </p>
       </section>
     </main>
-  </div>
+  </dialog>
 );
 
 export function AdminDashboard({
   previewMode = false,
-}: AdminDashboardProps) {
+}: Readonly<AdminDashboardProps>) {
   const [activeView, setActiveView] = useState<DashboardView>("overview");
   const [chatOpen, setChatOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -592,13 +609,7 @@ export function AdminDashboard({
   const databaseAvailability = normalizeAvailability(
     diagnosticExport?.database.state,
   );
-  const brainAvailability: Availability =
-    diagnosticExport?.brain.registered &&
-    diagnosticExport.brain.gatewayArtifact === "available"
-      ? "AVAILABLE"
-      : diagnosticExport
-        ? "UNAVAILABLE"
-        : "UNKNOWN";
+  const brainAvailability = getBrainAvailability(diagnosticExport);
 
   const configuredCapabilities = useMemo(
     () =>
@@ -648,8 +659,7 @@ export function AdminDashboard({
   const summaryHeader = (
     <section className="rounded-[24px] border border-emerald-100/70 bg-gradient-to-br from-white via-emerald-50/65 to-orange-50/70 p-5 shadow-[0_16px_40px_rgba(50,90,58,0.08)]">
       {previewMode && (
-        <div
-          role="status"
+        <output
           className="mb-4 flex items-start gap-2 rounded-2xl border border-orange-100 bg-orange-50/80 px-3 py-2.5 text-[10px] font-semibold leading-relaxed text-orange-800"
         >
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
@@ -658,7 +668,7 @@ export function AdminDashboard({
             hidden, diagnostic export is disabled, and chat cannot send
             requests.
           </span>
-        </div>
+        </output>
       )}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -690,9 +700,9 @@ export function AdminDashboard({
         <span className="text-[9px] text-slate-400">Refreshed: {lastRefresh}</span>
       </div>
       {summaryError && (
-        <p role="status" className="mt-3 rounded-xl border border-orange-100 bg-orange-50/75 px-3 py-2 text-[10px] text-orange-700">
+        <output className="mt-3 block rounded-xl border border-orange-100 bg-orange-50/75 px-3 py-2 text-[10px] text-orange-700">
           {summaryError}
-        </p>
+        </output>
       )}
     </section>
   );
@@ -1064,13 +1074,12 @@ export function AdminDashboard({
           </div>
         )}
         {previewMode && detailOpen && (
-          <p
-            role="status"
+          <output
             className="mb-3 rounded-2xl border border-orange-100 bg-orange-50/80 px-3 py-2 text-[10px] font-semibold leading-relaxed text-orange-800"
           >
             Public read-only preview · private Admin data and actions remain
             unavailable on this screen.
-          </p>
+          </output>
         )}
         {renderActiveView()}
       </main>
@@ -1091,11 +1100,11 @@ export function AdminDashboard({
             onClick={() => setMoreOpen(false)}
             className="absolute inset-0 cursor-default bg-slate-900/10 backdrop-blur-[2px]"
           />
-          <section
-            role="dialog"
+          <dialog
+            open
             aria-modal="true"
             aria-labelledby="orbis-more-title"
-            className="relative z-10 max-h-[88dvh] w-full overflow-y-auto rounded-t-[28px] border border-emerald-100 bg-[#fffef9] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:mb-5 md:max-w-lg md:rounded-[28px]"
+            className="relative z-10 m-0 max-h-[88dvh] w-full overflow-y-auto rounded-t-[28px] border border-emerald-100 bg-[#fffef9] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:mb-5 md:max-w-lg md:rounded-[28px]"
           >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
             <div className="sticky top-0 z-10 flex items-center justify-between bg-[#fffef9] pb-1">
@@ -1132,7 +1141,7 @@ export function AdminDashboard({
                 <span className="text-[9px] text-slate-400">Not implemented</span>
               </button>
             </div>
-          </section>
+          </dialog>
         </div>
       )}
 

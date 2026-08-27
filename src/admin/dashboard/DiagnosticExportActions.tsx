@@ -73,9 +73,9 @@ export function DiagnosticExportActions() {
         </div>
       </div>
       {status && (
-        <p role="status" className="mt-2 text-xs font-semibold text-slate-600">
+        <output className="mt-2 block text-xs font-semibold text-slate-600">
           {status}
-        </p>
+        </output>
       )}
     </section>
   );

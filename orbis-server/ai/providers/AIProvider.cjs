@@ -6,9 +6,7 @@ class AIProvider {
     this.health = { state: "UNKNOWN", checkedAt: null };
   }
 
-  async generateChat(messages) {
-    void messages;
-
+  async generateChat() {
     throw new Error(
       "Method 'generateChat()' must be implemented by the provider.",
     );

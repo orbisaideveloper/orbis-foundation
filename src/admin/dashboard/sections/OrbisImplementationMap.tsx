@@ -250,6 +250,7 @@ AUDIT FILE: ${task.auditFile}
         <div className="rounded-xl border border-white/20 bg-white/5 p-5">
           <div className="mb-4 flex items-center justify-between">
             <button
+              type="button"
               onClick={() => setSelectedTask(null)}
               className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
             >
@@ -257,6 +258,7 @@ AUDIT FILE: ${task.auditFile}
             </button>
 
             <button
+              type="button"
               onClick={() => handleCopyDetails(selectedTask)}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium hover:bg-blue-500"
             >
@@ -325,18 +327,11 @@ AUDIT FILE: ${task.auditFile}
         <div className="space-y-3">
           {TASKS.map((task, index) => (
             <div key={task.id}>
-              <div
+              <button
+                type="button"
                 data-testid={`task-${task.id}`}
                 onClick={() => setSelectedTask(task)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    setSelectedTask(task);
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-                className="flex cursor-pointer items-center justify-between rounded-xl border border-white/10 p-4 transition-all hover:border-white/30 hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-white/50"
+                className="flex w-full items-center justify-between rounded-xl border border-white/10 p-4 text-left transition-all hover:border-white/30 hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-white/50"
               >
                 <div>
                   <span className="font-semibold">{task.id}</span>
@@ -346,7 +341,7 @@ AUDIT FILE: ${task.auditFile}
                 <span className="rounded-full border border-green-500/30 px-2 py-1 text-xs text-green-400">
                   {task.status}
                 </span>
-              </div>
+              </button>
 
               {index < TASKS.length - 1 && (
                 <div className="mt-3 text-center text-xs opacity-30">↓</div>
