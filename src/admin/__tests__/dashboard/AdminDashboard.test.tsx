@@ -18,6 +18,8 @@ const DIAGNOSTICS_TITLE = "Diagnostics";
 const DATA_PRIVACY_TITLE = "Data & Privacy";
 const DIAGNOSTIC_TIMESTAMP = "2026-08-25T17:00:00.000Z";
 const FOUNDATION_WORKER_READY = "Foundation worker ready";
+const ACTIVE_NAV_BACKGROUND_CLASS = "bg-emerald-600";
+const ACTIVE_NAV_TEXT_CLASS = "text-white";
 
 vi.mock("../../auth/adminFetch", () => ({ readAdminJson: mocks.readAdminJson }));
 
@@ -292,7 +294,12 @@ describe("AdminDashboard current control-center coverage", () => {
     render(<AdminDashboard />);
     await expectDashboardHome();
 
-    fireEvent.click(screen.getByRole("button", { name: /^Chat$/i }));
+    const chatButton = screen.getByRole("button", { name: /^Chat$/i });
+    fireEvent.click(chatButton);
+    expect(chatButton).toHaveClass(
+      ACTIVE_NAV_BACKGROUND_CLASS,
+      ACTIVE_NAV_TEXT_CLASS,
+    );
     expect(
       screen.getByRole("dialog", {
         name: /ORBIS Assistant compatibility view/i,
@@ -377,6 +384,45 @@ describe("AdminDashboard current control-center coverage", () => {
     expect(payload).toContain(FOUNDATION_WORKER_READY);
     expect(payload).toContain(DIAGNOSTIC_TIMESTAMP);
     expect(payload).toContain("count 4");
+  });
+
+  it("shows a bright active diagnostic severity filter", async () => {
+    render(<AdminDashboard />);
+    await expectDashboardHome();
+    fireEvent.click(
+      screen
+        .getByRole("heading", { name: DIAGNOSTICS_TITLE, level: 3 })
+        .closest("button")!,
+    );
+
+    const allFilter = await screen.findByRole("button", { name: "All" });
+    expect(allFilter).toHaveAttribute("aria-pressed", "true");
+    expect(allFilter).toHaveClass(
+      ACTIVE_NAV_BACKGROUND_CLASS,
+      ACTIVE_NAV_TEXT_CLASS,
+    );
+
+    const warningFilter = screen.getByRole("button", { name: "WARN" });
+    fireEvent.click(warningFilter);
+    expect(warningFilter).toHaveAttribute("aria-pressed", "true");
+    expect(warningFilter).toHaveClass(
+      ACTIVE_NAV_BACKGROUND_CLASS,
+      ACTIVE_NAV_TEXT_CLASS,
+    );
+  });
+
+  it("keeps More bright when a detail page is opened from its menu", async () => {
+    render(<AdminDashboard />);
+    await expectDashboardHome();
+
+    fireEvent.click(screen.getByRole("button", { name: /^More$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Diagnostics$/i }));
+
+    const moreButton = screen.getByRole("button", { name: /^More$/i });
+    expect(moreButton).toHaveClass(
+      ACTIVE_NAV_BACKGROUND_CLASS,
+      ACTIVE_NAV_TEXT_CLASS,
+    );
   });
 
 });

@@ -280,6 +280,27 @@ describe("FullscreenChatView", () => {
     expect(await screen.findByText(MOCK_AI_RESPONSE)).toBeInTheDocument();
   });
 
+  it("moves voice language selection to the header and keeps clear chat in data controls", async () => {
+    render(<FullscreenChatView onClose={() => {}} />);
+    const languageButton = await screen.findByRole("button", {
+      name: "Voice language",
+    });
+
+    expect(languageButton).toHaveTextContent("BN");
+    expect(screen.queryByTitle("Clear Chat")).not.toBeInTheDocument();
+
+    fireEvent.click(languageButton);
+    fireEvent.click(
+      screen.getByRole("menuitemradio", { name: "English (India)" }),
+    );
+    expect(languageButton).toHaveTextContent("EN");
+
+    fireEvent.click(screen.getByTitle("Local data controls"));
+    expect(
+      screen.getByRole("button", { name: "Clear chat" }),
+    ).toBeInTheDocument();
+  });
+
   it("keeps learning consent separate and requires candidate review before approval", async () => {
     fetchMock
       .mockResolvedValueOnce(successfulResponse("ordinary reply"))

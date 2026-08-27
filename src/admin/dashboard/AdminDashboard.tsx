@@ -38,9 +38,16 @@ type DashboardView =
 type Availability = "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN";
 
 const ACTIVE_NAV_STATE_CLASS =
-  "bg-gradient-to-br from-emerald-100 to-orange-50 text-slate-700";
+  "bg-emerald-600 text-white shadow-[0_8px_18px_rgba(5,150,105,0.22)]";
 const INACTIVE_NAV_STATE_CLASS = "text-slate-400";
 const DETAIL_GRID_CLASS = "grid grid-cols-1 gap-2.5 sm:grid-cols-2";
+const MORE_NAVIGATION_VIEWS = new Set<DashboardView>([
+  "brain",
+  "runtime",
+  "diagnostics",
+  "data",
+  "releases",
+]);
 
 interface SystemStats {
   cpuCores: number;
@@ -220,6 +227,10 @@ function normalizeAvailability(value?: string): Availability {
     return "UNAVAILABLE";
   }
   return "UNKNOWN";
+}
+
+function isMoreNavigationActive(view: DashboardView, chatOpen: boolean): boolean {
+  return !chatOpen && MORE_NAVIGATION_VIEWS.has(view);
 }
 
 function statusClasses(state: Availability): string {
@@ -431,6 +442,9 @@ export function AdminDashboard({
   const [detailError, setDetailError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<string>("Not refreshed");
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const [diagnosticFilter, setDiagnosticFilter] = useState<
+    "ALL" | "INFO" | "WARN" | "ERROR"
+  >("ALL");
 
   const refreshSystemStats = useCallback(async () => {
     try {
@@ -493,6 +507,11 @@ export function AdminDashboard({
       setDetailError("Admin diagnostics are unavailable.");
     }
   }, [previewMode]);
+
+  const refreshDiagnosticsSurface = useCallback(async () => {
+    await refreshSummary();
+    await refreshDiagnostics();
+  }, [refreshDiagnostics, refreshSummary]);
 
   const scrollToTop = useCallback(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -851,7 +870,14 @@ export function AdminDashboard({
 
   const renderDiagnostics = () => {
     const events = diagnostics?.logs || diagnosticExport?.telemetry.recentEvents || [];
-    const displayedEvents = events.slice(0, 20);
+    const filteredEvents =
+      diagnosticFilter === "ALL"
+        ? events
+        : events.filter(
+            (event) =>
+              (event.severity || event.level).toUpperCase() === diagnosticFilter,
+          );
+    const displayedEvents = filteredEvents.slice(0, 20);
     return (
       <div className="space-y-3">
         {detailError && <p role="alert" className="rounded-xl border border-orange-100 bg-orange-50 p-3 text-xs text-orange-700">{detailError}</p>}
@@ -860,6 +886,10 @@ export function AdminDashboard({
           <MetricTile label="Recent records" value={diagnosticExport?.telemetry.summary.records ?? "Unavailable"} source="Redacted telemetry" />
           <MetricTile label="Occurrences" value={diagnosticExport?.telemetry.summary.occurrences ?? "Unavailable"} source="Aggregated redacted events" />
           <MetricTile label="Git status" value={diagnostics?.gitStatus || diagnosticExport?.version.commit || "Unavailable"} source="Live diagnostics / diagnostic export" />
+          <MetricTile label="Database" value={diagnosticExport?.database.state || "Unavailable"} source="Admin diagnostic export" />
+          <MetricTile label="Brain route" value={diagnosticExport?.brain.route || "Unavailable"} source="Authenticated capability gateway" />
+          <MetricTile label="Provider health" value={activeProvider?.health?.state || "UNKNOWN"} source={activeProvider?.name || "No active provider"} />
+          <MetricTile label="Process uptime" value={diagnosticExport ? `${Math.floor(diagnosticExport.runtime.processUptimeSeconds / 60)} min` : "Unavailable"} source="Current backend process" />
         </div>
         <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -867,7 +897,21 @@ export function AdminDashboard({
             <div className="ml-auto flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => void copyDiagnosticEvents(events)}
+                onClick={() => void refreshDiagnosticsSurface()}
+                disabled={previewMode || summaryLoading}
+                aria-label="Refresh diagnostics data"
+                className="min-h-[40px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold text-slate-600 disabled:opacity-40"
+              >
+                <RefreshCw
+                  className={`mr-1 inline h-3.5 w-3.5 ${
+                    summaryLoading ? "animate-spin" : ""
+                  }`}
+                />
+                Refresh
+              </button>
+              <button
+                type="button"
+                onClick={() => void copyDiagnosticEvents(displayedEvents)}
                 disabled={displayedEvents.length === 0}
                 className="min-h-[40px] rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-[10px] font-bold text-emerald-700 disabled:opacity-40"
               >
@@ -883,6 +927,23 @@ export function AdminDashboard({
                 <Download className="mr-1 inline h-3.5 w-3.5" /> Export
               </button>
             </div>
+          </div>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+            {(["ALL", "INFO", "WARN", "ERROR"] as const).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setDiagnosticFilter(filter)}
+                aria-pressed={diagnosticFilter === filter}
+                className={`min-h-[36px] shrink-0 rounded-full border px-3 py-1.5 text-[10px] font-bold ${
+                  diagnosticFilter === filter
+                    ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
+                    : "border-emerald-100 bg-white text-slate-500"
+                }`}
+              >
+                {filter === "ALL" ? "All" : filter}
+              </button>
+            ))}
           </div>
           <div className="mt-2">
             {displayedEvents.map((event) => (
@@ -971,6 +1032,7 @@ export function AdminDashboard({
   };
 
   const detailOpen = activeView !== "overview";
+  const moreIsActive = isMoreNavigationActive(activeView, chatOpen);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_0_0,rgba(220,248,220,0.9),transparent_30%),radial-gradient(circle_at_100%_0,rgba(255,238,210,0.9),transparent_30%),linear-gradient(180deg,#fffef9_0%,#f6fbf3_100%)] pb-24 text-slate-800 md:pb-8 md:pl-36">
@@ -1001,15 +1063,24 @@ export function AdminDashboard({
             </div>
           </div>
         )}
+        {previewMode && detailOpen && (
+          <p
+            role="status"
+            className="mb-3 rounded-2xl border border-orange-100 bg-orange-50/80 px-3 py-2 text-[10px] font-semibold leading-relaxed text-orange-800"
+          >
+            Public read-only preview · private Admin data and actions remain
+            unavailable on this screen.
+          </p>
+        )}
         {renderActiveView()}
       </main>
 
       <nav className="fixed bottom-[max(0.45rem,env(safe-area-inset-bottom))] left-1/2 z-40 grid h-[62px] w-[94%] max-w-[590px] -translate-x-1/2 grid-cols-5 rounded-[22px] border border-emerald-100 bg-white/90 p-1.5 shadow-[0_14px_38px_rgba(50,90,58,0.14)] backdrop-blur-2xl md:left-5 md:top-24 md:h-[310px] md:w-[124px] md:translate-x-0 md:grid-cols-1">
         <button type="button" onClick={openOverview} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "overview" && !chatOpen ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Home className="mx-auto mb-1 h-5 w-5" />Home</button>
-        <button type="button" onClick={openChat} className="min-h-[44px] rounded-2xl text-[10px] font-semibold text-slate-400 md:text-[9px]"><MessageCircle className="mx-auto mb-1 h-5 w-5" />Chat</button>
+        <button type="button" onClick={openChat} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${chatOpen ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><MessageCircle className="mx-auto mb-1 h-5 w-5" />Chat</button>
         <button type="button" onClick={() => openView("market")} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "market" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><TrendingUp className="mx-auto mb-1 h-5 w-5" />Market</button>
         <button type="button" onClick={() => openView("modules")} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "modules" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Boxes className="mx-auto mb-1 h-5 w-5" />Modules</button>
-        <button type="button" onClick={() => setMoreOpen(true)} className="min-h-[44px] rounded-2xl text-[10px] font-semibold text-slate-400 md:text-[9px]"><MoreHorizontal className="mx-auto mb-1 h-5 w-5" />More</button>
+        <button type="button" onClick={() => setMoreOpen(true)} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${moreIsActive ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><MoreHorizontal className="mx-auto mb-1 h-5 w-5" />More</button>
       </nav>
 
       {moreOpen && (

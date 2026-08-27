@@ -9,7 +9,6 @@ import {
   Send,
   Sparkles,
   Square,
-  Trash2,
 } from "lucide-react";
 import { supabase } from "../../../core/supabase/client";
 import { DeviceChatRequestCache } from "../services/DeviceChatRequestCache";
@@ -89,6 +88,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [voiceLanguage, setVoiceLanguage] = useState<VoiceLanguage>("bn-IN");
   const [voiceStatus, setVoiceStatus] = useState("");
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
   const [storageState, setStorageState] = useState<StorageState>("loading");
   const [storageError, setStorageError] = useState<string | null>(null);
@@ -110,6 +110,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const voiceTranscriptRef = useRef("");
   const initialized = useRef(false);
@@ -117,6 +118,14 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   const conversationIdRef = useRef("");
   const cacheRef = useRef(new DeviceChatRequestCache(chatStorage));
   const cache = cacheRef.current;
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 176)}px`;
+    input.style.overflowY = input.scrollHeight > 176 ? "auto" : "hidden";
+  }, [inputText]);
 
   const persistent = storageState === "persistent";
   const ready = storageState !== "loading";
@@ -534,6 +543,8 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       : providerHealth === "UNAVAILABLE"
         ? "Unavailable"
         : "Not checked";
+  const voiceLanguageCode =
+    voiceLanguage === "bn-IN" ? "BN" : voiceLanguage === "hi-IN" ? "HI" : "EN";
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[radial-gradient(circle_at_0_0,rgba(255,225,180,0.72),transparent_34%),radial-gradient(circle_at_100%_100%,rgba(211,247,213,0.78),transparent_34%),linear-gradient(155deg,#fff3df,#fff9ed_48%,#edfbea)] font-sans">
@@ -561,23 +572,58 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="relative flex items-center gap-1">
           <button
             type="button"
-            onClick={() => void clearChat()}
-            title="Clear Chat"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500"
+            onClick={() => {
+              setShowLanguageMenu((value) => !value);
+              setShowStorageControls(false);
+            }}
+            aria-label="Voice language"
+            aria-expanded={showLanguageMenu}
+            className="flex h-10 min-w-10 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 px-2.5 text-[11px] font-black text-emerald-700"
           >
-            <Trash2 className="h-5 w-5" />
+            {voiceLanguageCode}
           </button>
           <button
             type="button"
-            onClick={() => setShowStorageControls((value) => !value)}
+            onClick={() => {
+              setShowStorageControls((value) => !value);
+              setShowLanguageMenu(false);
+            }}
             title="Local data controls"
             className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100"
           >
             <MoreVertical className="h-5 w-5" />
           </button>
+          {showLanguageMenu && (
+            <div
+              role="menu"
+              aria-label="Voice language options"
+              className="absolute right-11 top-11 z-30 w-48 overflow-hidden rounded-2xl border border-emerald-100 bg-white p-1.5 shadow-xl"
+            >
+              {VOICE_LANGUAGES.map((language) => (
+                <button
+                  key={language.value}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={voiceLanguage === language.value}
+                  disabled={isListening || isSending || !ready}
+                  onClick={() => {
+                    setVoiceLanguage(language.value);
+                    setShowLanguageMenu(false);
+                  }}
+                  className={`block min-h-[42px] w-full rounded-xl px-3 py-2 text-left text-xs ${
+                    voiceLanguage === language.value
+                      ? "bg-emerald-600 font-bold text-white"
+                      : "text-slate-600 hover:bg-emerald-50"
+                  } disabled:opacity-50`}
+                >
+                  {language.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
@@ -843,6 +889,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               <Plus className="h-5 w-5" />
             </button>
             <textarea
+              ref={inputRef}
               rows={1}
               value={inputText}
               onChange={(event) => setInputText(event.target.value)}
@@ -854,7 +901,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               }}
               placeholder="ORBIS-কে নির্দেশ দিন..."
               disabled={isSending || !ready}
-              className="max-h-32 min-h-[44px] flex-1 resize-none bg-transparent px-2 py-3 text-[15px] text-slate-800 outline-none placeholder:text-slate-400 disabled:opacity-60"
+              className="min-h-[44px] max-h-44 flex-1 resize-none bg-transparent px-2 py-3 text-[15px] leading-relaxed text-slate-800 outline-none placeholder:text-slate-400 disabled:opacity-60"
             />
             <button
               type="button"
@@ -880,31 +927,16 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               <Send className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-0.5">
-            <select
-              aria-label="Voice language"
-              value={voiceLanguage}
-              disabled={isListening || isSending || !ready}
-              onChange={(event) =>
-                setVoiceLanguage(event.target.value as VoiceLanguage)
-              }
-              className="max-w-[48%] bg-transparent text-[11px] text-slate-500 outline-none"
-            >
-              {VOICE_LANGUAGES.map((language) => (
-                <option key={language.value} value={language.value}>
-                  {language.label}
-                </option>
-              ))}
-            </select>
-            {voiceStatus ? (
+          {voiceStatus ? (
+            <div className="flex justify-end px-2 pb-1 pt-0.5">
               <span
                 role="status"
-                className="truncate text-right text-[11px] text-slate-500"
+                className="max-w-full break-words text-right text-[11px] text-slate-500"
               >
                 {voiceStatus}
               </span>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
         <p className="mt-2 text-center text-[9px] leading-relaxed text-slate-400">
           Attachments are not connected yet. ORBIS can make mistakes. Verify
