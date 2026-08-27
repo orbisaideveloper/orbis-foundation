@@ -1,7 +1,4 @@
 const { parentPort, workerData } = require("node:worker_threads");
-const {
-  executeFileOperation,
-} = require("./FoundationDataCapabilityOrchestrator.cjs");
 
 const SAFE_CODES = new Set([
   "CAPABILITY_NOT_AVAILABLE",
@@ -30,13 +27,24 @@ const SAFE_CODES = new Set([
   "XLSX_UNSAFE_CONTENT",
 ]);
 
-Promise.resolve()
-  .then(() => executeFileOperation(workerData.capabilityId, workerData.input))
-  .then((output) => parentPort.postMessage({ success: true, output }))
-  .catch((error) => {
-    const code = error?.code || error?.message;
-    parentPort.postMessage({
-      success: false,
-      code: SAFE_CODES.has(code) ? code : "CAPABILITY_UNAVAILABLE",
+function runWorker({ parentPort, workerData, executeFileOperation }) {
+  return Promise.resolve()
+    .then(() => executeFileOperation(workerData.capabilityId, workerData.input))
+    .then((output) => parentPort.postMessage({ success: true, output }))
+    .catch((error) => {
+      const code = error?.code || error?.message;
+      parentPort.postMessage({
+        success: false,
+        code: SAFE_CODES.has(code) ? code : "CAPABILITY_UNAVAILABLE",
+      });
     });
-  });
+}
+
+if (parentPort) {
+  const {
+    executeFileOperation,
+  } = require("./FoundationDataCapabilityOrchestrator.cjs");
+  void runWorker({ parentPort, workerData, executeFileOperation });
+}
+
+module.exports = { runWorker };

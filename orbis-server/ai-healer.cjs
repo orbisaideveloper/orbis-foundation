@@ -1,13 +1,15 @@
 const readline = require("node:readline");
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
-
 const OLLAMA_URL = "http://127.0.0.1:11434/api/generate";
 const MODEL_NAME = "qwen2.5"; // আপনি চাইলে এখানে 'twin-llama' দিতে পারেন
 const MAX_AI_SUGGESTION_LENGTH = 4_000;
+
+function createReadlineInterface() {
+  return readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+}
 
 async function askAI(promptText) {
   try {
@@ -60,6 +62,7 @@ async function runHealer() {
 
   displayAiSuggestion(aiSuggestion);
 
+  const rl = createReadlineInterface();
   rl.question(
     "❓ আপনি কি এআই-এর এই সাজেশন অনুযায়ী কোড মডিফাই করতে চান? (Y/N): ",
     (answer) => {
@@ -78,4 +81,12 @@ async function runHealer() {
   );
 }
 
-runHealer();
+if (require.main === module) {
+  runHealer();
+}
+
+module.exports = {
+  askAI,
+  formatAiSuggestionForTerminal,
+  displayAiSuggestion,
+};
