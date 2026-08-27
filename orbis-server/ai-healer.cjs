@@ -43,38 +43,46 @@ function displayAiSuggestion(suggestion) {
   process.stdout.write(`\n💡 [AI Suggestion]:\n\x1b[36m${suggestion}\x1b[0m\n\n`);
 }
 
-async function runHealer() {
-  const errorType = process.argv[2] || "Unknown Error";
-  console.log(`\n🤖 [AI Healer] জেগে উঠেছে! স্ক্যান করছে: ${errorType}...`);
+async function runHealer({
+  errorType = process.argv[2] || "Unknown Error",
+  requestSuggestion = askAI,
+  log = console.log,
+  exit = process.exit,
+  createInterface = createReadlineInterface,
+} = {}) {
+  log(`\n🤖 [AI Healer] জেগে উঠেছে! স্ক্যান করছে: ${errorType}...`);
 
   // এআই-এর কাছে প্রম্পট পাঠানো
   const prompt = `You are an expert Senior System Architect. A pre-commit hook failed with this issue type: ${errorType}. 
     Analyze briefly what usually causes this in a React/Node.js project and give a 2-sentence precise solution.`;
 
-  const aiSuggestion = formatAiSuggestionForTerminal(await askAI(prompt));
+  const aiSuggestion = formatAiSuggestionForTerminal(
+    await requestSuggestion(prompt),
+  );
 
   if (!aiSuggestion) {
-    console.log(
+    log(
       "❌ [AI Healer] Ollama মডেল এখন ঘুমাচ্ছে (Not Running) অথবা কানেকশন ফেইল করেছে। দয়া করে ম্যানুয়ালি ফিক্স করুন।",
     );
-    process.exit(1);
+    exit(1);
+    return;
   }
 
   displayAiSuggestion(aiSuggestion);
 
-  const rl = createReadlineInterface();
+  const rl = createInterface();
   rl.question(
     "❓ আপনি কি এআই-এর এই সাজেশন অনুযায়ী কোড মডিফাই করতে চান? (Y/N): ",
     (answer) => {
       if (answer.toLowerCase() === "y") {
-        console.log(
+        log(
           "🚀 [AI Healer] অটো-ইমপ্লিমেন্টেশন প্রসেস শুরু হচ্ছে... (Future Update: Direct File Write)",
         );
         // এখানেই এআই সরাসরি ফাইল রাইট করবে (ভবিষ্যতের আপডেটে এটি যোগ করা হবে)
-        process.exit(0);
+        exit(0);
       } else {
-        console.log("🚫 [AI Healer] অটো-ফিক্স বাতিল করা হলো। কোড সেভ আছে।");
-        process.exit(1);
+        log("🚫 [AI Healer] অটো-ফিক্স বাতিল করা হলো। কোড সেভ আছে।");
+        exit(1);
       }
       rl.close();
     },
@@ -87,6 +95,8 @@ if (require.main === module) {
 
 module.exports = {
   askAI,
+  createReadlineInterface,
   formatAiSuggestionForTerminal,
   displayAiSuggestion,
+  runHealer,
 };

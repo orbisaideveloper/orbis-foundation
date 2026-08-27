@@ -6,8 +6,10 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const {
   askAI,
+  createReadlineInterface,
   formatAiSuggestionForTerminal,
   displayAiSuggestion,
+  runHealer,
 } = require("../ai-healer.cjs");
 
 afterEach(() => vi.restoreAllMocks());
@@ -56,5 +58,73 @@ describe("AI Healer", () => {
     expect(write).toHaveBeenCalledWith(
       "\n💡 [AI Suggestion]:\n\x1b[36mSafe suggestion\x1b[0m\n\n",
     );
+  });
+
+  it("creates the readline interface only when the interactive flow needs it", () => {
+    const readline = require("node:readline");
+    const close = vi.fn();
+    const interfaceMock = { close };
+    const createInterface = vi
+      .spyOn(readline, "createInterface")
+      .mockReturnValue(interfaceMock);
+
+    expect(createReadlineInterface()).toBe(interfaceMock);
+    expect(createInterface).toHaveBeenCalledWith({
+      input: process.stdin,
+      output: process.stdout,
+    });
+  });
+
+  it("handles unavailable, accepted, and declined suggestions without writing files", async () => {
+    const log = vi.fn();
+    const exit = vi.fn();
+    const requestSuggestion = vi.fn().mockResolvedValue(null);
+    const createInterface = vi.fn();
+
+    await runHealer({
+      errorType: "lint failed",
+      requestSuggestion,
+      log,
+      exit,
+      createInterface,
+    });
+
+    expect(requestSuggestion).toHaveBeenCalledWith(
+      expect.stringContaining("lint failed"),
+    );
+    expect(createInterface).not.toHaveBeenCalled();
+    expect(exit).toHaveBeenCalledWith(1);
+
+    const write = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    const acceptClose = vi.fn();
+    const acceptExit = vi.fn();
+    await runHealer({
+      requestSuggestion: vi.fn().mockResolvedValue("Apply the safe fix."),
+      log,
+      exit: acceptExit,
+      createInterface: () => ({
+        question: (_prompt, answer) => answer("Y"),
+        close: acceptClose,
+      }),
+    });
+    expect(write).toHaveBeenCalledWith(
+      "\n💡 [AI Suggestion]:\n\x1b[36mApply the safe fix.\x1b[0m\n\n",
+    );
+    expect(acceptExit).toHaveBeenCalledWith(0);
+    expect(acceptClose).toHaveBeenCalledOnce();
+
+    const declineClose = vi.fn();
+    const declineExit = vi.fn();
+    await runHealer({
+      requestSuggestion: vi.fn().mockResolvedValue("Apply the safe fix."),
+      log,
+      exit: declineExit,
+      createInterface: () => ({
+        question: (_prompt, answer) => answer("n"),
+        close: declineClose,
+      }),
+    });
+    expect(declineExit).toHaveBeenCalledWith(1);
+    expect(declineClose).toHaveBeenCalledOnce();
   });
 });
