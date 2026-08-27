@@ -6,7 +6,12 @@ vi.mock("express", () => {
 });
 
 describe("Orbis Backend Dynamic Execution Suite", () => {
-  it("should initialize successfully and pass core telemetry checks", () => {
-    expect(true).toBe(true);
+  it("creates an Express-compatible test application", async () => {
+    const { default: express } = await import("express");
+    const app = express();
+
+    expect(express).toHaveBeenCalledOnce();
+    expect(app.use).toEqual(expect.any(Function));
+    expect(app.get).toEqual(expect.any(Function));
   });
 });

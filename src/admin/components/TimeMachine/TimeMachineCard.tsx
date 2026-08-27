@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from "react";
 import { readAdminJson } from "../../auth/adminFetch";
 
+interface TimeMachineHistoryStateProps {
+  loading: boolean;
+  loadError: string | null;
+  hasHistory: boolean;
+  children: React.ReactNode;
+}
+
 function TimeMachineHistoryState({
   loading,
   loadError,
   hasHistory,
   children,
-}: {
-  loading: boolean;
-  loadError: string | null;
-  hasHistory: boolean;
-  children: React.ReactNode;
-}) {
+}: Readonly<TimeMachineHistoryStateProps>) {
   if (loading) {
     return (
       <div className="text-center py-8 text-slate-400 animate-pulse flex-1 text-sm">
@@ -294,10 +296,9 @@ export default function TimeMachineCard() {
                     </span>
                     <div className="space-y-1.5">
                       {commit.files?.map((file: any) => (
-                        <div
+                        <button
+                          type="button"
                           key={`${commit.commitId}-${file.filePath}`}
-                          role="button"
-                          tabIndex={0}
                           onClick={() =>
                             handleSelectFile(commit, file.filePath)
                           }
@@ -306,7 +307,7 @@ export default function TimeMachineCard() {
                               handleSelectFile(commit, file.filePath),
                             )
                           }
-                          className="flex justify-between items-center bg-slate-950 hover:border-yellow-500/50 border border-slate-800/80 p-2 rounded-md cursor-pointer transition group"
+                          className="flex w-full cursor-pointer justify-between items-center bg-slate-950 hover:border-yellow-500/50 border border-slate-800/80 p-2 rounded-md text-left transition group"
                         >
                           <span className="text-[12px] font-mono text-slate-300 truncate max-w-[210px] group-hover:text-yellow-400">
                             📂 {file.filePath}
@@ -314,7 +315,7 @@ export default function TimeMachineCard() {
                           <span className="text-[11px] bg-slate-800 hover:bg-yellow-500 hover:text-black text-slate-200 px-2.5 py-1 rounded transition font-medium">
                             View Code
                           </span>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>

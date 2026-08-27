@@ -44,9 +44,9 @@ export function readVoiceResult(event: SpeechEventLike): VoiceResult {
   const alternatives = new Set<string>();
   const confidences: number[] = [];
 
-  for (let index = 0; index < event.results.length; index += 1) {
+  for (const result of Array.from(event.results)) {
     appendSpeechResult(
-      event.results[index],
+      result,
       finalParts,
       interimParts,
       alternatives,
@@ -104,7 +104,7 @@ export function voiceErrorMessage(code?: string): string {
   return "Voice input সম্পূর্ণ হয়নি। আবার চেষ্টা করুন।";
 }
 
-export function getSpeechRecognitionConstructor(): any | null {
+export function getSpeechRecognitionConstructor(): any {
   const speechWindow = window as any;
   return (
     speechWindow.SpeechRecognition ||

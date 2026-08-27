@@ -16,11 +16,11 @@ describe("Orbis Auto-Coverage Booster Suite", () => {
     } as any);
 
     const { container } = render(<App />);
-    expect(container).toBeDefined();
+    expect(container.firstElementChild).not.toBeNull();
   });
 
-  it("handles emergency fallbacks and health metrics gracefully", () => {
-    const dummyCheck = true;
-    expect(dummyCheck).toBe(true);
+  it("renders the application shell for fallback states", () => {
+    const { container } = render(<App />);
+    expect(container.firstElementChild).not.toBeNull();
   });
 });
