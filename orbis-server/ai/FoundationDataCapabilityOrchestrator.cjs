@@ -177,7 +177,7 @@ function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
     return `{${Object.keys(value)
-      .sort()
+      .sort((left, right) => left.localeCompare(right))
       .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
       .join(",")}}`;
   }
@@ -243,19 +243,23 @@ function validatePdfInput(input) {
   return decoded;
 }
 
-function validateXlsxContainer(data) {
+function assertXlsxSignature(data) {
   if (data.length < 22 || data.readUInt32LE(0) !== 0x04034b50) {
     throw fail("XLSX_SIGNATURE_INVALID");
   }
+}
+
+function findXlsxEndOffset(data) {
   const searchStart = Math.max(0, data.length - 65_557);
-  let endOffset = -1;
   for (let index = data.length - 22; index >= searchStart; index -= 1) {
     if (data.readUInt32LE(index) === 0x06054b50) {
-      endOffset = index;
-      break;
+      return index;
     }
   }
-  if (endOffset < 0) throw fail("XLSX_CONTAINER_INVALID");
+  throw fail("XLSX_CONTAINER_INVALID");
+}
+
+function readXlsxCentralDirectory(data, endOffset) {
   const entryCount = data.readUInt16LE(endOffset + 10);
   const centralSize = data.readUInt32LE(endOffset + 12);
   const centralOffset = data.readUInt32LE(endOffset + 16);
@@ -266,39 +270,58 @@ function validateXlsxContainer(data) {
   ) {
     throw fail("XLSX_CONTAINER_INVALID");
   }
+  return { entryCount, centralSize, centralOffset };
+}
+
+function readXlsxCentralDirectoryEntry(data, cursor, endOffset) {
+  if (cursor + 46 > endOffset || data.readUInt32LE(cursor) !== 0x02014b50) {
+    throw fail("XLSX_CONTAINER_INVALID");
+  }
+  const method = data.readUInt16LE(cursor + 10);
+  const uncompressed = data.readUInt32LE(cursor + 24);
+  const nameLength = data.readUInt16LE(cursor + 28);
+  const extraLength = data.readUInt16LE(cursor + 30);
+  const commentLength = data.readUInt16LE(cursor + 32);
+  const next = cursor + 46 + nameLength + extraLength + commentLength;
+  if (next > endOffset || ![0, 8].includes(method)) {
+    throw fail("XLSX_CONTAINER_INVALID");
+  }
+  const name = data
+    .subarray(cursor + 46, cursor + 46 + nameLength)
+    .toString("utf8");
+  return { name, next, uncompressed };
+}
+
+function assertSafeXlsxEntryName(name) {
+  if (
+    !name ||
+    name.includes("\\") ||
+    name.split("/").includes("..") ||
+    /(?:vbaProject\.bin|externalLinks|embeddings|oleObjects)/i.test(name)
+  ) {
+    throw fail("XLSX_UNSAFE_CONTENT");
+  }
+}
+
+function validateXlsxContainer(data) {
+  assertXlsxSignature(data);
+  const endOffset = findXlsxEndOffset(data);
+  const { entryCount, centralSize, centralOffset } = readXlsxCentralDirectory(
+    data,
+    endOffset,
+  );
   let cursor = centralOffset;
   let totalUncompressed = 0;
   let hasWorkbook = false;
   for (let index = 0; index < entryCount; index += 1) {
-    if (cursor + 46 > endOffset || data.readUInt32LE(cursor) !== 0x02014b50) {
-      throw fail("XLSX_CONTAINER_INVALID");
-    }
-    const method = data.readUInt16LE(cursor + 10);
-    const uncompressed = data.readUInt32LE(cursor + 24);
-    const nameLength = data.readUInt16LE(cursor + 28);
-    const extraLength = data.readUInt16LE(cursor + 30);
-    const commentLength = data.readUInt16LE(cursor + 32);
-    const next = cursor + 46 + nameLength + extraLength + commentLength;
-    if (next > endOffset || ![0, 8].includes(method)) {
-      throw fail("XLSX_CONTAINER_INVALID");
-    }
-    const name = data
-      .subarray(cursor + 46, cursor + 46 + nameLength)
-      .toString("utf8");
-    if (
-      !name ||
-      name.includes("\\") ||
-      name.split("/").includes("..") ||
-      /(?:vbaProject\.bin|externalLinks|embeddings|oleObjects)/i.test(name)
-    ) {
-      throw fail("XLSX_UNSAFE_CONTENT");
-    }
-    if (name === "xl/workbook.xml") hasWorkbook = true;
-    totalUncompressed += uncompressed;
+    const entry = readXlsxCentralDirectoryEntry(data, cursor, endOffset);
+    assertSafeXlsxEntryName(entry.name);
+    if (entry.name === "xl/workbook.xml") hasWorkbook = true;
+    totalUncompressed += entry.uncompressed;
     if (totalUncompressed > MAX_XLSX_UNCOMPRESSED_BYTES) {
       throw fail("XLSX_EXPANDED_SIZE_INVALID");
     }
-    cursor = next;
+    cursor = entry.next;
   }
   if (!hasWorkbook || cursor !== centralOffset + centralSize) {
     throw fail("XLSX_CONTAINER_INVALID");
@@ -362,7 +385,7 @@ function usedRangeDimensions(sheet) {
   return { rows: range.e.r + 1, columns: range.e.c + 1 };
 }
 
-function assertWorkbookBounds(workbook) {
+function assertWorkbookSheetNames(workbook) {
   if (
     !Array.isArray(workbook.SheetNames) ||
     workbook.SheetNames.length < 1 ||
@@ -371,29 +394,48 @@ function assertWorkbookBounds(workbook) {
   ) {
     throw fail("XLSX_SHEET_LIMIT_EXCEEDED");
   }
+}
+
+function assertWorkbookSheetName(sheetName) {
+  if (typeof sheetName !== "string" || sheetName.length > 31) {
+    throw fail("XLSX_SHEET_NAME_INVALID");
+  }
+}
+
+function assertWorkbookDimensions(dimensions) {
+  if (
+    dimensions.rows > MAX_ROWS_PER_SHEET ||
+    dimensions.columns > MAX_COLUMNS
+  ) {
+    throw fail("XLSX_DIMENSION_LIMIT_EXCEEDED");
+  }
+}
+
+function assertWorkbookCell(cell) {
+  if (cell?.f !== undefined) throw fail("XLSX_FORMULA_REJECTED");
+  if (typeof cell?.v === "string" && cell.v.length > MAX_CELL_CHARS) {
+    throw fail("XLSX_CELL_LIMIT_EXCEEDED");
+  }
+}
+
+function assertWorkbookSheetCells(sheet) {
+  for (const address of Object.keys(sheet || {})) {
+    if (address.startsWith("!")) continue;
+    assertWorkbookCell(sheet[address]);
+  }
+}
+
+function assertWorkbookBounds(workbook) {
+  assertWorkbookSheetNames(workbook);
   let totalCells = 0;
   for (const sheetName of workbook.SheetNames) {
-    if (typeof sheetName !== "string" || sheetName.length > 31) {
-      throw fail("XLSX_SHEET_NAME_INVALID");
-    }
+    assertWorkbookSheetName(sheetName);
     const sheet = workbook.Sheets[sheetName];
     const dimensions = usedRangeDimensions(sheet);
-    if (
-      dimensions.rows > MAX_ROWS_PER_SHEET ||
-      dimensions.columns > MAX_COLUMNS
-    ) {
-      throw fail("XLSX_DIMENSION_LIMIT_EXCEEDED");
-    }
+    assertWorkbookDimensions(dimensions);
     totalCells += dimensions.rows * dimensions.columns;
     if (totalCells > MAX_TOTAL_CELLS) throw fail("XLSX_CELL_LIMIT_EXCEEDED");
-    for (const address of Object.keys(sheet || {})) {
-      if (address.startsWith("!")) continue;
-      const cell = sheet[address];
-      if (cell?.f !== undefined) throw fail("XLSX_FORMULA_REJECTED");
-      if (typeof cell?.v === "string" && cell.v.length > MAX_CELL_CHARS) {
-        throw fail("XLSX_CELL_LIMIT_EXCEEDED");
-      }
-    }
+    assertWorkbookSheetCells(sheet);
   }
 }
 
@@ -422,7 +464,7 @@ async function readXlsx(input) {
               defval: null,
               blankrows: false,
             })
-            .map((row) => row.map(safeSpreadsheetCell)),
+            .map((row) => row.map((value) => safeSpreadsheetCell(value).value)),
         })),
       };
     });
@@ -433,16 +475,16 @@ async function readXlsx(input) {
 }
 
 function safeSpreadsheetCell(value) {
-  if (value === null || value === undefined) return null;
+  if (value === null || value === undefined) return { value: null };
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw fail("XLSX_CELL_INVALID");
-    return value;
+    return { value };
   }
-  if (typeof value === "boolean") return value;
+  if (typeof value === "boolean") return { value };
   if (typeof value !== "string" || value.length > MAX_CELL_CHARS) {
     throw fail("XLSX_CELL_INVALID");
   }
-  return /^[=+\-@]/.test(value) ? `'${value}` : value;
+  return { value: /^[=+\-@]/.test(value) ? "'" + value : value };
 }
 
 function validateCreateXlsxInput(input) {
@@ -479,7 +521,7 @@ function validateCreateXlsxInput(input) {
       totalCells += row.length;
       if (totalCells > MAX_TOTAL_CELLS) throw fail("XLSX_CELL_LIMIT_EXCEEDED");
       return row.map((value) => {
-        const safeValue = safeSpreadsheetCell(value);
+        const { value: safeValue } = safeSpreadsheetCell(value);
         if (typeof safeValue === "string") totalTextChars += safeValue.length;
         if (totalTextChars > MAX_WORKBOOK_TEXT_CHARS) {
           throw fail("XLSX_CELL_LIMIT_EXCEEDED");
@@ -696,8 +738,7 @@ class FoundationDataCapabilityOrchestrator {
     const capability = this.registry.get(capabilityId);
     const adapter = ADAPTERS[capabilityId];
     if (
-      !capability ||
-      capability.status !== "AVAILABLE" ||
+      capability?.status !== "AVAILABLE" ||
       capability.callable !== true ||
       capability.requiresApproval !== true ||
       !adapter
@@ -733,8 +774,7 @@ class FoundationDataCapabilityOrchestrator {
     const adapter = ADAPTERS[capabilityId];
     if (
       typeof adminId !== "string" ||
-      !capability ||
-      capability.status !== "AVAILABLE" ||
+      capability?.status !== "AVAILABLE" ||
       capability.callable !== true ||
       !adapter
     ) {

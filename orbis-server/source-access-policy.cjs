@@ -100,8 +100,51 @@ const BINARY_SIGNATURES = [
   Buffer.from([0x7f, 0x45, 0x4c, 0x46]),
 ];
 
-const RESTRICTED_SEGMENT_PATTERN =
-  /(?:^|[-_.])(audit|audits|backup|backups|build|copy|coverage|credential|credentials|database|databases|dist|generated|key|keys|log|logs|node_modules|old|passwd|password|passwords|private[-_]?key|report|reports|secret|secrets|snapshot|snapshots|temp|temporary|tmp|token|tokens)(?:[-_.]|$)/i;
+const RESTRICTED_SEGMENT_WORDS = new Set([
+  "audit",
+  "audits",
+  "backup",
+  "backups",
+  "build",
+  "copy",
+  "coverage",
+  "credential",
+  "credentials",
+  "database",
+  "databases",
+  "dist",
+  "generated",
+  "key",
+  "keys",
+  "log",
+  "logs",
+  "old",
+  "passwd",
+  "password",
+  "passwords",
+  "privatekey",
+  "report",
+  "reports",
+  "secret",
+  "secrets",
+  "snapshot",
+  "snapshots",
+  "temp",
+  "temporary",
+  "tmp",
+  "token",
+  "tokens",
+]);
+
+const TEXT_BINARY_SIGNATURES = Object.freeze([
+  `${String.fromCharCode(0x89)}PNG`,
+  "\uFFFDPNG",
+  "GIF87a",
+  "GIF89a",
+  "%PDF-",
+  `PK${String.fromCharCode(0x03, 0x04)}`,
+  `${String.fromCharCode(0x7f)}ELF`,
+]);
 
 function decodeRequestedPath(value) {
   if (
@@ -153,7 +196,32 @@ function parseRelativeSourcePath(value) {
 }
 
 function isRestrictedSegment(segment) {
-  return segment.startsWith(".") || RESTRICTED_SEGMENT_PATTERN.test(segment);
+  if (segment.startsWith(".")) return true;
+
+  const normalizedSegment = segment.toLowerCase();
+  return (
+    hasRestrictedNodeModulesSegment(normalizedSegment) ||
+    normalizedSegment
+      .split(/[-_.]/)
+      .some((part) => RESTRICTED_SEGMENT_WORDS.has(part))
+  );
+}
+
+function hasRestrictedNodeModulesSegment(segment) {
+  const parts = segment.split("node_modules");
+  return parts.slice(0, -1).some((before, index) => {
+    const after = parts[index + 1];
+    return isSegmentBoundary(before.at(-1)) && isSegmentBoundary(after.at(0));
+  });
+}
+
+function isSegmentBoundary(character) {
+  return (
+    character === undefined ||
+    character === "-" ||
+    character === "_" ||
+    character === "."
+  );
 }
 
 function isAllowedSourceFileName(name) {
@@ -208,14 +276,9 @@ function isSafeTextContent(content) {
 
 function hasBinarySignature(content) {
   if (typeof content === "string") {
-    if (
-      /^(?:\u0089PNG|\uFFFDPNG|GIF8[79]a|%PDF-|PK\u0003\u0004|\u007fELF)/.test(
-        content,
-      )
-    ) {
-      return true;
-    }
-    content = Buffer.from(content, "utf8");
+    return TEXT_BINARY_SIGNATURES.some((signature) =>
+      content.startsWith(signature),
+    );
   }
   if (!Buffer.isBuffer(content)) return true;
   return BINARY_SIGNATURES.some(

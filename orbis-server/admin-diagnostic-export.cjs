@@ -8,6 +8,11 @@ const MAX_EXPORT_BYTES = 128 * 1024;
 const MAX_RECENT_EVENTS = 50;
 const MAX_LOCAL_MIGRATIONS = 100;
 const repositoryRoot = path.resolve(__dirname, "..");
+const GIT_EXECUTABLE_CANDIDATES = Object.freeze([
+  "/usr/bin/git",
+  "/usr/local/bin/git",
+  "/data/data/com.termux/files/usr/bin/git",
+]);
 
 const FOUNDATION_COUNT_QUERIES = Object.freeze([
   ["FoundationAdminMetric", "foundationAdminMetric"],
@@ -32,8 +37,12 @@ function safeIdentifier(value, fallback = "unknown") {
 
 function currentCommit() {
   try {
+    const gitExecutable = GIT_EXECUTABLE_CANDIDATES.find((candidate) =>
+      fs.existsSync(candidate),
+    );
+    if (!gitExecutable) return "unknown";
     return safeIdentifier(
-      execFileSync("git", ["rev-parse", "--short=12", "HEAD"], {
+      execFileSync(gitExecutable, ["rev-parse", "--short=12", "HEAD"], {
         cwd: repositoryRoot,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
@@ -53,7 +62,7 @@ function localMigrationStatus() {
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
       .filter((name) => /^\d{14}_[a-z0-9_]+$/.test(name))
-      .sort()
+      .sort((left, right) => left.localeCompare(right))
       .slice(-MAX_LOCAL_MIGRATIONS)
       .map((name) => ({
         name,
@@ -216,6 +225,12 @@ async function buildAdminDiagnosticExport(dependencies) {
   const availableCounts = tables.filter(
     (table) => table.status === "available",
   ).length;
+  let databaseState = "unavailable";
+  if (availableCounts === tables.length) {
+    databaseState = "connected";
+  } else if (availableCounts > 0) {
+    databaseState = "degraded";
+  }
   const stats = getSystemStats();
   const packageJson = require(path.join(repositoryRoot, "package.json"));
   const report = {
@@ -230,12 +245,7 @@ async function buildAdminDiagnosticExport(dependencies) {
     capabilities: capabilitySummary(capabilityRegistry),
     brain: brainRouteHealth(),
     database: {
-      state:
-        availableCounts === tables.length
-          ? "connected"
-          : availableCounts > 0
-            ? "degraded"
-            : "unavailable",
+      state: databaseState,
       foundationTableCounts: tables,
     },
     telemetry,

@@ -1,5 +1,6 @@
 const os = require("node:os");
-const { execSync } = require("node:child_process");
+const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const { getSystemStats } = require("./system-stats.cjs");
 
@@ -7,6 +8,11 @@ const MAX_SYSTEM_LOGS = 100;
 const MAX_LOG_MESSAGE_LENGTH = 240;
 const AGGREGATION_WINDOW_MS = 5 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 250;
+const GIT_EXECUTABLE_CANDIDATES = Object.freeze([
+  "/usr/bin/git",
+  "/usr/local/bin/git",
+  "/data/data/com.termux/files/usr/bin/git",
+]);
 const ALLOWED_LEVELS = new Set(["INFO", "WARN", "ERROR"]);
 const ALLOWED_SOURCES = new Set([
   "DATABASE",
@@ -30,8 +36,11 @@ const ALLOWED_OPERATIONAL_MESSAGES = new Set([
 ]);
 const SENSITIVE_MESSAGE_PATTERNS = [
   /\bauthorization\s*:/i,
-  /\bbearer\s+[a-z0-9._~+\/-]+/i,
-  /\b(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|passwd|secret|credential|session[_ -]?id|private[_ -]?key)\b\s*[:=]/i,
+  /\bbearer\s+[a-z0-9._~+/-]+/i,
+  /\b(?:api|private)[_ -]?key\b\s*[:=]/i,
+  /\b(?:access|refresh)[_ -]?token\b\s*[:=]/i,
+  /\b(?:password|passwd|secret|credential)\b\s*[:=]/i,
+  /\bsession[_ -]?id\b\s*[:=]/i,
   /\b(?:cookie|set-cookie)\s*:/i,
   /(?:https?|postgres(?:ql)?):\/\/[^\s/:@]+:[^\s/@]+@/i,
   /[?&](?:key|token|secret|password|credential)=[^&\s]+/i,
@@ -43,7 +52,6 @@ const SENSITIVE_MESSAGE_PATTERNS = [
   /\b(?:my name is|i live at|phone number|email address)\b/i,
   /\b(?:raw\s+)?(?:request|response)\s*(?:body|payload|content)\b/i,
   /\b(?:prompt|chat transcript|conversation transcript|provider output|user (?:input|message|content)|assistant (?:message|response|content))\b/i,
-  /^\s*[\[{].*[\]}]\s*$/s,
 ];
 
 const systemLogs = [];
@@ -59,6 +67,21 @@ function normalizeAllowListedValue(value, allowList) {
   return allowList.has(normalized) ? normalized : null;
 }
 
+function hasSensitiveMessageContent(message) {
+  return (
+    SENSITIVE_MESSAGE_PATTERNS.some((pattern) => pattern.test(message)) ||
+    looksLikeStructuredPayload(message)
+  );
+}
+
+function looksLikeStructuredPayload(message) {
+  const trimmed = message.trim();
+  return (
+    (trimmed.startsWith("[") || trimmed.startsWith("{")) &&
+    (trimmed.endsWith("]") || trimmed.endsWith("}"))
+  );
+}
+
 function sanitizeOperationalMessage(message) {
   if (typeof message !== "string") return null;
   const normalized = message
@@ -71,7 +94,7 @@ function sanitizeOperationalMessage(message) {
     normalized.length === 0 ||
     normalized.length > MAX_LOG_MESSAGE_LENGTH ||
     !ALLOWED_OPERATIONAL_MESSAGES.has(normalized) ||
-    SENSITIVE_MESSAGE_PATTERNS.some((pattern) => pattern.test(normalized))
+    hasSensitiveMessageContent(normalized)
   ) {
     return null;
   }
@@ -240,12 +263,24 @@ async function cleanupExpiredSystemLogs(options = {}) {
   }
 }
 
+function findGitExecutable() {
+  return GIT_EXECUTABLE_CANDIDATES.find((candidate) => fs.existsSync(candidate));
+}
+
+function readGitStatus() {
+  const gitExecutable = findGitExecutable();
+  if (!gitExecutable) return "Unknown";
+  return execFileSync(
+    gitExecutable,
+    ["log", "-1", "--pretty=format:%s (%h)"],
+    { encoding: "utf8" },
+  ).trim();
+}
+
 function getDiagnostics() {
   let gitStatus = "Unknown";
   try {
-    gitStatus = execSync('git log -1 --pretty=format:"%s (%h)"')
-      .toString()
-      .trim();
+    gitStatus = readGitStatus();
   } catch (e) {}
 
   const stats = getSystemStats();

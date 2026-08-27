@@ -60,8 +60,23 @@ const INITIAL_MESSAGE: ChatMessage = {
   content: "নমস্কার দাদা! ORBIS Brain প্রস্তুত। আপনি কী জানতে বা করতে চান?",
   providerName: "ORBIS",
 };
+
 function nextMessageId(): number {
-  return Date.now() * 1_000 + Math.floor(Math.random() * 1_000);
+  const randomValues = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(randomValues);
+  return Date.now() * 1_000 + (randomValues[0] % 1_000);
+}
+
+function providerHealthLabel(providerHealth: ProviderHealth): string {
+  if (providerHealth === "AVAILABLE") return "Available";
+  if (providerHealth === "UNAVAILABLE") return "Unavailable";
+  return "Not checked";
+}
+
+function voiceLanguageLabel(voiceLanguage: VoiceLanguage): string {
+  if (voiceLanguage === "bn-IN") return "BN";
+  if (voiceLanguage === "hi-IN") return "HI";
+  return "EN";
 }
 
 function errorMessage(category: string): string {
@@ -537,14 +552,8 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     recognition.start();
   };
 
-  const healthLabel =
-    providerHealth === "AVAILABLE"
-      ? "Available"
-      : providerHealth === "UNAVAILABLE"
-        ? "Unavailable"
-        : "Not checked";
-  const voiceLanguageCode =
-    voiceLanguage === "bn-IN" ? "BN" : voiceLanguage === "hi-IN" ? "HI" : "EN";
+  const healthLabel = providerHealthLabel(providerHealth);
+  const voiceLanguageCode = voiceLanguageLabel(voiceLanguage);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[radial-gradient(circle_at_0_0,rgba(255,225,180,0.72),transparent_34%),radial-gradient(circle_at_100%_100%,rgba(211,247,213,0.78),transparent_34%),linear-gradient(155deg,#fff3df,#fff9ed_48%,#edfbea)] font-sans">
@@ -655,12 +664,9 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       </div>
 
       {storageState === "loading" && (
-        <p
-          role="status"
-          className="bg-blue-50 px-4 py-2 text-center text-xs text-blue-700"
-        >
+        <output className="block bg-blue-50 px-4 py-2 text-center text-xs text-blue-700">
           Loading device storage…
-        </p>
+        </output>
       )}
       {storageError && (
         <div
@@ -752,12 +758,9 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                 </button>
               </div>
               {learningStatus && (
-                <p
-                  role="status"
-                  className="mt-2 text-xs text-slate-600 dark:text-slate-300"
-                >
+                <output className="mt-2 block text-xs text-slate-600 dark:text-slate-300">
                   {learningStatus}
-                </p>
+                </output>
               )}
               {learnedRecords.length > 0 && (
                 <ul className="mt-3 space-y-2">
@@ -929,12 +932,9 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           </div>
           {voiceStatus ? (
             <div className="flex justify-end px-2 pb-1 pt-0.5">
-              <span
-                role="status"
-                className="max-w-full break-words text-right text-[11px] text-slate-500"
-              >
+              <output className="max-w-full break-words text-right text-[11px] text-slate-500">
                 {voiceStatus}
-              </span>
+              </output>
             </div>
           ) : null}
         </div>
@@ -946,11 +946,11 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
 
       {showConsent && (
         <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-          <section
-            role="dialog"
+          <dialog
+            open
             aria-modal="true"
             aria-labelledby="memory-consent-title"
-            className="max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 dark:text-white"
+            className="m-0 max-w-md rounded-2xl border-0 bg-white p-6 shadow-2xl dark:bg-gray-900 dark:text-white"
           >
             <h3 id="memory-consent-title" className="text-lg font-bold">
               Save Chatbot memory on this device?
@@ -976,17 +976,17 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                 Session only
               </button>
             </div>
-          </section>
+          </dialog>
         </div>
       )}
 
       {learningCandidate && (
         <div className="absolute inset-0 z-[75] flex items-center justify-center bg-black/40 p-4">
-          <section
-            role="dialog"
+          <dialog
+            open
             aria-modal="true"
             aria-labelledby="learning-review-title"
-            className="max-w-lg rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 dark:text-white"
+            className="m-0 max-w-lg rounded-2xl border-0 bg-white p-6 shadow-2xl dark:bg-gray-900 dark:text-white"
           >
             <h3 id="learning-review-title" className="text-lg font-bold">
               Review generalized learning candidate
@@ -1020,7 +1020,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                 Reject
               </button>
             </div>
-          </section>
+          </dialog>
         </div>
       )}
     </div>
