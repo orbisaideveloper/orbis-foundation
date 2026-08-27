@@ -202,7 +202,8 @@ class AIChatService {
         routeDecision,
       );
     } catch (error) {
-      console.error("[AI_CHAT_SERVICE] Request failed");
+      const failureType = error instanceof Error ? "Error" : "NonError";
+      console.error(`[AI_CHAT_SERVICE] ${failureType} request failed`);
       const code = "CHAT_BACKEND_UNAVAILABLE";
       const normalized = new Error(code);
       normalized.code = code;

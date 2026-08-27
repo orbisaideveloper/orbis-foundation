@@ -105,12 +105,11 @@ export default function CommandBar({ onCommandSubmit }: CommandBarProps) {
           ))}
         </select>
         {voiceStatus ? (
-          <span
-            role="status"
+          <output
             className="truncate text-right text-[11px] text-gray-500"
           >
             {voiceStatus}
-          </span>
+          </output>
         ) : null}
       </div>
     </div>

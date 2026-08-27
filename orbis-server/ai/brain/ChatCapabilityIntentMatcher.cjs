@@ -371,7 +371,7 @@ const APPROVAL_PREFIXES = Object.freeze([
 ]);
 
 function isApprovalTokenCharacter(character) {
-  const code = character.charCodeAt(0);
+  const code = character.codePointAt(0);
   return (
     character === "_" ||
     character === "-" ||
