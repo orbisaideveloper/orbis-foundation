@@ -2,7 +2,7 @@ import { LifecycleState } from "./LifecycleState";
 import { RuntimeHealth } from "./RuntimeHealth";
 
 export class RuntimeLifecycleManager {
-  private runtimes: Map<string, RuntimeHealth> = new Map();
+  private readonly runtimes: Map<string, RuntimeHealth> = new Map();
 
   public register(
     runtimeId: string,

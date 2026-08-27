@@ -49,16 +49,16 @@ export interface IGatePolicyDeps {
 // -----------------------------------------------------------------------------
 export class SecureExecutionAuthorizationGate {
   constructor(
-    private registry: IGateRegistryDeps,
-    private lifecycle: IGateLifecycleDeps,
-    private policy: IGatePolicyDeps,
+    private readonly registry: IGateRegistryDeps,
+    private readonly lifecycle: IGateLifecycleDeps,
+    private readonly policy: IGatePolicyDeps,
   ) {}
 
   public authorize(
     request: IAuthorizationRequest | null | undefined,
   ): AuthorizationResult {
     // 1. Request validation
-    if (!request || !request.capabilityId || !request.runtimeId) {
+    if (!request?.capabilityId || !request?.runtimeId) {
       return this.deny(
         request,
         "Invalid request: missing capabilityId or runtimeId",

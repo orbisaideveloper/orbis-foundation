@@ -182,7 +182,7 @@ describe("TASK-020: TermuxRuntimeService approval token survives a transient bri
     ]);
 
     const successes = [first, second].filter((r) => r.success);
-    expect(successes.length).toBe(1);
+    expect(successes).toHaveLength(1);
     expect(executeSpy).toHaveBeenCalledTimes(1);
   });
 });

@@ -247,7 +247,7 @@ export class TermuxRuntimeService {
     return {
       ...executionResult,
       metadata: {
-        ...(executionResult.metadata || {}),
+        ...executionResult.metadata,
         capabilityId: request.capability,
         approvalToken: token,
       },

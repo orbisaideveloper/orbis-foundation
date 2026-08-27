@@ -6,10 +6,10 @@ import { IExecutionRequest } from "../interfaces/IExecutionRequest";
 import { RuntimeRegistry } from "../registry/RuntimeRegistry";
 
 export class ExecutionPolicyEngine implements IExecutionPolicy {
-  constructor(private registry: RuntimeRegistry) {}
+  constructor(private readonly registry: RuntimeRegistry) {}
 
   evaluate(request: IExecutionRequest): PolicyDecision {
-    if (!request || !request.capability) {
+    if (!request?.capability) {
       return "DENY";
     }
 

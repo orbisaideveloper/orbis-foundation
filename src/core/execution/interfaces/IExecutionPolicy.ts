@@ -7,13 +7,13 @@ export interface IExecutionPolicy {
 }
 
 export class DefaultExecutionPolicy implements IExecutionPolicy {
-  private allowedCapabilities: Set<string> = new Set([
+  private readonly allowedCapabilities: Set<string> = new Set([
     "safe.compute",
     "safe.text-transform",
   ]);
 
   evaluate(request: IExecutionRequest): PolicyDecision {
-    if (!request || !request.capability) {
+    if (!request?.capability) {
       return "DENY";
     }
 

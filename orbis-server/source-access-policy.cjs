@@ -137,13 +137,13 @@ const RESTRICTED_SEGMENT_WORDS = new Set([
 ]);
 
 const TEXT_BINARY_SIGNATURES = Object.freeze([
-  `${String.fromCharCode(0x89)}PNG`,
+  `${String.fromCodePoint(0x89)}PNG`,
   "\uFFFDPNG",
   "GIF87a",
   "GIF89a",
   "%PDF-",
-  `PK${String.fromCharCode(0x03, 0x04)}`,
-  `${String.fromCharCode(0x7f)}ELF`,
+  `PK${String.fromCodePoint(0x03, 0x04)}`,
+  `${String.fromCodePoint(0x7f)}ELF`,
 ]);
 
 function decodeRequestedPath(value) {

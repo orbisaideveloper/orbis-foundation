@@ -4,7 +4,7 @@ const REQUIRED_ADMIN_EMAIL = "orbisaideveloper@gmail.com";
 
 function getBearerToken(authorization) {
   if (typeof authorization !== "string") return null;
-  const match = authorization.match(/^Bearer ([A-Za-z0-9._~-]+)$/);
+  const match = /^Bearer ([A-Za-z0-9._~-]+)$/.exec(authorization);
   return match?.[1] || null;
 }
 

@@ -64,6 +64,7 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
 
           {/* Remove Button */}
           <button
+            type="button"
             onClick={() => onRemove(att.id)}
             className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-500 shadow-md transition-all hover:scale-110 hover:bg-red-500 hover:text-white dark:bg-red-900/80 dark:text-red-300 dark:hover:bg-red-500 dark:hover:text-white"
           >

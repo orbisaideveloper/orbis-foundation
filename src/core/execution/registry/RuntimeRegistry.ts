@@ -2,8 +2,8 @@ import { IExecutionRuntime } from "../interfaces/IExecutionRuntime";
 import { ICapability } from "./CapabilityModel";
 
 export class RuntimeRegistry {
-  private runtimes: Map<string, IExecutionRuntime> = new Map();
-  private capabilities: Map<string, ICapability> = new Map();
+  private readonly runtimes: Map<string, IExecutionRuntime> = new Map();
+  private readonly capabilities: Map<string, ICapability> = new Map();
 
   registerRuntime(
     runtime: IExecutionRuntime,

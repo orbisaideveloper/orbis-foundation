@@ -8,16 +8,23 @@ export const GlassChatCard: React.FC = () => {
   return (
     <>
       <div
-        onClick={() => setIsChatOpen(true)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") setIsChatOpen(true);
-        }}
         className="relative overflow-hidden rounded-2xl border border-gray-200/50 bg-gradient-to-br from-orange-50/40 via-white/40 to-green-50/40 p-6 shadow-xl backdrop-blur-xl transition-all duration-300 hover:shadow-orange-500/10 cursor-pointer group dark:border-white/10 dark:from-orange-950/20 dark:via-black/40 dark:to-green-950/20"
       >
-        {/* Header */}
-        <div className="mb-4 flex items-center justify-between border-b border-gray-200/50 pb-4 dark:border-white/10">
+        <button
+          type="button"
+          aria-label="Open ORBIS chat"
+          onClick={() => setIsChatOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setIsChatOpen(true);
+            }
+          }}
+          className="absolute inset-0 z-10 cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+        />
+        <div className="pointer-events-none">
+          {/* Header */}
+          <div className="mb-4 flex items-center justify-between border-b border-gray-200/50 pb-4 dark:border-white/10">
           <div className="flex items-center gap-3">
             <div className="rounded-full bg-gradient-to-br from-orange-100 to-amber-100 p-2 dark:from-orange-500/20 dark:to-amber-500/20">
               <BrainCircuit className="h-6 w-6 text-orange-600 dark:text-orange-400" />
@@ -37,16 +44,16 @@ export const GlassChatCard: React.FC = () => {
           </div>
         </div>
 
-        {/* AI Last Response Area */}
-        <div className="mb-6 flex min-h-[80px] items-center rounded-xl bg-white/50 p-4 text-sm text-gray-600 shadow-sm backdrop-blur-sm dark:bg-black/30 dark:text-gray-300">
-          <p className="italic">
-            "সিস্টেম অপ্টিমাইজড আছে। আমি আপনার পরবর্তী নির্দেশের জন্য
-            প্রস্তুত..."
-          </p>
-        </div>
+          {/* AI Last Response Area */}
+          <div className="mb-6 flex min-h-[80px] items-center rounded-xl bg-white/50 p-4 text-sm text-gray-600 shadow-sm backdrop-blur-sm dark:bg-black/30 dark:text-gray-300">
+            <p className="italic">
+              "সিস্টেম অপ্টিমাইজড আছে। আমি আপনার পরবর্তী নির্দেশের জন্য
+              প্রস্তুত..."
+            </p>
+          </div>
 
-        {/* Input Area (Visual Only for Dashboard) */}
-        <div className="flex items-center gap-3">
+          {/* Input Area (Visual Only for Dashboard) */}
+          <div className="flex items-center gap-3">
           <div className="relative flex-1">
             <input
               type="text"
@@ -67,6 +74,7 @@ export const GlassChatCard: React.FC = () => {
           >
             <Send className="h-4 w-4 ml-0.5" />
           </button>
+          </div>
         </div>
       </div>
 

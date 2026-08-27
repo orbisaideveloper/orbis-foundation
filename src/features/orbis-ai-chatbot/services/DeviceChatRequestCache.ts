@@ -9,16 +9,22 @@ const TTL_MS = {
   news: 10 * 60 * 1000,
   stable: 24 * 60 * 60 * 1000,
 } as const;
+const TRAILING_QUERY_PUNCTUATION = new Set(["?", "!", ".", ",", "।"]);
 
 export type ChatFreshnessClass = keyof typeof TTL_MS;
 
+function trimTrailingQueryPunctuation(value: string): string {
+  let end = value.length;
+  while (end > 0 && TRAILING_QUERY_PUNCTUATION.has(value[end - 1])) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
 export function normalizeChatQuery(query: string): string {
-  return query
-    .normalize("NFKC")
-    .toLowerCase()
-    .trim()
-    .replace(/[?!.,।]+$/g, "")
-    .replace(/\s+/g, " ");
+  return trimTrailingQueryPunctuation(
+    query.normalize("NFKC").toLowerCase().trim(),
+  ).replace(/\s+/g, " ");
 }
 
 export function classifyFreshness(query: string): ChatFreshnessClass {

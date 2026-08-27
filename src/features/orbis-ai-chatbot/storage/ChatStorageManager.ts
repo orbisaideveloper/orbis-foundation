@@ -63,18 +63,29 @@ export interface ChatStoragePort {
   getUsage(profileId: string): Promise<ChatStorageUsage>;
 }
 
+function rejectionError(reason: unknown, fallbackMessage: string): Error {
+  if (reason instanceof Error) return reason;
+  if (typeof reason === "string" && reason.length > 0) {
+    return new Error(reason);
+  }
+  return new Error(fallbackMessage);
+}
+
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onerror = () =>
+      reject(rejectionError(request.error, "STORAGE_REQUEST_FAILED"));
   });
 }
 
 function transactionDone(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
+    transaction.onerror = () =>
+      reject(rejectionError(transaction.error, "STORAGE_TRANSACTION_FAILED"));
+    transaction.onabort = () =>
+      reject(rejectionError(transaction.error, "STORAGE_TRANSACTION_ABORTED"));
   });
 }
 

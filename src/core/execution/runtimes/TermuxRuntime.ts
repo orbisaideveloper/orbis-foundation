@@ -109,7 +109,7 @@ export class TermuxRuntime implements IExecutionRuntime {
   public async execute(request: IExecutionRequest): Promise<IExecutionResult> {
     const startTime = Date.now();
 
-    if (!request || !request.capability) {
+    if (!request?.capability) {
       return {
         success: false,
         requestId: request?.requestId || "unknown",

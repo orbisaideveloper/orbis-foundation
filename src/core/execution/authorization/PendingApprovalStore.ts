@@ -130,7 +130,7 @@ export class PendingApprovalStore {
    */
   confirm(token: string): boolean {
     const entry = this.entries.get(String(token ?? "").trim());
-    if (!entry || entry.status !== STATUS_RESERVED) return false;
+    if (entry?.status !== STATUS_RESERVED) return false;
     entry.status = STATUS_CONSUMED;
     return true;
   }
@@ -146,7 +146,7 @@ export class PendingApprovalStore {
    */
   release(token: string): boolean {
     const entry = this.entries.get(String(token ?? "").trim());
-    if (!entry || entry.status !== STATUS_RESERVED) return false;
+    if (entry?.status !== STATUS_RESERVED) return false;
     if (Date.now() >= entry.expiresAt) {
       entry.status = STATUS_CONSUMED;
       return false;

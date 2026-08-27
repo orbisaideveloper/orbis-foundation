@@ -21,13 +21,12 @@ export class FileProcessorManager {
     return { fileName, mimeType, base64Data };
   }
 
-  private static readTextFile(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target?.result as string);
-      reader.onerror = () => reject(new Error("Failed to read text file."));
-      reader.readAsText(file);
-    });
+  private static async readTextFile(file: File): Promise<string> {
+    try {
+      return await file.text();
+    } catch {
+      throw new Error("Failed to read text file.");
+    }
   }
 
   private static fileToBase64(file: File): Promise<string> {

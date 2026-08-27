@@ -95,54 +95,63 @@ function inspectAllowedFile(filePath, segments, stats) {
   return { canonicalPath, content };
 }
 
+function getDirectoryTreeEntry(fullPath, segments, stats) {
+  if (!stats.isDirectory() || !isAllowedDirectorySegments(segments)) {
+    return null;
+  }
+
+  const canonicalDirectory = fs.realpathSync(fullPath);
+
+  if (!isStrictlyContained(canonicalDirectory)) return null;
+
+  const children = getDirTreeSync(canonicalDirectory, segments);
+
+  if (children.length === 0) return null;
+
+  return {
+    name: segments.at(-1),
+    type: "directory",
+    path: segments.join("/"),
+    mtime: stats.mtimeMs,
+    children,
+  };
+}
+
+function getFileTreeEntry(fullPath, segments, stats) {
+  if (!stats.isFile()) return null;
+
+  const inspectedFile = inspectAllowedFile(fullPath, segments, stats);
+
+  if (inspectedFile === null) return null;
+
+  return {
+    name: segments.at(-1),
+    type: "file",
+    path: segments.join("/"),
+    mtime: stats.mtimeMs,
+  };
+}
+
+function getTreeEntry(dirPath, relativeSegments, item) {
+  const segments = [...relativeSegments, item.name];
+  const fullPath = path.join(dirPath, item.name);
+  const stats = fs.lstatSync(fullPath);
+
+  if (stats.isSymbolicLink()) return null;
+
+  return stats.isDirectory()
+    ? getDirectoryTreeEntry(fullPath, segments, stats)
+    : getFileTreeEntry(fullPath, segments, stats);
+}
+
 function getDirTreeSync(dirPath, relativeSegments = []) {
   const result = [];
   const items = fs.readdirSync(dirPath, { withFileTypes: true });
 
   for (const item of items) {
-    const segments = [...relativeSegments, item.name];
-    const fullPath = path.join(dirPath, item.name);
-    let stats;
-
     try {
-      stats = fs.lstatSync(fullPath);
-
-      if (stats.isSymbolicLink()) continue;
-
-      if (stats.isDirectory()) {
-        if (!isAllowedDirectorySegments(segments)) continue;
-
-        const canonicalDirectory = fs.realpathSync(fullPath);
-
-        if (!isStrictlyContained(canonicalDirectory)) continue;
-
-        const children = getDirTreeSync(canonicalDirectory, segments);
-
-        if (children.length > 0) {
-          result.push({
-            name: item.name,
-            type: "directory",
-            path: segments.join("/"),
-            mtime: stats.mtimeMs,
-            children,
-          });
-        }
-
-        continue;
-      }
-
-      if (!stats.isFile()) continue;
-
-      const inspectedFile = inspectAllowedFile(fullPath, segments, stats);
-
-      if (inspectedFile === null) continue;
-
-      result.push({
-        name: item.name,
-        type: "file",
-        path: segments.join("/"),
-        mtime: stats.mtimeMs,
-      });
+      const entry = getTreeEntry(dirPath, relativeSegments, item);
+      if (entry) result.push(entry);
     } catch {
       continue;
     }

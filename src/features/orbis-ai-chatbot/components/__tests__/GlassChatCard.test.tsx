@@ -8,7 +8,7 @@ const BRAIN_TITLE = "ORBIS Assistant";
 const CHAT_PLACEHOLDER = "ORBIS-কে নির্দেশ দিন...";
 const AVAILABILITY_STATUS = "Check availability in chat";
 const CHAT_PLACEHOLDER_REGEX = /ORBIS-কে নির্দেশ দিন/i;
-const CARD_BUTTON_SELECTOR = '[role="button"]';
+const CARD_BUTTON_NAME = "Open ORBIS chat";
 const DIALOG_LABEL = "ORBIS Assistant test view";
 const BACK_LABEL = "Back from ORBIS Assistant";
 
@@ -40,7 +40,7 @@ describe("GlassChatCard", () => {
   it("opens fullscreen chat when the card is clicked", () => {
     render(<GlassChatCard />);
 
-    const card = screen.getByText(CARD_TITLE).closest(CARD_BUTTON_SELECTOR)!;
+    const card = screen.getByRole("button", { name: CARD_BUTTON_NAME });
     fireEvent.click(card);
 
     expect(screen.getByRole("dialog", { name: DIALOG_LABEL })).toBeInTheDocument();
@@ -50,7 +50,7 @@ describe("GlassChatCard", () => {
   it("opens fullscreen chat when Enter is pressed", () => {
     render(<GlassChatCard />);
 
-    const card = screen.getByText(CARD_TITLE).closest(CARD_BUTTON_SELECTOR)!;
+    const card = screen.getByRole("button", { name: CARD_BUTTON_NAME });
     fireEvent.keyDown(card, { key: "Enter" });
 
     expect(screen.getByRole("dialog", { name: DIALOG_LABEL })).toBeInTheDocument();
@@ -59,7 +59,7 @@ describe("GlassChatCard", () => {
   it("opens fullscreen chat when Space is pressed", () => {
     render(<GlassChatCard />);
 
-    const card = screen.getByText(CARD_TITLE).closest(CARD_BUTTON_SELECTOR)!;
+    const card = screen.getByRole("button", { name: CARD_BUTTON_NAME });
     fireEvent.keyDown(card, { key: " " });
 
     expect(screen.getByRole("dialog", { name: DIALOG_LABEL })).toBeInTheDocument();
@@ -68,7 +68,7 @@ describe("GlassChatCard", () => {
   it("does not open fullscreen chat for unrelated keys", () => {
     render(<GlassChatCard />);
 
-    const card = screen.getByText(CARD_TITLE).closest(CARD_BUTTON_SELECTOR)!;
+    const card = screen.getByRole("button", { name: CARD_BUTTON_NAME });
     fireEvent.keyDown(card, { key: "Escape" });
 
     expect(
@@ -79,7 +79,7 @@ describe("GlassChatCard", () => {
   it("closes fullscreen chat when the back button is clicked", () => {
     render(<GlassChatCard />);
 
-    const card = screen.getByText(CARD_TITLE).closest(CARD_BUTTON_SELECTOR)!;
+    const card = screen.getByRole("button", { name: CARD_BUTTON_NAME });
     fireEvent.click(card);
 
     expect(screen.getByRole("dialog", { name: DIALOG_LABEL })).toBeInTheDocument();
