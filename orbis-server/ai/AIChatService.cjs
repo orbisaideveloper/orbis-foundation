@@ -196,14 +196,14 @@ class AIChatService {
     try {
       const brainResponse = await this.tryBrainRequest(lastUserMessage);
       if (brainResponse) return brainResponse;
-      return this.executeRoute(
+      return await this.executeRoute(
         formattedMessages,
         lastUserMessage,
         routeDecision,
       );
     } catch (error) {
       console.error("[AI_CHAT_SERVICE] Request failed");
-      const code = error?.code || "CHAT_BACKEND_UNAVAILABLE";
+      const code = "CHAT_BACKEND_UNAVAILABLE";
       const normalized = new Error(code);
       normalized.code = code;
       throw normalized;
