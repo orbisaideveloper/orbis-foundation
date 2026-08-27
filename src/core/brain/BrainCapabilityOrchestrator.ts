@@ -34,7 +34,7 @@ function buildUndiscoverableResult(
 export interface RequestCapabilityOptions {
   requestId?: string;
   timeoutMs?: number;
-  riskLevel?: IExecutionRequest["riskLevel"];
+  riskLevel?: NonNullable<IExecutionRequest["riskLevel"]>;
   originatingTask?: string;
   metadata?: Record<string, any>;
 }
@@ -120,11 +120,11 @@ export class BrainCapabilityOrchestrator implements IBrainCapabilityOrchestrator
       );
     }
 
-    const discovered = discoveryResult.capabilities.find(
+    const isDiscoverable = discoveryResult.capabilities.some(
       (cap) => cap.id === capabilityId && cap.available,
     );
 
-    if (!discovered) {
+    if (!isDiscoverable) {
       Logger.getInstance().warn(
         BRAIN_MODULE_NAMES.capabilityOrchestrator,
         "Capability request denied: capability not discoverable",

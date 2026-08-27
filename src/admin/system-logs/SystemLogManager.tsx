@@ -37,13 +37,13 @@ function SourceTreeState({
   hasEntries,
   hasSearchQuery,
   children,
-}: {
+}: Readonly<{
   isLoading: boolean;
   message: string | null;
   hasEntries: boolean;
   hasSearchQuery: boolean;
   children: React.ReactNode;
-}) {
+}>) {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-10 opacity-50">
@@ -67,6 +67,25 @@ function SourceTreeState({
       {hasSearchQuery ? "No matching files found." : "No files found."}
     </p>
   );
+}
+
+function getFileButtonClass(isErrorFile: boolean, isLatestUpdate: boolean) {
+  const baseClass =
+    "w-full text-left flex items-center gap-2 py-1.5 px-2 rounded text-xs my-0.5 transition-all";
+
+  if (isErrorFile) {
+    return `${baseClass} bg-red-500/20 text-red-400 border border-red-500/50 font-bold animate-pulse`;
+  }
+  if (isLatestUpdate) {
+    return `${baseClass} bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 font-semibold`;
+  }
+  return `${baseClass} text-slate-300 hover:bg-slate-800/50`;
+}
+
+function getFileIconClass(isErrorFile: boolean, isLatestUpdate: boolean) {
+  if (isErrorFile) return "text-red-400";
+  if (isLatestUpdate) return "text-yellow-400";
+  return "text-slate-400";
 }
 
 export default function SystemLogManager() {
@@ -225,30 +244,17 @@ export default function SystemLogManager() {
     const isErrorFile = errorStatus.hasError && errorStatus.file === item.path;
     const isLatestUpdate =
       !isErrorFile && item.mtime >= latestUpdateTime - 60000;
+    const fileButtonClass = getFileButtonClass(isErrorFile, isLatestUpdate);
+    const fileIconClass = getFileIconClass(isErrorFile, isLatestUpdate);
 
     return (
       <button
         type="button"
         key={`log-entry-${index}`}
         onClick={() => handleFileClick(item.path)}
-        className={`w-full text-left flex items-center gap-2 py-1.5 px-2 rounded text-xs my-0.5 transition-all ${
-          isErrorFile
-            ? "bg-red-500/20 text-red-400 border border-red-500/50 font-bold animate-pulse"
-            : isLatestUpdate
-              ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 font-semibold"
-              : "text-slate-300 hover:bg-slate-800/50"
-        }`}
+        className={fileButtonClass}
       >
-        <FileCode
-          size={14}
-          className={
-            isErrorFile
-              ? "text-red-400"
-              : isLatestUpdate
-                ? "text-yellow-400"
-                : "text-slate-400"
-          }
-        />
+        <FileCode size={14} className={fileIconClass} />
         <span className="truncate">{item.name}</span>
         {isLatestUpdate && (
           <span className="ml-auto text-[9px] bg-yellow-500/20 px-1 rounded text-yellow-500">

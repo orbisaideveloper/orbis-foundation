@@ -53,7 +53,7 @@ function AdminLoginForm() {
             : "Sign in with the verified Supabase Admin account to continue."}
         </p>
         <label className="mt-5 block text-sm font-medium text-slate-700">
-          Admin email
+          <span>Admin email</span>
           <input
             type="email"
             autoComplete="username"
@@ -81,7 +81,7 @@ function AdminLoginForm() {
             </label>
             {creatingAccount && (
               <label className="mt-3 block text-sm font-medium text-slate-700">
-                Confirm new password
+                <span>Confirm new password</span>
                 <input
                   type="password"
                   autoComplete="new-password"
@@ -103,11 +103,11 @@ function AdminLoginForm() {
           </p>
         )}
         {confirmationSent && (
-          <p role="status" className="mt-4 text-sm text-emerald-700">
+          <output className="mt-4 block text-sm text-emerald-700">
             Confirmation email sent. Verify the Admin email, then return here
             and sign in. The password remains active until it is changed or
             reset through Supabase.
-          </p>
+          </output>
         )}
         {!confirmationSent && (
           <button
@@ -202,7 +202,10 @@ function ReadOnlyPreviewApp() {
 
 function isReadOnlyPreviewPath(): boolean {
   if (typeof window === "undefined") return false;
-  return window.location.pathname.replace(/\/+$/, "") === "/preview";
+  const { pathname } = window.location;
+  let end = pathname.length;
+  while (end > 0 && pathname[end - 1] === "/") end -= 1;
+  return pathname.slice(0, end) === "/preview";
 }
 
 function App() {

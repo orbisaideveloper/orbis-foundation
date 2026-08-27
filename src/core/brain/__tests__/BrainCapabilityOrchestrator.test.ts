@@ -129,9 +129,9 @@ describe("TASK-010: Brain Capability Orchestrator", () => {
 
     const result = await orchestrator.requestCapability("", {});
 
-    expect((discovery.discoverLocalCapabilities as any).mock.calls.length).toBe(
-      0,
-    );
+    expect(
+      (discovery.discoverLocalCapabilities as any).mock.calls,
+    ).toHaveLength(0);
     expect(execution.execute).not.toHaveBeenCalled();
     expect(result.success).toBe(false);
     expect(result.error).toContain("CAPABILITY_ID_REQUIRED");
