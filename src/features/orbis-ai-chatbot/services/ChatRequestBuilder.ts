@@ -82,7 +82,8 @@ export function prepareChatRequest(
     )
     .slice(-MAX_CHAT_REQUEST_MESSAGES)
     .map(({ role, content }) => ({ role, content: content.trim() }));
-  const latest = messages.at(-1);
+  const latest =
+    messages.length > 0 ? messages[messages.length - 1] : undefined;
   const pendingClarification = isValidPendingClarification(pending, now)
     ? pending
     : null;
