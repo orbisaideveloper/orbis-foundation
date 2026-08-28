@@ -89,6 +89,19 @@ describe("TASK-020 Phase 1-B: realtime context safety (no silent default locatio
     });
   });
 
+  it.each(["আজকের ওয়েদার বল", "আজকের ওয়েদার বল", "আজকের আবহাওয়া বল"])(
+    "does not treat the voice-style request %s as a city",
+    async (message) => {
+      const result = await AIChatService.processChatRequest([
+        { role: "user", content: message },
+      ]);
+
+      expect(tavilySearch.search).not.toHaveBeenCalled();
+      expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
+      expect(result.provider.type).toBe("WEB_SEARCH_CLARIFICATION");
+    },
+  );
+
   it("Task 3A regression: 'কলকাতা' reconstructs the exact reported request and executes once", async () => {
     const first = await AIChatService.processChatRequest([
       { role: "user", content: "আজকের ওয়েদারটা একটু বলবে আমাকে" },
@@ -328,7 +341,9 @@ describe("TASK-020 Phase 1-E: Ollama anti-fabrication system message", () => {
       { role: "user", content: "Explain a SUM formula" },
     ]);
 
-    expect(capturedMessages[0].content.toLowerCase()).toContain("follow-up question");
+    expect(capturedMessages[0].content.toLowerCase()).toContain(
+      "follow-up question",
+    );
     expect(capturedMessages[0].content.toLowerCase()).toContain("spreadsheet");
   });
 });
@@ -354,6 +369,17 @@ describe("Brain Phase 1: truthful customer-chat file capability status", () => {
     expect(tavilySearch.search).not.toHaveBeenCalled();
     expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
     expect(result.message.content).toContain("PDF write capability");
+  });
+
+  it("recognizes the natural Bengali PDF creation phrasing without calling a provider", async () => {
+    const result = await AIChatService.processChatRequest([
+      { role: "user", content: "একটা PDF বানিয়ে দাও" },
+    ]);
+
+    expect(tavilySearch.search).not.toHaveBeenCalled();
+    expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
+    expect(result.provider.type).toBe("FOUNDATION_CAPABILITY_STATUS");
+    expect(result.message.content).toContain("PDF");
   });
 
   it("keeps a normal Excel learning question with the general provider", async () => {
@@ -413,7 +439,9 @@ describe("Brain Phase 2: Brain-first general conversation", () => {
     expect(result.brainDecision).toBe("general-conversation");
     expect(capturedMessages).toHaveLength(2);
     expect(capturedMessages[0].role).toBe("system");
-    expect(capturedMessages[0].content).toContain("classified this as a general-conversation request");
+    expect(capturedMessages[0].content).toContain(
+      "classified this as a general-conversation request",
+    );
     expect(capturedMessages[0].content).toContain("Reply primarily in Bengali");
     expect(capturedMessages[0].content).toContain("actual latest request only");
   });

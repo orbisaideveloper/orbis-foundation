@@ -4,6 +4,8 @@ const capabilityIntentMatcher = require("./brain/ChatCapabilityIntentMatcher.cjs
 const MAX_MESSAGES = 20;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_CLARIFICATION_AGE_MS = 10 * 60 * 1000;
+const NEW_REQUEST_PATTERN =
+  /(?:weather|আবহাওয়া|আবহাওয়া|ওয়েদার|ওয়েদার|news|খবর|price|দাম|system info|সিস্টেম তথ্য|read file|ফাইল পড়|pdf|পিডিএফ|excel|এক্সেল|xlsx|xls|sheet|শিট|download|ডাউনলোড|create|make|write|বানাও|বানিয়ে|বানিয়ে|তৈরি)/i;
 
 function normalizeMessages(rawMessages) {
   if (!Array.isArray(rawMessages)) throw new Error("CHAT_INPUT_INVALID");
@@ -66,10 +68,7 @@ function clarificationFollowUp(message, pending, now) {
 
   const weatherRequest = capabilityIntentMatcher.matchWeatherRequest(message);
   const looksClearlyNew =
-    message.length > 120 ||
-    /(?:weather|আবহাওয়া|আবহাওয়া|ওয়েদার|ওয়েদার|news|খবর|price|দাম|system info|সিস্টেম তথ্য|read file|ফাইল পড়)/i.test(
-      message,
-    );
+    message.length > 120 || NEW_REQUEST_PATTERN.test(message);
   if (weatherRequest?.location || (!weatherRequest && looksClearlyNew)) {
     return { message, state: "replaced" };
   }

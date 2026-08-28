@@ -156,6 +156,37 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
     expect(result.clarification).toEqual({ state: "pending", pending });
   });
 
+  it("treats a PDF creation request as a replacement, never as a weather location", async () => {
+    const pending = {
+      kind: "weather-location",
+      originalRequest: "আজকের weather বলো",
+      createdAt: NOW - 1_000,
+      expiresAt: NOW + 60_000,
+    };
+    const execute = vi.fn().mockResolvedValue({
+      message: { role: "assistant", content: "PDF status" },
+      provider: {
+        name: "ORBIS Foundation",
+        type: "FOUNDATION_CAPABILITY_STATUS",
+      },
+    });
+    const orchestrator = new FoundationChatOrchestrator(undefined, () => NOW);
+    const result = await orchestrator.orchestrate(
+      {
+        messages: [{ role: "user", content: "একটা PDF বানিয়ে দাও" }],
+        pendingClarification: pending,
+      },
+      execute,
+    );
+
+    expect(execute.mock.calls[0][0].at(-1).content).toBe("একটা PDF বানিয়ে দাও");
+    expect(execute.mock.calls[0][1]).toMatchObject({
+      route: "foundation-capability-status",
+      weatherLocationResolved: false,
+    });
+    expect(result.clarification.state).toBe("replaced");
+  });
+
   it("replaces pending weather only with a complete new weather request", async () => {
     const execute = vi.fn().mockResolvedValue({
       message: { role: "assistant", content: "result" },
@@ -212,7 +243,8 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
         messages: [
           {
             role: "user",
-            content: "তোমাকে টেস্ট করার মত কোন কোশ্চেন আছে যেটা তুমি একবারে পারবে",
+            content:
+              "তোমাকে টেস্ট করার মত কোন কোশ্চেন আছে যেটা তুমি একবারে পারবে",
           },
         ],
       },

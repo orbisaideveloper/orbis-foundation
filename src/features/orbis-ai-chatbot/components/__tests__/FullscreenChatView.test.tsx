@@ -268,6 +268,27 @@ describe("FullscreenChatView", () => {
     expect(await screen.findByText(/সময়মতো সাড়া দেয়নি/)).toBeInTheDocument();
   });
 
+  it("does not tell a user to shorten text for a different invalid request", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: { category: "invalid_request", code: "CHAT_INPUT_INVALID" },
+      }),
+    } as Response);
+    render(<FullscreenChatView onClose={() => {}} />);
+    const input = await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
+    fireEvent.change(input, { target: { value: "একটা PDF বানিয়ে দাও" } });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+    expect(
+      await screen.findByText(
+        "অনুরোধটির format ঠিক ছিল না। নতুন করে চেষ্টা করুন।",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/লেখা ছোট করে/)).not.toBeInTheDocument();
+  });
+
   it("shows voice support warning when speech recognition is unavailable", async () => {
     render(<FullscreenChatView onClose={() => {}} />);
     fireEvent.click(

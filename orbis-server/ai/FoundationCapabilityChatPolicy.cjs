@@ -1,4 +1,5 @@
-const FILE_CREATE_WORDS = /(?:create|make|build|write|generate|বানাও|বানাতে|তৈরি|লিখতে|রাইট)/i;
+const FILE_CREATE_WORDS =
+  /(?:create|make|build|write|generate|বানাও|বানাতে|বানিয়ে|বানিয়ে|তৈরি|লিখতে|রাইট)/i;
 const EXCEL_WORDS = /(?:excel|xlsx|spreadsheet|এক্সেল)/i;
 const PDF_WORDS = /(?:pdf|পিডিএফ)/i;
 

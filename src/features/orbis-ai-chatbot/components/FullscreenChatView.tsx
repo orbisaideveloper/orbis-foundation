@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { supabase } from "../../../core/supabase/client";
 import { DeviceChatRequestCache } from "../services/DeviceChatRequestCache";
+import { prepareChatRequest } from "../services/ChatRequestBuilder";
+import type { ChatRequestPayload } from "../services/ChatRequestBuilder";
 import { chatStorage } from "../storage/ChatStorageManager";
 import type {
   CachedChatResponse,
@@ -68,8 +70,7 @@ interface ChatApiResponse {
 }
 
 async function requestChatResponse(
-  messages: ChatMessage[],
-  pending: PendingClarification | null,
+  payload: ChatRequestPayload,
 ): Promise<CachedChatResponse["response"]> {
   const { data, error } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -84,10 +85,7 @@ async function requestChatResponse(
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      messages: messages.slice(-20).map(({ role, content }) => ({ role, content })),
-      pendingClarification: pending || undefined,
-    }),
+    body: JSON.stringify(payload),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -97,6 +95,7 @@ async function requestChatResponse(
         response.status === 401 || response.status === 403
           ? "authentication"
           : body?.error?.category || "service_unavailable",
+      code: typeof body?.error?.code === "string" ? body.error.code : undefined,
     });
     throw requestError;
   }
@@ -128,7 +127,7 @@ function voiceLanguageLabel(voiceLanguage: VoiceLanguage): string {
   return "EN";
 }
 
-function errorMessage(category: string): string {
+function errorMessage(category: string, code?: string): string {
   if (category === "authentication") {
     return "আপনার সেশন শেষ হয়েছে। আবার সাইন ইন করে চেষ্টা করুন।";
   }
@@ -139,7 +138,19 @@ function errorMessage(category: string): string {
     return "AI সেবা সময়মতো সাড়া দেয়নি। আবার চেষ্টা করতে পারেন।";
   }
   if (category === "invalid_request") {
-    return "অনুরোধটি পাঠানো যায়নি। লেখা ছোট করে আবার চেষ্টা করুন।";
+    if (code === "ATTACHMENTS_UNSUPPORTED") {
+      return "Attachment এখনো chat-এ যুক্ত হয়নি।";
+    }
+    if (code === "CHAT_MESSAGE_TOO_LARGE") {
+      return "একটি message খুব বড়। লেখা ছোট করে আবার পাঠান।";
+    }
+    if (code === "CHAT_REQUEST_TOO_LARGE" || code === "REQUEST_TOO_LARGE") {
+      return "পুরোনো chat context বড় ছিল। নতুন করে চেষ্টা করুন।";
+    }
+    if (code === "CHAT_TOO_MANY_MESSAGES") {
+      return "পুরোনো chat context সীমার বাইরে ছিল। নতুন করে চেষ্টা করুন।";
+    }
+    return "অনুরোধটির format ঠিক ছিল না। নতুন করে চেষ্টা করুন।";
   }
   return "ORBIS সেবা এখন উপলব্ধ নয়। কিছুক্ষণ পরে আবার চেষ্টা করুন।";
 }
@@ -487,51 +498,49 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   ) => {
     const content = data.message?.content?.trim();
     if (!content) throw new Error("EMPTY_RESPONSE");
-      const assistantMessage: ChatMessage = {
-        id: nextMessageId(),
-        role: "assistant",
-        content,
-        providerName: cached
-          ? `${data.provider.name} (device cache)`
-          : data.provider.name || "ORBIS",
-      };
-      setMessages((current) => [...current, assistantMessage]);
-      await persistMessage(assistantMessage);
-      await persistTestLog({
-        ...createTestLogReference(userMessage, assistantMessage, startedAt),
-        providerName: data.provider?.name || "ORBIS",
-        providerType: data.provider?.type || "UNKNOWN",
-        route: data.route || null,
-        routingDurationMs: Number.isFinite(data.routingDurationMs)
-          ? data.routingDurationMs || 0
-          : null,
-        delivery: cached ? "device-cache" : "fresh",
-        outcome: "success",
-        clarificationState: data.clarification?.state || null,
-        errorCategory: null,
-      });
-      const nextPending = data.clarification?.pending || null;
-      setPending(nextPending);
-      if (persistent) {
-        try {
-          await chatStorage.setPendingClarification(
-            profileIdRef.current,
-            conversationIdRef.current,
-            nextPending,
-          );
-        } catch {
-          setStorageError(
-            "Pending context could not be saved. It remains available for this session.",
-          );
-          setStorageState("error");
-        }
+    const assistantMessage: ChatMessage = {
+      id: nextMessageId(),
+      role: "assistant",
+      content,
+      providerName: cached
+        ? `${data.provider.name} (device cache)`
+        : data.provider.name || "ORBIS",
+    };
+    setMessages((current) => [...current, assistantMessage]);
+    await persistMessage(assistantMessage);
+    await persistTestLog({
+      ...createTestLogReference(userMessage, assistantMessage, startedAt),
+      providerName: data.provider?.name || "ORBIS",
+      providerType: data.provider?.type || "UNKNOWN",
+      route: data.route || null,
+      routingDurationMs: Number.isFinite(data.routingDurationMs)
+        ? data.routingDurationMs || 0
+        : null,
+      delivery: cached ? "device-cache" : "fresh",
+      outcome: "success",
+      clarificationState: data.clarification?.state || null,
+      errorCategory: null,
+    });
+    const nextPending = data.clarification?.pending || null;
+    setPending(nextPending);
+    if (persistent) {
+      try {
+        await chatStorage.setPendingClarification(
+          profileIdRef.current,
+          conversationIdRef.current,
+          nextPending,
+        );
+      } catch {
+        setStorageError(
+          "Pending context could not be saved. It remains available for this session.",
+        );
+        setStorageState("error");
       }
-      setProviderHealth(
-        data.provider.type.includes("UNAVAILABLE")
-          ? "UNAVAILABLE"
-          : "AVAILABLE",
-      );
-      await refreshUsage();
+    }
+    setProviderHealth(
+      data.provider.type.includes("UNAVAILABLE") ? "UNAVAILABLE" : "AVAILABLE",
+    );
+    await refreshUsage();
   };
 
   const handleFailedChatResponse = async (
@@ -539,30 +548,34 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     userMessage: ChatMessage,
     startedAt: number,
   ) => {
-      const category =
-        error && typeof error === "object" && "category" in error
-          ? String(error.category)
-          : "service_unavailable";
-      setProviderHealth("UNAVAILABLE");
-      const assistantMessage: ChatMessage = {
-        id: nextMessageId(),
-        role: "assistant",
-        content: errorMessage(category),
-        providerName: "System",
-      };
-      setMessages((current) => [...current, assistantMessage]);
-      await persistMessage(assistantMessage);
-      await persistTestLog({
-        ...createTestLogReference(userMessage, assistantMessage, startedAt),
-        providerName: "System",
-        providerType: "ERROR",
-        route: null,
-        routingDurationMs: null,
-        delivery: "fresh",
-        outcome: "error",
-        clarificationState: null,
-        errorCategory: category,
-      });
+    const category =
+      error && typeof error === "object" && "category" in error
+        ? String(error.category)
+        : "service_unavailable";
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : undefined;
+    setProviderHealth("UNAVAILABLE");
+    const assistantMessage: ChatMessage = {
+      id: nextMessageId(),
+      role: "assistant",
+      content: errorMessage(category, code),
+      providerName: "System",
+    };
+    setMessages((current) => [...current, assistantMessage]);
+    await persistMessage(assistantMessage);
+    await persistTestLog({
+      ...createTestLogReference(userMessage, assistantMessage, startedAt),
+      providerName: "System",
+      providerType: "ERROR",
+      route: null,
+      routingDurationMs: null,
+      delivery: "fresh",
+      outcome: "error",
+      clarificationState: null,
+      errorCategory: category,
+    });
   };
 
   const sendMessage = async (messageOverride?: string) => {
@@ -581,13 +594,38 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     const startedAt = Date.now();
     try {
       await persistMessage(userMessage);
+      const prepared = prepareChatRequest(nextMessages, pending);
+      if (prepared.droppedInvalidPending) {
+        setPending(null);
+        if (persistent) {
+          try {
+            await chatStorage.setPendingClarification(
+              profileIdRef.current,
+              conversationIdRef.current,
+              null,
+            );
+          } catch {
+            setStorageError(
+              "Expired pending context could not be cleared from this device.",
+            );
+          }
+        }
+      }
+      if (prepared.errorCode) {
+        const preparationError = new Error(prepared.errorCode);
+        Object.assign(preparationError, {
+          category: "invalid_request",
+          code: prepared.errorCode,
+        });
+        throw preparationError;
+      }
       const result = await cache.run({
         profileId: profileIdRef.current,
         conversationId: conversationIdRef.current,
         query: message,
-        pending,
+        pending: prepared.pendingClarification,
         persistent,
-        request: () => requestChatResponse(nextMessages, pending),
+        request: () => requestChatResponse(prepared.payload),
       });
       await handleSuccessfulChatResponse(
         result.response as ChatApiResponse,

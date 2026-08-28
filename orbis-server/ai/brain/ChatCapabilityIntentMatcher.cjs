@@ -167,6 +167,8 @@ const NON_LOCATION_WORDS = new Set([
   "টা",
   "টি",
   "দাও",
+  "বল",
+  "বলেন",
   "বলবে",
   "বলো",
   "বলুন",
@@ -174,6 +176,32 @@ const NON_LOCATION_WORDS = new Set([
   "হবে",
   "জানাও",
   "জানতে",
+]);
+const LOCATION_REPLY_BLOCKED_TOKENS = new Set([
+  "attachment",
+  "create",
+  "download",
+  "excel",
+  "file",
+  "make",
+  "pdf",
+  "sheet",
+  "write",
+  "xls",
+  "xlsx",
+  "এক্সেল",
+  "একটা",
+  "করবে",
+  "করবো",
+  "করতে",
+  "তৈরি",
+  "বানাও",
+  "বানিয়ে",
+  "বানিয়ে",
+  "ফাইল",
+  "পিডিএফ",
+  "রাইট",
+  "শিট",
 ]);
 
 function normalize(text) {
@@ -251,7 +279,10 @@ function matchWeatherLocationReply(message) {
   const tokens = weatherTokens(message);
   if (
     tokens.length === 0 ||
-    tokens.some((token) => WEATHER_TOKEN.test(token))
+    tokens.some(
+      (token) =>
+        WEATHER_TOKEN.test(token) || LOCATION_REPLY_BLOCKED_TOKENS.has(token),
+    )
   ) {
     return null;
   }
@@ -396,10 +427,7 @@ function readApprovalToken(text, prefixEnd) {
   }
 
   let tokenEnd = tokenStart;
-  while (
-    tokenEnd < text.length &&
-    isApprovalTokenCharacter(text[tokenEnd])
-  ) {
+  while (tokenEnd < text.length && isApprovalTokenCharacter(text[tokenEnd])) {
     tokenEnd += 1;
   }
   const token = text.slice(tokenStart, tokenEnd);
