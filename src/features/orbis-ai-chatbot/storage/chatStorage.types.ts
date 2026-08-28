@@ -59,6 +59,37 @@ export interface CachedChatResponse {
   freshnessClass: "price" | "weather" | "news" | "stable";
 }
 
+/**
+ * Privacy-safe diagnostic metadata for one local chat exchange.
+ *
+ * The question and answer are deliberately not duplicated here. They remain
+ * in the existing device-local message store and are joined by message ID
+ * when the Admin opens the Brain Test Lab.
+ */
+export interface ChatTestLogEntry {
+  id: string;
+  profileId: string;
+  conversationId: string;
+  userMessageId: number;
+  assistantMessageId: number;
+  startedAt: number;
+  completedAt: number;
+  durationMs: number;
+  providerName: string;
+  providerType: string;
+  route: string | null;
+  routingDurationMs: number | null;
+  delivery: "fresh" | "device-cache";
+  outcome: "success" | "error";
+  clarificationState: string | null;
+  errorCategory: string | null;
+}
+
+export interface ResolvedChatTestLogEntry extends ChatTestLogEntry {
+  userMessage: ChatMessage | null;
+  assistantMessage: ChatMessage | null;
+}
+
 export interface ChatStorageUsage {
   budgetBytes: number;
   logicalBytes: number;

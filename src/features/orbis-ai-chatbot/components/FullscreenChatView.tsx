@@ -14,6 +14,8 @@ import { supabase } from "../../../core/supabase/client";
 import { DeviceChatRequestCache } from "../services/DeviceChatRequestCache";
 import { chatStorage } from "../storage/ChatStorageManager";
 import type {
+  CachedChatResponse,
+  ChatTestLogEntry,
   ChatStorageUsage,
   PendingClarification,
 } from "../storage/chatStorage.types";
@@ -52,6 +54,53 @@ interface LearnedRecord extends LearningCandidate {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+interface ChatApiResponse {
+  message?: { role?: string; content?: string };
+  provider: { name: string; type: string; model?: string };
+  route?: string;
+  routingDurationMs?: number;
+  clarification?: {
+    state?: string;
+    pending?: PendingClarification | null;
+  };
+}
+
+async function requestChatResponse(
+  messages: ChatMessage[],
+  pending: PendingClarification | null,
+): Promise<CachedChatResponse["response"]> {
+  const { data, error } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (error || !token) {
+    const authError = new Error("AUTH_REQUIRED");
+    Object.assign(authError, { category: "authentication" });
+    throw authError;
+  }
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      messages: messages.slice(-20).map(({ role, content }) => ({ role, content })),
+      pendingClarification: pending || undefined,
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const requestError = new Error("CHAT_REQUEST_FAILED");
+    Object.assign(requestError, {
+      category:
+        response.status === 401 || response.status === 403
+          ? "authentication"
+          : body?.error?.category || "service_unavailable",
+    });
+    throw requestError;
+  }
+  return body;
 }
 
 const INITIAL_MESSAGE: ChatMessage = {
@@ -245,6 +294,17 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     }
   };
 
+  const persistTestLog = async (entry: ChatTestLogEntry) => {
+    if (!persistent) return;
+    try {
+      await chatStorage.saveTestLog(entry);
+    } catch {
+      setStorageError(
+        "Chat Test Log এই ডিভাইসে সংরক্ষণ করা যায়নি। Chat চলতে থাকবে।",
+      );
+    }
+  };
+
   const chooseConsent = async (accepted: boolean) => {
     try {
       chatStorage.setConsent(
@@ -391,75 +451,44 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     }
   };
 
-  const sendMessage = async (messageOverride?: string) => {
-    const message = (messageOverride ?? inputText).trim();
-    if (!message || isSending || !ready) return;
-
-    const userMessage: ChatMessage = {
-      id: nextMessageId(),
-      role: "user",
-      content: message,
-    };
-    const nextMessages = [...messages, userMessage];
-    setMessages(nextMessages);
-    setInputText("");
-    setIsSending(true);
-    try {
-      await persistMessage(userMessage);
-      const result = await cache.run({
-        profileId: profileIdRef.current,
-        conversationId: conversationIdRef.current,
-        query: message,
-        pending,
-        persistent,
-        request: async () => {
-          const { data, error } = await supabase.auth.getSession();
-          const token = data.session?.access_token;
-          if (error || !token) {
-            const authError = new Error("AUTH_REQUIRED");
-            Object.assign(authError, { category: "authentication" });
-            throw authError;
-          }
-          const response = await fetch("/api/chat", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              messages: nextMessages
-                .slice(-20)
-                .map(({ role, content }) => ({ role, content })),
-              pendingClarification: pending || undefined,
-            }),
-          });
-          const body = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            const requestError = new Error("CHAT_REQUEST_FAILED");
-            Object.assign(requestError, {
-              category:
-                response.status === 401 || response.status === 403
-                  ? "authentication"
-                  : body?.error?.category || "service_unavailable",
-            });
-            throw requestError;
-          }
-          return body;
-        },
-      });
-      const data = result.response;
-      const content = data.message?.content?.trim();
-      if (!content) throw new Error("EMPTY_RESPONSE");
+  const handleSuccessfulChatResponse = async (
+    data: ChatApiResponse,
+    cached: boolean,
+    userMessage: ChatMessage,
+    startedAt: number,
+  ) => {
+    const content = data.message?.content?.trim();
+    if (!content) throw new Error("EMPTY_RESPONSE");
       const assistantMessage: ChatMessage = {
         id: nextMessageId(),
         role: "assistant",
         content,
-        providerName: result.cached
+        providerName: cached
           ? `${data.provider.name} (device cache)`
           : data.provider.name || "ORBIS",
       };
       setMessages((current) => [...current, assistantMessage]);
       await persistMessage(assistantMessage);
+      await persistTestLog({
+        id: crypto.randomUUID(),
+        profileId: profileIdRef.current,
+        conversationId: conversationIdRef.current,
+        userMessageId: userMessage.id,
+        assistantMessageId: assistantMessage.id,
+        startedAt,
+        completedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        providerName: data.provider?.name || "ORBIS",
+        providerType: data.provider?.type || "UNKNOWN",
+        route: data.route || null,
+        routingDurationMs: Number.isFinite(data.routingDurationMs)
+          ? data.routingDurationMs || 0
+          : null,
+        delivery: cached ? "device-cache" : "fresh",
+        outcome: "success",
+        clarificationState: data.clarification?.state || null,
+        errorCategory: null,
+      });
       const nextPending = data.clarification?.pending || null;
       setPending(nextPending);
       if (persistent) {
@@ -482,21 +511,78 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           : "AVAILABLE",
       );
       await refreshUsage();
-    } catch (error) {
+  };
+
+  const handleFailedChatResponse = async (
+    error: unknown,
+    userMessage: ChatMessage,
+    startedAt: number,
+  ) => {
       const category =
         error && typeof error === "object" && "category" in error
           ? String(error.category)
           : "service_unavailable";
       setProviderHealth("UNAVAILABLE");
-      setMessages((current) => [
-        ...current,
-        {
-          id: nextMessageId(),
-          role: "assistant",
-          content: errorMessage(category),
-          providerName: "System",
-        },
-      ]);
+      const assistantMessage: ChatMessage = {
+        id: nextMessageId(),
+        role: "assistant",
+        content: errorMessage(category),
+        providerName: "System",
+      };
+      setMessages((current) => [...current, assistantMessage]);
+      await persistMessage(assistantMessage);
+      await persistTestLog({
+        id: crypto.randomUUID(),
+        profileId: profileIdRef.current,
+        conversationId: conversationIdRef.current,
+        userMessageId: userMessage.id,
+        assistantMessageId: assistantMessage.id,
+        startedAt,
+        completedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        providerName: "System",
+        providerType: "ERROR",
+        route: null,
+        routingDurationMs: null,
+        delivery: "fresh",
+        outcome: "error",
+        clarificationState: null,
+        errorCategory: category,
+      });
+  };
+
+  const sendMessage = async (messageOverride?: string) => {
+    const message = (messageOverride ?? inputText).trim();
+    if (!message || isSending || !ready) return;
+
+    const userMessage: ChatMessage = {
+      id: nextMessageId(),
+      role: "user",
+      content: message,
+    };
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
+    setInputText("");
+    setIsSending(true);
+    const startedAt = Date.now();
+    try {
+      await persistMessage(userMessage);
+      const result = await cache.run({
+        profileId: profileIdRef.current,
+        conversationId: conversationIdRef.current,
+        query: message,
+        pending,
+        persistent,
+        request: () => requestChatResponse(nextMessages, pending),
+      });
+      await handleSuccessfulChatResponse(
+        result.response as ChatApiResponse,
+        result.cached,
+        userMessage,
+        startedAt,
+      );
+    } catch (error) {
+      await handleFailedChatResponse(error, userMessage, startedAt);
     } finally {
       setIsSending(false);
     }

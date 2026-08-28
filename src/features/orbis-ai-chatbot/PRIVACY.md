@@ -11,6 +11,14 @@ and partitioned by authenticated account ID, or by a device-generated anonymous
 profile when no account is available. Declining consent keeps context only in
 the current app session. Revoking consent stops subsequent writes.
 
+The Admin-only Brain Test Log is also device-local. It stores message IDs plus
+bounded operational metadata (provider, route, duration, delivery and outcome)
+and resolves the full question/answer from the same local chat history only
+when the Admin opens the Test Lab. It does not duplicate transcripts or write
+raw content to server diagnostics, telemetry or a database. Clearing only Test
+Logs preserves chat history; clearing a conversation removes its linked Test
+Log entries so no orphaned records remain.
+
 The browser implementation uses IndexedDB behind `ChatStorageManager`. Its
 contract is intentionally independent of IndexedDB details so a future Android
 implementation can use encrypted SQLite. The default logical budget is 500 MB,

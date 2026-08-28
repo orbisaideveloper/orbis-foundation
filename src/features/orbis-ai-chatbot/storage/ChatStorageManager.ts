@@ -7,15 +7,18 @@ import {
   LearningConsent,
   PendingClarification,
   PersonalMemoryRecord,
+  ChatTestLogEntry,
+  ResolvedChatTestLogEntry,
 } from "./chatStorage.types";
 
 const DB_NAME = "OrbisChatDB";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_CONVERSATIONS = "conversations";
 const STORE_MESSAGES = "messages";
 const STORE_PERSONAL_MEMORY = "personalMemory";
 const STORE_CLARIFICATIONS = "clarifications";
 const STORE_CACHE = "responseCache";
+const STORE_TEST_LOGS = "chatTestLogs";
 const CONSENT_PREFIX = "orbis.chat.consent.";
 const LEARNING_CONSENT_PREFIX = "orbis.chat.learning-consent.";
 const ANONYMOUS_PROFILE_KEY = "orbis.chat.anonymous-profile";
@@ -59,6 +62,9 @@ export interface ChatStoragePort {
   ): Promise<PendingClarification | null>;
   getCachedResponse(key: string): Promise<CachedChatResponse | null>;
   saveCachedResponse(value: CachedChatResponse): Promise<void>;
+  saveTestLog(entry: ChatTestLogEntry): Promise<void>;
+  getTestLogEntries(profileId: string): Promise<ResolvedChatTestLogEntry[]>;
+  clearTestLogs(profileId: string): Promise<void>;
   clearAllForProfile(profileId: string): Promise<void>;
   getUsage(profileId: string): Promise<ChatStorageUsage>;
 }
@@ -91,6 +97,23 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 
 function encodedBytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
+
+function ensureIndex(store: IDBObjectStore, name: string): void {
+  if (!store.indexNames.contains(name)) {
+    store.createIndex(name, name, { unique: false });
+  }
+}
+
+function ensureTestLogStore(
+  db: IDBDatabase,
+  transaction: IDBTransaction,
+): void {
+  const store = db.objectStoreNames.contains(STORE_TEST_LOGS)
+    ? transaction.objectStore(STORE_TEST_LOGS)
+    : db.createObjectStore(STORE_TEST_LOGS, { keyPath: "id" });
+  ensureIndex(store, "profileId");
+  ensureIndex(store, "conversationId");
 }
 
 export class ChatStorageManager implements ChatStoragePort {
@@ -173,6 +196,7 @@ export class ChatStorageManager implements ChatStoragePort {
           const store = db.createObjectStore(STORE_CACHE, { keyPath: "key" });
           store.createIndex("profileId", "profileId", { unique: false });
         }
+        ensureTestLogStore(db, request.transaction!);
       };
     });
   }
@@ -296,7 +320,7 @@ export class ChatStorageManager implements ChatStoragePort {
 
   async clearConversation(conversationId: string): Promise<void> {
     const transaction = this.ensureDb().transaction(
-      [STORE_MESSAGES, STORE_CONVERSATIONS],
+      [STORE_MESSAGES, STORE_CONVERSATIONS, STORE_TEST_LOGS],
       "readwrite",
     );
     const messages = transaction.objectStore(STORE_MESSAGES);
@@ -305,6 +329,11 @@ export class ChatStorageManager implements ChatStoragePort {
     );
     keys.forEach((key) => messages.delete(key));
     transaction.objectStore(STORE_CONVERSATIONS).delete(conversationId);
+    const testLogs = transaction.objectStore(STORE_TEST_LOGS);
+    const testLogKeys = await requestResult<IDBValidKey[]>(
+      testLogs.index("conversationId").getAllKeys(conversationId),
+    );
+    testLogKeys.forEach((key) => testLogs.delete(key));
     await transactionDone(transaction);
   }
 
@@ -380,6 +409,34 @@ export class ChatStorageManager implements ChatStoragePort {
     await transactionDone(transaction);
   }
 
+  async saveTestLog(entry: ChatTestLogEntry): Promise<void> {
+    await this.ensureWithinBudget(entry.profileId, entry);
+    const transaction = this.ensureDb().transaction(STORE_TEST_LOGS, "readwrite");
+    transaction.objectStore(STORE_TEST_LOGS).put(entry);
+    await transactionDone(transaction);
+  }
+
+  async getTestLogEntries(
+    profileId: string,
+  ): Promise<ResolvedChatTestLogEntry[]> {
+    const [entries, messages] = await Promise.all([
+      this.getByProfile<ChatTestLogEntry>(STORE_TEST_LOGS, profileId),
+      this.getByProfile<ChatMessage>(STORE_MESSAGES, profileId),
+    ]);
+    const messagesById = new Map(messages.map((message) => [message.id, message]));
+    return entries
+      .map((entry) => ({
+        ...entry,
+        userMessage: messagesById.get(entry.userMessageId) || null,
+        assistantMessage: messagesById.get(entry.assistantMessageId) || null,
+      }))
+      .sort((left, right) => right.completedAt - left.completedAt);
+  }
+
+  async clearTestLogs(profileId: string): Promise<void> {
+    await this.deleteByProfile(STORE_TEST_LOGS, profileId);
+  }
+
   async clearAllForProfile(profileId: string): Promise<void> {
     const conversations = await this.getConversations(profileId);
     for (const conversation of conversations) {
@@ -387,6 +444,7 @@ export class ChatStorageManager implements ChatStoragePort {
     }
     await this.deleteByProfile(STORE_PERSONAL_MEMORY, profileId);
     await this.deleteByProfile(STORE_CACHE, profileId);
+    await this.deleteByProfile(STORE_TEST_LOGS, profileId);
     const transaction = this.ensureDb().transaction(
       STORE_CLARIFICATIONS,
       "readwrite",
@@ -410,7 +468,7 @@ export class ChatStorageManager implements ChatStoragePort {
   }
 
   async getUsage(profileId: string): Promise<ChatStorageUsage> {
-    const [conversations, messages, memories, cache, clarifications] =
+    const [conversations, messages, memories, cache, clarifications, testLogs] =
       await Promise.all([
         this.getConversations(profileId),
         this.getByProfile<ChatMessage>(STORE_MESSAGES, profileId),
@@ -420,6 +478,7 @@ export class ChatStorageManager implements ChatStoragePort {
         ),
         this.getByProfile<CachedChatResponse>(STORE_CACHE, profileId),
         this.getClarificationsForProfile(profileId),
+        this.getByProfile<ChatTestLogEntry>(STORE_TEST_LOGS, profileId),
       ]);
     const logicalBytes = encodedBytes({
       conversations,
@@ -427,6 +486,7 @@ export class ChatStorageManager implements ChatStoragePort {
       memories,
       cache,
       clarifications,
+      testLogs,
     });
     const estimate = await navigator.storage?.estimate?.().catch(() => null);
     return {

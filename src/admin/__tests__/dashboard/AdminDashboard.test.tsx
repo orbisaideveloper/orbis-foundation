@@ -20,6 +20,7 @@ const DIAGNOSTIC_TIMESTAMP = "2026-08-25T17:00:00.000Z";
 const FOUNDATION_WORKER_READY = "Foundation worker ready";
 const ACTIVE_NAV_BACKGROUND_CLASS = "bg-emerald-600";
 const ACTIVE_NAV_TEXT_CLASS = "text-white";
+const ARIA_PRESSED = "aria-pressed";
 
 vi.mock("../../auth/adminFetch", () => ({ readAdminJson: mocks.readAdminJson }));
 
@@ -33,6 +34,15 @@ vi.mock(
           Back
         </button>
       </div>
+    ),
+  }),
+);
+
+vi.mock(
+  "../../../features/orbis-ai-chatbot/components/BrainChatTestLog",
+  () => ({
+    BrainChatTestLog: ({ previewMode }: { previewMode: boolean }) => (
+      <div>Brain Test Log · preview={String(previewMode)}</div>
     ),
   }),
 );
@@ -335,6 +345,25 @@ describe("AdminDashboard current control-center coverage", () => {
     });
     await expectDashboardHome();
   });
+
+  it("keeps the outer dashboard unchanged while Brain opens its inner Test Log", async () => {
+    render(<AdminDashboard />);
+    await expectDashboardHome();
+    fireEvent.click(
+      screen.getByRole("heading", { name: BRAIN_TITLE, level: 3 }).closest("button")!,
+    );
+
+    expect(screen.getByRole("button", { name: "Status" })).toHaveAttribute(
+      ARIA_PRESSED,
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Chat Test Log" }));
+    expect(screen.getByText("Brain Test Log · preview=false")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^More$/i })).toHaveClass(
+      ACTIVE_NAV_BACKGROUND_CLASS,
+      ACTIVE_NAV_TEXT_CLASS,
+    );
+  });
   it("resets scroll when a detail view opens", async () => {
     render(<AdminDashboard />);
     await expectDashboardHome();
@@ -396,7 +425,7 @@ describe("AdminDashboard current control-center coverage", () => {
     );
 
     const allFilter = await screen.findByRole("button", { name: "All" });
-    expect(allFilter).toHaveAttribute("aria-pressed", "true");
+    expect(allFilter).toHaveAttribute(ARIA_PRESSED, "true");
     expect(allFilter).toHaveClass(
       ACTIVE_NAV_BACKGROUND_CLASS,
       ACTIVE_NAV_TEXT_CLASS,
@@ -404,7 +433,7 @@ describe("AdminDashboard current control-center coverage", () => {
 
     const warningFilter = screen.getByRole("button", { name: "WARN" });
     fireEvent.click(warningFilter);
-    expect(warningFilter).toHaveAttribute("aria-pressed", "true");
+    expect(warningFilter).toHaveAttribute(ARIA_PRESSED, "true");
     expect(warningFilter).toHaveClass(
       ACTIVE_NAV_BACKGROUND_CLASS,
       ACTIVE_NAV_TEXT_CLASS,

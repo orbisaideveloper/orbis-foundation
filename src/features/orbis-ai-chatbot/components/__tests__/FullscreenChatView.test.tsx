@@ -8,6 +8,10 @@ const WEATHER_CLARIFICATION_PROMPT = "কোন জায়গার weather?";
 const WEATHER_LOCATION_KIND = "weather-location";
 const BENGALI_WEATHER_REQUEST = "আজকের ওয়েদারটা একটু বলবে আমাকে";
 const MOCK_AI_RESPONSE = "This is a mocked AI response.";
+const WEB_PROVIDER_NAME = "ORBIS Brain (Web)";
+const WEB_CLARIFICATION_TYPE = "WEB_SEARCH_CLARIFICATION";
+const DEFAULT_CONVERSATION_ID = "account-1:default-chat-v2";
+const WEATHER_REQUEST = "আজকের weather বলো";
 
 const mocks = vi.hoisted(() => {
   const declined = "declined" as const;
@@ -16,6 +20,7 @@ const mocks = vi.hoisted(() => {
     getSession: vi.fn(),
     init: vi.fn(),
     saveMessage: vi.fn(),
+    saveTestLog: vi.fn(),
     setPending: vi.fn(),
     learningConsent: declined as "accepted" | "declined" | null,
     setLearningConsent: vi.fn(),
@@ -37,6 +42,7 @@ vi.mock("../../storage/ChatStorageManager", () => ({
     createConversation: vi.fn().mockResolvedValue(undefined),
     getMessagesByConversation: vi.fn().mockResolvedValue([]),
     saveMessage: mocks.saveMessage,
+    saveTestLog: mocks.saveTestLog,
     getPendingClarification: vi.fn().mockResolvedValue(null),
     setPendingClarification: mocks.setPending,
     getCachedResponse: vi.fn().mockResolvedValue(null),
@@ -81,6 +87,7 @@ describe("FullscreenChatView", () => {
     });
     mocks.init.mockResolvedValue(undefined);
     mocks.saveMessage.mockResolvedValue(undefined);
+    mocks.saveTestLog.mockResolvedValue(undefined);
     mocks.setPending.mockResolvedValue(undefined);
     mocks.setLearningConsent.mockReset();
     fetchMock = vi
@@ -127,14 +134,14 @@ describe("FullscreenChatView", () => {
       json: async () => ({
         message: { role: "assistant", content: WEATHER_CLARIFICATION_PROMPT },
         provider: {
-          name: "ORBIS Brain (Web)",
-          type: "WEB_SEARCH_CLARIFICATION",
+          name: WEB_PROVIDER_NAME,
+          type: WEB_CLARIFICATION_TYPE,
         },
         clarification: {
           state: "pending",
           pending: {
             kind: WEATHER_LOCATION_KIND,
-            originalRequest: "আজকের weather বলো",
+            originalRequest: WEATHER_REQUEST,
             createdAt: 1,
             expiresAt: Date.now() + 60_000,
           },
@@ -144,13 +151,44 @@ describe("FullscreenChatView", () => {
     render(<FullscreenChatView onClose={() => {}} />);
     const input = await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
     await waitFor(() => expect(input).not.toBeDisabled());
-    fireEvent.change(input, { target: { value: "আজকের weather বলো" } });
+    fireEvent.change(input, { target: { value: WEATHER_REQUEST } });
     fireEvent.click(screen.getByRole("button", { name: /send message/i }));
     await screen.findByText(WEATHER_CLARIFICATION_PROMPT);
     expect(mocks.setPending).toHaveBeenCalledWith(
       "account-1",
-      "account-1:default-chat-v2",
+      DEFAULT_CONVERSATION_ID,
       expect.objectContaining({ kind: WEATHER_LOCATION_KIND }),
+    );
+  });
+
+  it("stores the real provider, route and latency as a local Test Log reference", async () => {
+    mocks.consent = "accepted";
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        message: { role: "assistant", content: MOCK_AI_RESPONSE },
+        provider: { name: WEB_PROVIDER_NAME, type: "WEB_SEARCH" },
+        route: "web-search",
+        routingDurationMs: 4,
+        clarification: { state: "none", pending: null },
+      }),
+    } as Response);
+    render(<FullscreenChatView onClose={() => {}} />);
+    const input = await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
+    await waitFor(() => expect(input).not.toBeDisabled());
+    fireEvent.change(input, { target: { value: WEATHER_REQUEST } });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+    await screen.findByText(MOCK_AI_RESPONSE);
+    expect(mocks.saveTestLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerName: WEB_PROVIDER_NAME,
+        providerType: "WEB_SEARCH",
+        route: "web-search",
+        routingDurationMs: 4,
+        delivery: "fresh",
+        outcome: "success",
+      }),
     );
   });
 
@@ -165,8 +203,8 @@ describe("FullscreenChatView", () => {
             content: WEATHER_CLARIFICATION_PROMPT,
           },
           provider: {
-            name: "ORBIS Brain (Web)",
-            type: "WEB_SEARCH_CLARIFICATION",
+            name: WEB_PROVIDER_NAME,
+            type: WEB_CLARIFICATION_TYPE,
           },
           clarification: {
             state: "pending",

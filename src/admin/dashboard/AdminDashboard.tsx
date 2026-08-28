@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { readAdminJson } from "../auth/adminFetch";
 import { FullscreenChatView } from "../../features/orbis-ai-chatbot/components/FullscreenChatView";
+import { BrainChatTestLog } from "../../features/orbis-ai-chatbot/components/BrainChatTestLog";
 
 type DashboardView =
   | "overview"
@@ -34,6 +35,8 @@ type DashboardView =
   | "diagnostics"
   | "data"
   | "releases";
+
+type BrainDetailTab = "status" | "test-log" | "scan" | "changes";
 
 type Availability = "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN";
 
@@ -462,6 +465,8 @@ export function AdminDashboard({
   const [diagnosticFilter, setDiagnosticFilter] = useState<
     "ALL" | "INFO" | "WARN" | "ERROR"
   >("ALL");
+  const [brainDetailTab, setBrainDetailTab] =
+    useState<BrainDetailTab>("status");
 
   const refreshSystemStats = useCallback(async () => {
     try {
@@ -856,25 +861,82 @@ export function AdminDashboard({
 
   const renderBrain = () => (
     <div className="space-y-3">
-      <div className={DETAIL_GRID_CLASS}>
-        <MetricTile label="Brain route" value={diagnosticExport?.brain.route || "Unavailable"} source="Admin diagnostic export" />
-        <MetricTile label="Gateway artifact" value={diagnosticExport?.brain.gatewayArtifact || "Unavailable"} source="Admin diagnostic export" />
-        <MetricTile label="Active provider" value={activeProvider?.name || "Unavailable"} source="/api/ai/providers/status" />
-        <MetricTile label="Provider health" value={activeProvider?.health?.state || "UNKNOWN"} source={`Checked: ${formatCheckedAt(activeProvider?.health?.checkedAt)}`} />
-      </div>
-      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
-        <h3 className="text-sm font-black text-slate-900">Providers</h3>
-        {(providerStatus.allProviders || []).map((provider) => (
-          <DetailRow
-            key={`${provider.name}-${provider.model}`}
-            label={`${provider.type || "unknown"} · ${provider.health?.state || "UNKNOWN"}`}
-            value={`${provider.name || "Unnamed"} · ${provider.model || "model unavailable"}`}
-            source={`Last health check: ${formatCheckedAt(provider.health?.checkedAt)}`}
-            copyable
-          />
+      <nav
+        aria-label="Brain detail sections"
+        className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]"
+      >
+        {([
+          ["status", "Status"],
+          ["test-log", "Chat Test Log"],
+          ["scan", "Improvement Scan"],
+          ["changes", "Boundaries"],
+        ] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            type="button"
+            aria-pressed={brainDetailTab === tab}
+            onClick={() => setBrainDetailTab(tab)}
+            className={`shrink-0 rounded-xl border px-3 py-2 text-[10px] font-bold ${
+              brainDetailTab === tab
+                ? ACTIVE_NAV_STATE_CLASS
+                : "border-emerald-100 bg-white text-slate-500"
+            }`}
+          >
+            {label}
+          </button>
         ))}
-        {providerStatus.allProviders.length === 0 && <p className="py-4 text-xs text-slate-400">No provider metadata available.</p>}
-      </section>
+      </nav>
+
+      {brainDetailTab === "status" && (
+        <>
+          <div className={DETAIL_GRID_CLASS}>
+            <MetricTile label="Brain route" value={diagnosticExport?.brain.route || "Unavailable"} source="Admin diagnostic export" />
+            <MetricTile label="Gateway artifact" value={diagnosticExport?.brain.gatewayArtifact || "Unavailable"} source="Admin diagnostic export" />
+            <MetricTile label="Active provider" value={activeProvider?.name || "Unavailable"} source="/api/ai/providers/status" />
+            <MetricTile label="Provider health" value={activeProvider?.health?.state || "UNKNOWN"} source={`Checked: ${formatCheckedAt(activeProvider?.health?.checkedAt)}`} />
+          </div>
+          <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+            <h3 className="text-sm font-black text-slate-900">Providers</h3>
+            {(providerStatus.allProviders || []).map((provider) => (
+              <DetailRow
+                key={`${provider.name}-${provider.model}`}
+                label={`${provider.type || "unknown"} · ${provider.health?.state || "UNKNOWN"}`}
+                value={`${provider.name || "Unnamed"} · ${provider.model || "model unavailable"}`}
+                source={`Last health check: ${formatCheckedAt(provider.health?.checkedAt)}`}
+                copyable
+              />
+            ))}
+            {providerStatus.allProviders.length === 0 && <p className="py-4 text-xs text-slate-400">No provider metadata available.</p>}
+          </section>
+        </>
+      )}
+
+      {brainDetailTab === "test-log" && <BrainChatTestLog previewMode={previewMode} />}
+
+      {brainDetailTab === "scan" && (
+        <>
+          <div className={DETAIL_GRID_CLASS}>
+            <MetricTile label="Gateway evidence" value={diagnosticExport?.brain.gatewayArtifact || "Unavailable"} source="Admin diagnostic export" />
+            <MetricTile label="Provider check" value={activeProvider?.health?.state || "UNKNOWN"} source={`Checked: ${formatCheckedAt(activeProvider?.health?.checkedAt)}`} />
+            <MetricTile label="Callable capabilities" value={configuredCapabilities.length} source="Admin diagnostic capability registry" />
+            <MetricTile label="Phone link" value="Not verified" source="No authenticated cloud-to-phone pairing telemetry exists yet" />
+          </div>
+          <section className="rounded-[22px] border border-orange-100 bg-orange-50/70 p-4 text-xs leading-relaxed text-orange-800">
+            A Brain percentage is intentionally not shown. Gateway, provider, capability,
+            phone link and execution-quality probes need measured evidence before a score is valid.
+          </section>
+        </>
+      )}
+
+      {brainDetailTab === "changes" && (
+        <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+          <h3 className="text-sm font-black text-slate-900">Brain Test Lab boundaries</h3>
+          <DetailRow label="Chat Test Log" value="Device-local only" source="Existing OrbisChatDB; raw chat is not written to server diagnostics" />
+          <DetailRow label="Chat behaviour" value="Unchanged" source="Existing authentication, rate limit, routing and approval boundaries remain in place" />
+          <DetailRow label="Outer dashboard" value="Unchanged" source="Only this Brain detail screen adds Test Log and Scan tabs" />
+          <DetailRow label="Market data" value="Not connected" source="No verified live market source is added by this Brain batch" />
+        </section>
+      )}
     </div>
   );
 
