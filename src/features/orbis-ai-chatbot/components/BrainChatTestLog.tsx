@@ -8,6 +8,7 @@ import {
   formatTestLogEntry,
   testLogDayKey,
 } from "../utils/chatTestLogFormat";
+import { copyMessageContent } from "../utils/messageActions";
 
 interface BrainChatTestLogProps {
   previewMode: boolean;
@@ -79,10 +80,9 @@ export function BrainChatTestLog({ previewMode }: Readonly<BrainChatTestLogProps
   );
 
   const copy = async (value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
+    if (await copyMessageContent(value)) {
       setNotice("Log কপি হয়েছে।");
-    } catch {
+    } else {
       setNotice("এই browser-এ clipboard অনুমতি পাওয়া যায়নি।");
     }
   };

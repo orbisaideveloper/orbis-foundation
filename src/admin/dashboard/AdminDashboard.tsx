@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowLeft,
@@ -462,6 +462,7 @@ export function AdminDashboard({
   const [detailError, setDetailError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<string>("Not refreshed");
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const diagnosticsCopyTimerRef = useRef<number | null>(null);
   const [diagnosticFilter, setDiagnosticFilter] = useState<
     "ALL" | "INFO" | "WARN" | "ERROR"
   >("ALL");
@@ -537,6 +538,14 @@ export function AdminDashboard({
 
   const scrollToTop = useCallback(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (diagnosticsCopyTimerRef.current !== null) {
+        window.clearTimeout(diagnosticsCopyTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -655,7 +664,13 @@ export function AdminDashboard({
     try {
       await navigator.clipboard.writeText(payload);
       setDiagnosticsCopied(true);
-      window.setTimeout(() => setDiagnosticsCopied(false), 1200);
+      if (diagnosticsCopyTimerRef.current !== null) {
+        window.clearTimeout(diagnosticsCopyTimerRef.current);
+      }
+      diagnosticsCopyTimerRef.current = window.setTimeout(() => {
+        diagnosticsCopyTimerRef.current = null;
+        setDiagnosticsCopied(false);
+      }, 1200);
     } catch {
       setDiagnosticsCopied(false);
     }

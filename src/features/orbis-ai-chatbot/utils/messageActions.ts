@@ -1,16 +1,36 @@
 /**
  * Copies the complete message text to the clipboard. Resolves to a boolean
  * so callers can react to failure without the Chat UI throwing/crashing on
- * denied permissions or unsupported environments.
+ * denied permissions or unsupported environments. Older Android browsers can
+ * reject Clipboard API access even after a button tap, so a temporary text
+ * area fallback is attempted before reporting failure.
  */
-export async function copyMessageContent(content: string): Promise<boolean> {
+function copyWithTemporaryTextArea(content: string): boolean {
   try {
-    if (!navigator.clipboard?.writeText) return false;
-    await navigator.clipboard.writeText(content);
-    return true;
+    const textArea = document.createElement("textarea");
+    textArea.value = content;
+    textArea.setAttribute("readonly", "");
+    textArea.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+    document.body.appendChild(textArea);
+    textArea.select();
+    const copied = document.execCommand("copy");
+    textArea.remove();
+    return copied;
   } catch {
     return false;
   }
+}
+
+export async function copyMessageContent(content: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(content);
+      return true;
+    }
+  } catch {
+    // Try the browser-compatibility fallback below.
+  }
+  return copyWithTemporaryTextArea(content);
 }
 
 /** Whether the Web Share API is available in the current environment. */

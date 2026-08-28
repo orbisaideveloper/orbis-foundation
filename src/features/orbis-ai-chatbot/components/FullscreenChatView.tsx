@@ -451,6 +451,34 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     }
   };
 
+  const createTestLogReference = (
+    userMessage: ChatMessage,
+    assistantMessage: ChatMessage,
+    startedAt: number,
+  ): Pick<
+    ChatTestLogEntry,
+    | "id"
+    | "profileId"
+    | "conversationId"
+    | "userMessageId"
+    | "assistantMessageId"
+    | "startedAt"
+    | "completedAt"
+    | "durationMs"
+  > => {
+    const completedAt = Date.now();
+    return {
+      id: crypto.randomUUID(),
+      profileId: profileIdRef.current,
+      conversationId: conversationIdRef.current,
+      userMessageId: userMessage.id,
+      assistantMessageId: assistantMessage.id,
+      startedAt,
+      completedAt,
+      durationMs: completedAt - startedAt,
+    };
+  };
+
   const handleSuccessfulChatResponse = async (
     data: ChatApiResponse,
     cached: boolean,
@@ -470,14 +498,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       setMessages((current) => [...current, assistantMessage]);
       await persistMessage(assistantMessage);
       await persistTestLog({
-        id: crypto.randomUUID(),
-        profileId: profileIdRef.current,
-        conversationId: conversationIdRef.current,
-        userMessageId: userMessage.id,
-        assistantMessageId: assistantMessage.id,
-        startedAt,
-        completedAt: Date.now(),
-        durationMs: Date.now() - startedAt,
+        ...createTestLogReference(userMessage, assistantMessage, startedAt),
         providerName: data.provider?.name || "ORBIS",
         providerType: data.provider?.type || "UNKNOWN",
         route: data.route || null,
@@ -532,14 +553,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       setMessages((current) => [...current, assistantMessage]);
       await persistMessage(assistantMessage);
       await persistTestLog({
-        id: crypto.randomUUID(),
-        profileId: profileIdRef.current,
-        conversationId: conversationIdRef.current,
-        userMessageId: userMessage.id,
-        assistantMessageId: assistantMessage.id,
-        startedAt,
-        completedAt: Date.now(),
-        durationMs: Date.now() - startedAt,
+        ...createTestLogReference(userMessage, assistantMessage, startedAt),
         providerName: "System",
         providerType: "ERROR",
         route: null,

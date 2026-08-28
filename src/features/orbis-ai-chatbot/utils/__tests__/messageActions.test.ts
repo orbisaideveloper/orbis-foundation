@@ -41,6 +41,16 @@ describe("messageActions", () => {
 
       await expect(copyMessageContent(SHORT_MESSAGE)).resolves.toBe(false);
     });
+
+    it("uses the Android-compatible fallback when the Clipboard API is unavailable", async () => {
+      // @ts-expect-error simulating unsupported environment
+      delete navigator.clipboard;
+      const execCommand = vi.fn(() => true);
+      Object.assign(document, { execCommand });
+
+      await expect(copyMessageContent(SHORT_MESSAGE)).resolves.toBe(true);
+      expect(execCommand).toHaveBeenCalledWith("copy");
+    });
   });
 
   describe("isShareSupported / shareMessageContent", () => {
