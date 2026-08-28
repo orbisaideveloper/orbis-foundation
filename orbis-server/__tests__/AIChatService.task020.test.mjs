@@ -311,6 +311,68 @@ describe("TASK-020 Phase 1-E: Ollama anti-fabrication system message", () => {
 
     expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
   });
+
+  it("tells the provider to ask a short clarification and never invent a completed file action", async () => {
+    let capturedMessages;
+    vi.spyOn(providerManager, "getActiveProvider").mockReturnValue({
+      generateChat: vi.fn().mockImplementation(async (messages) => {
+        capturedMessages = messages;
+        return {
+          content: "reply",
+          provider: { name: "Ollama", type: "local" },
+        };
+      }),
+    });
+
+    await AIChatService.processChatRequest([
+      { role: "user", content: "Explain a SUM formula" },
+    ]);
+
+    expect(capturedMessages[0].content.toLowerCase()).toContain("clarification");
+    expect(capturedMessages[0].content.toLowerCase()).toContain("spreadsheet");
+  });
+});
+
+describe("Brain Phase 1: truthful customer-chat file capability status", () => {
+  it("does not send an Excel creation question to live web search or the provider", async () => {
+    const result = await AIChatService.processChatRequest([
+      { role: "user", content: "তুমি কি এখন excel শিট বানাতে পারবে" },
+    ]);
+
+    expect(tavilySearch.search).not.toHaveBeenCalled();
+    expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
+    expect(result.provider.type).toBe("FOUNDATION_CAPABILITY_STATUS");
+    expect(result.message.content).toContain("customer chat");
+  });
+
+  it("states that PDF writing is unavailable instead of pretending a file was created", async () => {
+    const result = await AIChatService.processChatRequest([
+      { role: "user", content: "তুমি এখন excel বা pdf write করতে পারবে" },
+    ]);
+
+    expect(tavilySearch.search).not.toHaveBeenCalled();
+    expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
+    expect(result.message.content).toContain("PDF write capability");
+  });
+
+  it("keeps a normal Excel learning question with the general provider", async () => {
+    const result = await AIChatService.processChatRequest([
+      { role: "user", content: "এক্সেলে SUM formula কীভাবে করতে পারি?" },
+    ]);
+
+    expect(providerManager.getActiveProvider).toHaveBeenCalled();
+    expect(result.message.content).toBe("normal ai reply");
+  });
+
+  it("does not treat Bengali 'এখন' by itself as a live-information request", async () => {
+    const result = await AIChatService.processChatRequest([
+      { role: "user", content: "তুমি এখন কেমন আছো?" },
+    ]);
+
+    expect(tavilySearch.search).not.toHaveBeenCalled();
+    expect(providerManager.getActiveProvider).toHaveBeenCalled();
+    expect(result.message.content).toBe("normal ai reply");
+  });
 });
 
 describe("TASK-020 Phase 1: regression — existing routing unchanged", () => {

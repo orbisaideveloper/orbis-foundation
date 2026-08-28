@@ -1,4 +1,7 @@
 const capabilityIntentMatcher = require("./brain/ChatCapabilityIntentMatcher.cjs");
+const {
+  getFoundationCapabilityStatus,
+} = require("./FoundationCapabilityChatPolicy.cjs");
 
 const MANIFEST = Object.freeze([
   Object.freeze({
@@ -74,7 +77,6 @@ const TEMPORAL_WORDS = Object.freeze([
   "খবর",
   "বর্তমান",
   "আজকের",
-  "এখন",
   "সর্বশেষ",
   "আবহাওয়া",
   "ওয়েদার",
@@ -114,6 +116,13 @@ class ChatCapabilityRegistry {
       return {
         route: "foundation-capability",
         capabilityId: capability.capabilityId,
+      };
+    }
+
+    if (getFoundationCapabilityStatus(message)) {
+      return {
+        route: "foundation-capability-status",
+        capabilityId: null,
       };
     }
 

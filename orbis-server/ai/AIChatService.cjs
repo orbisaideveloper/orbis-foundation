@@ -4,6 +4,9 @@ const capabilityIntentMatcher = require("./brain/ChatCapabilityIntentMatcher.cjs
 const {
   foundationChatOrchestrator,
 } = require("./FoundationChatOrchestrator.cjs");
+const {
+  getFoundationCapabilityStatus,
+} = require("./FoundationCapabilityChatPolicy.cjs");
 
 /**
  * TASK-013 — AI Chat -> Brain Command Integration
@@ -300,6 +303,18 @@ class AIChatService {
   }
 
   async executeRoute(formattedMessages, lastUserMessage, routeDecision) {
+    if (routeDecision?.route === "foundation-capability-status") {
+      const content = getFoundationCapabilityStatus(lastUserMessage);
+      if (content) {
+        return {
+          message: { role: "assistant", content },
+          provider: {
+            name: "ORBIS Foundation",
+            type: "FOUNDATION_CAPABILITY_STATUS",
+          },
+        };
+      }
+    }
     if (routeDecision?.route === "web-search") {
       return this.executeWebSearch(lastUserMessage, routeDecision);
     }
@@ -384,7 +399,11 @@ class AIChatService {
         "current facts, or a source/API attribution for them. If asked " +
         "for current/live/time-sensitive information you cannot verify, " +
         "say plainly that you don't have live access to it, rather than " +
-        "making up an answer.",
+        "making up an answer. If an essential detail is unclear, ask one " +
+        "short, focused follow-up question instead of guessing. Never claim " +
+        "to have created, written, downloaded, attached, or delivered a " +
+        "file, spreadsheet, PDF, or other external result unless the " +
+        "matching integrated capability actually succeeded in this exchange.",
     });
 
     const providerResponse = await providerManager.generateChat(aiMessages);
