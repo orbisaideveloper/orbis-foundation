@@ -154,6 +154,7 @@ class FoundationChatOrchestrator {
         },
         provider: { name: "ORBIS Foundation", type: "CLARIFICATION" },
         route: "clarification-cancel",
+        brainDecision: "clarification-cancel",
         routingDurationMs: 0,
         clarification: { state: "cancelled", pending: null },
       };
@@ -189,6 +190,7 @@ class FoundationChatOrchestrator {
       message: response.message,
       provider: response.provider,
       route: decision.route,
+      brainDecision: decision.brainDecision || null,
       routingDurationMs,
       clarification: {
         state: nextPending ? "pending" : clarification.state,

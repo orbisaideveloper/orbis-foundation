@@ -50,6 +50,7 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
       "আজকের weather বলো কলকাতা",
     );
     expect(execute.mock.calls[0][1].route).toBe("web-search");
+    expect(result.brainDecision).toBe("live-web-search");
     expect(execute.mock.calls[0][1].weatherLocationResolved).toBe(true);
     expect(result.clarification.state).toBe("resolved");
   });
@@ -195,6 +196,34 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
       }),
     );
     expect(result.routingDurationMs).toBeGreaterThanOrEqual(0);
+    expect(result.route).toBe("brain-orchestrated-provider");
+    expect(result.brainDecision).toBe("general-conversation");
     expect(JSON.stringify(result)).not.toContain("hello");
+  });
+
+  it("lets Brain answer a requested test question without calling a provider", async () => {
+    const execute = vi.fn().mockResolvedValue({
+      message: { role: "assistant", content: "Brain reply" },
+      provider: { name: "ORBIS Brain", type: "BRAIN_DIRECT" },
+    });
+    const orchestrator = new FoundationChatOrchestrator(undefined, () => NOW);
+    const result = await orchestrator.orchestrate(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "তোমাকে টেস্ট করার মত কোন কোশ্চেন আছে যেটা তুমি একবারে পারবে",
+          },
+        ],
+      },
+      execute,
+    );
+
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute.mock.calls[0][1]).toMatchObject({
+      route: "brain-direct-reply",
+      brainDecision: "test-question-offer",
+    });
+    expect(result.brainDecision).toBe("test-question-offer");
   });
 });

@@ -2,6 +2,9 @@ const capabilityIntentMatcher = require("./brain/ChatCapabilityIntentMatcher.cjs
 const {
   getFoundationCapabilityStatus,
 } = require("./FoundationCapabilityChatPolicy.cjs");
+const {
+  createConversationPlan,
+} = require("./FoundationConversationPolicy.cjs");
 
 const MANIFEST = Object.freeze([
   Object.freeze({
@@ -109,13 +112,20 @@ class ChatCapabilityRegistry {
 
   select(message) {
     const approval = capabilityIntentMatcher.matchApprovalDecision(message);
-    if (approval) return { route: "approval", capabilityId: null };
+    if (approval) {
+      return {
+        route: "approval",
+        capabilityId: null,
+        brainDecision: "approval-decision",
+      };
+    }
 
     const capability = capabilityIntentMatcher.matchRequest(message);
     if (capability) {
       return {
         route: "foundation-capability",
         capabilityId: capability.capabilityId,
+        brainDecision: "foundation-capability",
       };
     }
 
@@ -123,14 +133,34 @@ class ChatCapabilityRegistry {
       return {
         route: "foundation-capability-status",
         capabilityId: null,
+        brainDecision: "foundation-capability-status",
       };
     }
 
     if (isTemporalRequest(message)) {
-      return { route: "web-search", capabilityId: "web.search.tavily" };
+      return {
+        route: "web-search",
+        capabilityId: "web.search.tavily",
+        brainDecision: "live-web-search",
+      };
     }
 
-    return { route: "provider", capabilityId: "provider.chat" };
+    const conversationPlan = createConversationPlan(message);
+    if (conversationPlan.mode === "direct") {
+      return {
+        route: "brain-direct-reply",
+        capabilityId: null,
+        brainDecision: conversationPlan.id,
+        conversationPlan,
+      };
+    }
+
+    return {
+      route: "brain-orchestrated-provider",
+      capabilityId: "provider.chat",
+      brainDecision: conversationPlan.id,
+      conversationPlan,
+    };
   }
 }
 

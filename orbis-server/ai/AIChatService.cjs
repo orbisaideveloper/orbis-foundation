@@ -7,6 +7,9 @@ const {
 const {
   getFoundationCapabilityStatus,
 } = require("./FoundationCapabilityChatPolicy.cjs");
+const {
+  buildProviderPlanningInstruction,
+} = require("./FoundationConversationPolicy.cjs");
 
 /**
  * TASK-013 — AI Chat -> Brain Command Integration
@@ -303,6 +306,15 @@ class AIChatService {
   }
 
   async executeRoute(formattedMessages, lastUserMessage, routeDecision) {
+    if (routeDecision?.route === "brain-direct-reply") {
+      const content = routeDecision.conversationPlan?.content;
+      if (content) {
+        return {
+          message: { role: "assistant", content },
+          provider: { name: "ORBIS Brain", type: "BRAIN_DIRECT" },
+        };
+      }
+    }
     if (routeDecision?.route === "foundation-capability-status") {
       const content = getFoundationCapabilityStatus(lastUserMessage);
       if (content) {
@@ -318,7 +330,10 @@ class AIChatService {
     if (routeDecision?.route === "web-search") {
       return this.executeWebSearch(lastUserMessage, routeDecision);
     }
-    return this.executeProviderFallback(formattedMessages);
+    return this.executeProviderFallback(
+      formattedMessages,
+      routeDecision?.conversationPlan,
+    );
   }
 
   async executeWebSearch(lastUserMessage, routeDecision) {
@@ -384,12 +399,14 @@ class AIChatService {
     };
   }
 
-  async executeProviderFallback(formattedMessages) {
+  async executeProviderFallback(formattedMessages, conversationPlan) {
     const aiMessages = [...formattedMessages];
     aiMessages.unshift({
       role: "system",
       content:
-        "You are ORBIS's general-conversation fallback. You do not have " +
+        "You are ORBIS's Brain-guided general-conversation writer. " +
+        buildProviderPlanningInstruction(conversationPlan) +
+        " You do not have " +
         "live internet access, and no real-time API, search engine, or " +
         "external service was called for this specific reply unless the " +
         "conversation explicitly shows ORBIS already did so. Never claim " +

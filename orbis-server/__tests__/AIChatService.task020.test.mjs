@@ -342,6 +342,7 @@ describe("Brain Phase 1: truthful customer-chat file capability status", () => {
     expect(tavilySearch.search).not.toHaveBeenCalled();
     expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
     expect(result.provider.type).toBe("FOUNDATION_CAPABILITY_STATUS");
+    expect(result.brainDecision).toBe("foundation-capability-status");
     expect(result.message.content).toContain("customer chat");
   });
 
@@ -372,6 +373,49 @@ describe("Brain Phase 1: truthful customer-chat file capability status", () => {
     expect(tavilySearch.search).not.toHaveBeenCalled();
     expect(providerManager.getActiveProvider).toHaveBeenCalled();
     expect(result.message.content).toBe("normal ai reply");
+  });
+});
+
+describe("Brain Phase 2: Brain-first general conversation", () => {
+  it("answers the reported Bengali test-question request directly through Brain", async () => {
+    const result = await AIChatService.processChatRequest([
+      {
+        role: "user",
+        content: "তোমাকে টেস্ট করার মত কোন কোশ্চেন আছে যেটা তুমি একবারে পারবে",
+      },
+    ]);
+
+    expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
+    expect(result.route).toBe("brain-direct-reply");
+    expect(result.brainDecision).toBe("test-question-offer");
+    expect(result.provider.type).toBe("BRAIN_DIRECT");
+    expect(result.message.content).toContain("test করতে পারেন");
+    expect(result.message.content).not.toContain("The Answer");
+  });
+
+  it("gives the provider a Brain response plan for a Bengali learning question", async () => {
+    let capturedMessages;
+    vi.spyOn(providerManager, "getActiveProvider").mockReturnValue({
+      generateChat: vi.fn().mockImplementation(async (messages) => {
+        capturedMessages = messages;
+        return {
+          content: "সংক্ষিপ্ত উত্তর",
+          provider: { name: "Ollama", type: "local" },
+        };
+      }),
+    });
+
+    const result = await AIChatService.processChatRequest([
+      { role: "user", content: "এক্সেলে SUM formula কীভাবে করতে পারি?" },
+    ]);
+
+    expect(result.route).toBe("brain-orchestrated-provider");
+    expect(result.brainDecision).toBe("general-conversation");
+    expect(capturedMessages).toHaveLength(2);
+    expect(capturedMessages[0].role).toBe("system");
+    expect(capturedMessages[0].content).toContain("classified this as a general-conversation request");
+    expect(capturedMessages[0].content).toContain("Reply primarily in Bengali");
+    expect(capturedMessages[0].content).toContain("actual latest request only");
   });
 });
 
