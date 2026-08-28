@@ -328,7 +328,7 @@ describe("TASK-020 Phase 1-E: Ollama anti-fabrication system message", () => {
       { role: "user", content: "Explain a SUM formula" },
     ]);
 
-    expect(capturedMessages[0].content.toLowerCase()).toContain("clarification");
+    expect(capturedMessages[0].content.toLowerCase()).toContain("follow-up question");
     expect(capturedMessages[0].content.toLowerCase()).toContain("spreadsheet");
   });
 });
