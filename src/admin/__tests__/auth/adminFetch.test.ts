@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSession = vi.hoisted(() => vi.fn());
+const VERIFIED_TOKEN = "verified-token";
 
 vi.mock("../../../core/supabase/client", () => ({
   supabase: { auth: { getSession } },
 }));
 
 import {
+  ADMIN_ACCESS_TIMEOUT_MS,
   AdminFetchError,
   authenticatedAdminFetch,
   checkAdminAccess,
@@ -20,6 +22,27 @@ beforeEach(() => {
 });
 
 describe("authenticatedAdminFetch", () => {
+  it("times out and aborts an Admin access check instead of waiting forever", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation(
+      () => new Promise<Response>(() => {}),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const result = checkAdminAccess(VERIFIED_TOKEN);
+      await vi.advanceTimersByTimeAsync(ADMIN_ACCESS_TIMEOUT_MS);
+
+      await expect(result).resolves.toBe("TIMEOUT");
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      expect(init.signal.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("accepts only the exact backend-confirmed Admin access contract", async () => {
     vi.stubGlobal(
       "fetch",
@@ -37,8 +60,8 @@ describe("authenticatedAdminFetch", () => {
         ),
     );
 
-    await expect(checkAdminAccess("verified-token")).resolves.toBe("ADMIN");
-    await expect(checkAdminAccess("verified-token")).resolves.toBe(
+    await expect(checkAdminAccess(VERIFIED_TOKEN)).resolves.toBe("ADMIN");
+    await expect(checkAdminAccess(VERIFIED_TOKEN)).resolves.toBe(
       "UNAVAILABLE",
     );
   });

@@ -14,6 +14,7 @@ function AdminLoginForm() {
     login,
     createAdminAccount,
     clearAuthFeedback,
+    retryAdminSession,
   } = useAuth();
   const [mode, setMode] = React.useState<"SIGN_IN" | "CREATE">("SIGN_IN");
   const [password, setPassword] = React.useState("");
@@ -102,6 +103,16 @@ function AdminLoginForm() {
             {authError}
           </p>
         )}
+        {authError && retryAdminSession && (
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={retryAdminSession}
+            className="mt-3 w-full rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 disabled:opacity-60"
+          >
+            Retry Admin session
+          </button>
+        )}
         {confirmationSent && (
           <output className="mt-4 block text-sm text-emerald-700">
             Confirmation email sent. Verify the Admin email, then return here
@@ -132,7 +143,14 @@ function AdminLoginForm() {
 }
 
 export function AuthenticatedAdminApp() {
-  const { isAuthenticated, isLoading, authError, logout, user } = useAuth();
+  const {
+    isAuthenticated,
+    isLoading,
+    authError,
+    logout,
+    retryAdminSession,
+    user,
+  } = useAuth();
 
   if (isLoading) {
     return <div className="p-8 text-slate-600">Checking Admin session…</div>;
@@ -146,10 +164,19 @@ export function AuthenticatedAdminApp() {
           <p role="alert" className="mt-3 text-sm text-red-700">
             {authError || "This account does not have Admin access."}
           </p>
+          {retryAdminSession && (
+            <button
+              type="button"
+              onClick={retryAdminSession}
+              className="mt-5 w-full rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700"
+            >
+              Retry Admin session
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void logout()}
-            className="mt-5 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white"
+            className="mt-3 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white"
           >
             Sign out
           </button>

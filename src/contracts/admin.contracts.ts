@@ -16,6 +16,7 @@ export interface IAuthService {
   isSubmitting?: boolean;
   authError?: string | null;
   signupStatus?: "IDLE" | "CONFIRMATION_SENT" | "ALREADY_REGISTERED";
+  retryAdminSession?: () => void;
   login: (email: string, password?: string) => void | Promise<void>;
   createAdminAccount?: (
     password: string,

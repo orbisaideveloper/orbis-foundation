@@ -1,13 +1,23 @@
 import { supabase } from "../../core/supabase/client";
 import type { AdminAccessResponse } from "../../contracts/admin.contracts";
 
+export const ADMIN_ACCESS_TIMEOUT_MS = 10_000;
+
 export type AdminAccessResult =
   | "ADMIN"
   | "ACCESS_DENIED"
   | "CONFIGURATION_MISSING"
   | "EMAIL_UNVERIFIED"
   | "INVALID_SESSION"
+  | "TIMEOUT"
   | "UNAVAILABLE";
+
+class AdminAccessTimeoutError extends Error {
+  constructor() {
+    super("ADMIN_ACCESS_TIMEOUT");
+    this.name = "AdminAccessTimeoutError";
+  }
+}
 
 export class AdminFetchError extends Error {
   constructor(message: string) {
@@ -26,6 +36,27 @@ async function fetchWithAccessToken(
   return fetch(input, { ...init, headers });
 }
 
+async function fetchAdminAccess(accessToken: string): Promise<Response> {
+  const controller = new AbortController();
+  let timer: number | undefined;
+
+  try {
+    return await Promise.race([
+      fetchWithAccessToken("/api/system/access", accessToken, {
+        signal: controller.signal,
+      }),
+      new Promise<Response>((_, reject) => {
+        timer = window.setTimeout(() => {
+          controller.abort();
+          reject(new AdminAccessTimeoutError());
+        }, ADMIN_ACCESS_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) window.clearTimeout(timer);
+  }
+}
+
 async function readAccessErrorCode(response: Response): Promise<unknown> {
   try {
     const data = (await response.json()) as { code?: unknown };
@@ -41,10 +72,7 @@ export async function checkAdminAccess(
   if (!accessToken) return "INVALID_SESSION";
 
   try {
-    const response = await fetchWithAccessToken(
-      "/api/system/access",
-      accessToken,
-    );
+    const response = await fetchAdminAccess(accessToken);
 
     if (response.status === 401) return "INVALID_SESSION";
     if (response.status === 403) {
@@ -63,7 +91,8 @@ export async function checkAdminAccess(
     return data.success === true && data.role === "ADMIN"
       ? "ADMIN"
       : "UNAVAILABLE";
-  } catch {
+  } catch (error) {
+    if (error instanceof AdminAccessTimeoutError) return "TIMEOUT";
     return "UNAVAILABLE";
   }
 }

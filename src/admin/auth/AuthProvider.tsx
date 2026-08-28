@@ -15,13 +15,51 @@ import {
   supabase,
 } from "../../core/supabase/client";
 import type { AuthError, Session } from "@supabase/supabase-js";
-import { checkAdminAccess } from "./adminFetch";
+import { checkAdminAccess, type AdminAccessResult } from "./adminFetch";
 import { checkPermission } from "./permissions";
 
 const ADMIN_AUTH_NOT_CONFIGURED = "Admin authentication is not configured.";
 const ADMIN_AUTH_UNAVAILABLE = "Admin authentication is unavailable.";
+const ADMIN_SESSION_TIMEOUT =
+  "Admin session verification took too long. Please retry.";
+const ADMIN_ACCESS_TIMEOUT =
+  "Admin access verification took too long. Please retry.";
+export const ADMIN_SESSION_TIMEOUT_MS = 10_000;
 const INVALID_CREDENTIALS = "Unable to sign in with those credentials.";
 const VERIFY_ADMIN_EMAIL = "Verify the Admin email before signing in.";
+const ADMIN_ACCESS_ERROR_MESSAGES: Record<
+  Exclude<AdminAccessResult, "ADMIN" | "INVALID_SESSION">,
+  string
+> = {
+  ACCESS_DENIED: "This account does not have Admin access.",
+  CONFIGURATION_MISSING: ADMIN_AUTH_NOT_CONFIGURED,
+  EMAIL_UNVERIFIED: VERIFY_ADMIN_EMAIL,
+  TIMEOUT: ADMIN_ACCESS_TIMEOUT,
+  UNAVAILABLE: "Admin access could not be verified.",
+};
+
+class AdminSessionTimeoutError extends Error {
+  constructor() {
+    super("ADMIN_SESSION_TIMEOUT");
+    this.name = "AdminSessionTimeoutError";
+  }
+}
+
+function withSessionTimeout<T>(operation: Promise<T>): Promise<T> {
+  let timer: number | undefined;
+
+  return Promise.race([
+    operation,
+    new Promise<T>((_, reject) => {
+      timer = window.setTimeout(
+        () => reject(new AdminSessionTimeoutError()),
+        ADMIN_SESSION_TIMEOUT_MS,
+      );
+    }),
+  ]).finally(() => {
+    if (timer !== undefined) window.clearTimeout(timer);
+  });
+}
 
 // Exporting context to ensure other files can access the exact same instance if needed
 export const AuthContext = createContext<IAuthService | undefined>(undefined);
@@ -37,6 +75,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const [signupStatus, setSignupStatus] = useState<
     "IDLE" | "CONFIRMATION_SENT" | "ALREADY_REGISTERED"
   >("IDLE");
+  const [sessionCheckAttempt, setSessionCheckAttempt] = useState(0);
   const accountCreationPending = useRef(false);
 
   useEffect(() => {
@@ -74,12 +113,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
       if (access === "ADMIN") {
         setRole("ADMIN");
-      } else if (access === "ACCESS_DENIED") {
-        setAuthError("This account does not have Admin access.");
-      } else if (access === "EMAIL_UNVERIFIED") {
-        setAuthError(VERIFY_ADMIN_EMAIL);
-      } else if (access === "CONFIGURATION_MISSING") {
-        setAuthError(ADMIN_AUTH_NOT_CONFIGURED);
       } else if (access === "INVALID_SESSION") {
         setUser(null);
         setAuthError(
@@ -88,7 +121,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         await supabase.auth.signOut();
         if (!active || currentVerification !== verificationId) return;
       } else {
-        setAuthError("Admin access could not be verified.");
+        setAuthError(ADMIN_ACCESS_ERROR_MESSAGES[access]);
       }
 
       setIsLoading(false);
@@ -104,17 +137,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       };
     }
 
-    void supabase.auth
-      .getSession()
+    void withSessionTimeout(supabase.auth.getSession())
       .then(({ data, error }) => {
         if (error) throw error;
         return applySession(data.session);
       })
-      .catch(() => {
+      .catch((error) => {
         if (!active) return;
         setUser(null);
         setRole("GUEST");
-        setAuthError(ADMIN_AUTH_UNAVAILABLE);
+        setAuthError(
+          error instanceof AdminSessionTimeoutError
+            ? ADMIN_SESSION_TIMEOUT
+            : ADMIN_AUTH_UNAVAILABLE,
+        );
         setIsLoading(false);
       });
 
@@ -128,6 +164,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       active = false;
       listener.subscription.unsubscribe();
     };
+  }, [sessionCheckAttempt]);
+
+  const retryAdminSession = useCallback(() => {
+    setSessionCheckAttempt((attempt) => attempt + 1);
   }, []);
 
   const login = useCallback(async (email: string, password?: string) => {
@@ -255,6 +295,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       isSubmitting,
       authError,
       signupStatus,
+      retryAdminSession,
       login,
       createAdminAccount,
       clearAuthFeedback,
@@ -268,6 +309,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       isSubmitting,
       authError,
       signupStatus,
+      retryAdminSession,
       login,
       createAdminAccount,
       clearAuthFeedback,

@@ -1,6 +1,27 @@
 const { createClient } = require("@supabase/supabase-js");
 
 const REQUIRED_ADMIN_EMAIL = "orbisaideveloper@gmail.com";
+const ADMIN_IDENTITY_TIMEOUT_MS = 8_000;
+
+function createIdentityTimeoutError() {
+  const error = new Error("ADMIN_IDENTITY_TIMEOUT");
+  error.code = "ADMIN_IDENTITY_TIMEOUT";
+  return error;
+}
+
+function withIdentityTimeout(operation, timeoutMs = ADMIN_IDENTITY_TIMEOUT_MS) {
+  let timer;
+
+  return Promise.race([
+    Promise.resolve().then(operation),
+    new Promise((_, reject) => {
+      timer = setTimeout(
+        () => reject(createIdentityTimeoutError()),
+        timeoutMs,
+      );
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
 
 function getBearerToken(authorization) {
   if (typeof authorization !== "string") return null;
@@ -67,6 +88,8 @@ function hasServerControlledAdminMembership(user) {
 
 function createAdminAuthMiddleware(dependencies = {}) {
   const makeClient = dependencies.createClient || createClient;
+  const identityTimeoutMs =
+    dependencies.identityTimeoutMs || ADMIN_IDENTITY_TIMEOUT_MS;
   let cachedClient = null;
   let cachedConfiguration = null;
 
@@ -97,7 +120,10 @@ function createAdminAuthMiddleware(dependencies = {}) {
         cachedConfiguration = configuration;
       }
 
-      const { data, error } = await cachedClient.auth.getUser(token);
+      const { data, error } = await withIdentityTimeout(
+        () => cachedClient.auth.getUser(token),
+        identityTimeoutMs,
+      );
       if (error || !data?.user) {
         return res.status(401).json({
           success: false,
@@ -135,11 +161,19 @@ function createAdminAuthMiddleware(dependencies = {}) {
         success: false,
         message: "Admin access required",
       });
-    } catch {
-      console.error("[AdminAuth] Identity verification unavailable");
+    } catch (error) {
+      const timedOut = error?.code === "ADMIN_IDENTITY_TIMEOUT";
+      console.error(
+        timedOut
+          ? "[AdminAuth] Identity verification timed out"
+          : "[AdminAuth] Identity verification unavailable",
+      );
       return res.status(503).json({
         success: false,
-        message: "Admin authentication unavailable",
+        ...(timedOut ? { code: "ADMIN_IDENTITY_TIMEOUT" } : {}),
+        message: timedOut
+          ? "Admin authentication verification timed out"
+          : "Admin authentication unavailable",
       });
     }
   };
@@ -147,6 +181,7 @@ function createAdminAuthMiddleware(dependencies = {}) {
 
 module.exports = {
   createAdminAuthMiddleware,
+  ADMIN_IDENTITY_TIMEOUT_MS,
   getBearerToken,
   hasConfiguredAdminEmailMembership,
   hasServerControlledAdminMembership,

@@ -1,5 +1,11 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authMocks = vi.hoisted(() => ({
@@ -36,7 +42,11 @@ vi.mock("../../AdminViews", () => ({
   default: () => <div>admin-views</div>,
 }));
 
-import { AuthProvider, useAuth } from "../../auth/AuthProvider";
+import {
+  ADMIN_SESSION_TIMEOUT_MS,
+  AuthProvider,
+  useAuth,
+} from "../../auth/AuthProvider";
 import { AuthenticatedAdminApp } from "../../../App";
 
 const ADMIN_IDENTITY = authMocks.adminEmail;
@@ -46,6 +56,7 @@ const NEW_PASSWORD = "New password";
 const CONFIRM_PASSWORD = "Confirm new password";
 const VALID_TEST_PASSWORD = "ValidPass123";
 const PROVIDER_DETAIL = "provider detail";
+const ACCESS_DENIED_HEADING = "Access denied";
 
 function Consumer() {
   const auth = useAuth();
@@ -87,6 +98,82 @@ beforeEach(() => {
 });
 
 describe("AuthProvider Supabase session integration", () => {
+  it("leaves the loading screen and offers retry when session retrieval hangs", async () => {
+    vi.useFakeTimers();
+    authMocks.getSession.mockImplementation(
+      () => new Promise(() => {}),
+    );
+
+    try {
+      render(
+        <AuthProvider>
+          <AuthenticatedAdminApp />
+        </AuthProvider>,
+      );
+
+      expect(screen.getByText("Checking Admin session…")).toBeInTheDocument();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADMIN_SESSION_TIMEOUT_MS);
+      });
+
+      expect(
+        screen.getByRole("button", { name: "Sign in" }),
+      ).toBeVisible();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "session verification took too long",
+      );
+      expect(
+        screen.getByRole("button", { name: "Retry Admin session" }),
+      ).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops an access check that hangs and keeps Admin UI closed", async () => {
+    vi.useFakeTimers();
+    authMocks.getSession.mockResolvedValue({
+      data: {
+        session: {
+          access_token: "stalled-token",
+          user: { id: "stalled-user", email: ADMIN_IDENTITY },
+        },
+      },
+      error: null,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => new Promise<Response>(() => {})),
+    );
+
+    try {
+      render(
+        <AuthProvider>
+          <AuthenticatedAdminApp />
+        </AuthProvider>,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+
+      expect(screen.getByText(ACCESS_DENIED_HEADING)).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "access verification took too long",
+      );
+      expect(screen.queryByText(ADMIN_VIEWS_TEXT)).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Retry Admin session" }),
+      ).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("restores an Admin session only after backend confirmation", async () => {
     authMocks.getSession.mockResolvedValue({
       data: {
@@ -148,7 +235,7 @@ describe("AuthProvider Supabase session integration", () => {
       </AuthProvider>,
     );
 
-    expect(await screen.findByText("Access denied")).toBeInTheDocument();
+    expect(await screen.findByText(ACCESS_DENIED_HEADING)).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(
       "This account does not have Admin access.",
     );
@@ -210,7 +297,7 @@ describe("AuthProvider Supabase session integration", () => {
       </AuthProvider>,
     );
 
-    expect(await screen.findByText("Access denied")).toBeInTheDocument();
+    expect(await screen.findByText(ACCESS_DENIED_HEADING)).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Admin access could not be verified.",
     );

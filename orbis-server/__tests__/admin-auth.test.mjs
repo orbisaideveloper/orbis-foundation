@@ -16,12 +16,12 @@ const {
 const REQUIRED_ADMIN_EMAIL = "orbisaideveloper@gmail.com";
 const VERIFIED_AT = "2026-08-23T00:00:00.000Z";
 
-function createApp(getUser) {
+function createApp(getUser, dependencies = {}) {
   const createClient = vi.fn(() => ({ auth: { getUser } }));
   const app = express();
   app.get(
     "/protected",
-    createAdminAuthMiddleware({ createClient }),
+    createAdminAuthMiddleware({ createClient, ...dependencies }),
     (_req, res) => res.json({ success: true }),
   );
   return { app, createClient };
@@ -43,6 +43,22 @@ afterEach(() => {
 });
 
 describe("authenticated Admin middleware", () => {
+  it("returns a bounded safe response when identity verification hangs", async () => {
+    const getUser = vi.fn(() => new Promise(() => {}));
+    const { app } = createApp(getUser, { identityTimeoutMs: 10 });
+
+    const response = await request(app)
+      .get("/protected")
+      .set("Authorization", "Bearer valid.token");
+
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({
+      success: false,
+      code: "ADMIN_IDENTITY_TIMEOUT",
+      message: "Admin authentication verification timed out",
+    });
+  });
+
   it("accepts only a strict Bearer header", () => {
     expect(getBearerToken("Bearer valid.jwt-token_1")).toBe(
       "valid.jwt-token_1",
