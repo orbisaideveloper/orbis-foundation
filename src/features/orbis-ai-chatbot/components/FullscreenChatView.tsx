@@ -21,6 +21,7 @@ import { chatStorage } from "../storage/ChatStorageManager";
 import type {
   CachedChatResponse,
   ChatTestLogEntry,
+  ChatWebEvidence,
   ChatStorageUsage,
   PendingClarification,
 } from "../storage/chatStorage.types";
@@ -65,7 +66,9 @@ interface ChatApiResponse {
   message?: { role?: string; content?: string };
   provider: { name: string; type: string; model?: string };
   route?: string;
+  brainDecision?: string | null;
   routingDurationMs?: number;
+  evidence?: ChatWebEvidence | null;
   clarification?: {
     state?: string;
     pending?: PendingClarification | null;
@@ -250,11 +253,12 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       );
       if (history.length > 0) {
         setMessages(
-          history.map(({ id, role, content, providerName }) => ({
+          history.map(({ id, role, content, providerName, evidence }) => ({
             id,
             role,
             content,
             providerName,
+            evidence,
           })),
         );
       }
@@ -525,6 +529,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       providerName: cached
         ? `${data.provider.name} (device cache)`
         : data.provider.name || "ORBIS",
+      evidence: data.evidence || undefined,
     };
     setMessages((current) => [...current, assistantMessage]);
     await persistMessage(assistantMessage);
@@ -533,12 +538,14 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       providerName: data.provider?.name || "ORBIS",
       providerType: data.provider?.type || "UNKNOWN",
       route: data.route || null,
+      brainDecision: data.brainDecision || null,
       routingDurationMs: Number.isFinite(data.routingDurationMs)
         ? data.routingDurationMs || 0
         : null,
       delivery: cached ? "device-cache" : "fresh",
       outcome: "success",
       clarificationState: data.clarification?.state || null,
+      webSourceCount: data.evidence?.sources.length || null,
       errorCategory: null,
     });
     const nextPending = data.clarification?.pending || null;
@@ -590,10 +597,12 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       providerName: "System",
       providerType: "ERROR",
       route: null,
+      brainDecision: null,
       routingDurationMs: null,
       delivery: "fresh",
       outcome: "error",
       clarificationState: null,
+      webSourceCount: null,
       errorCategory: category,
     });
   };

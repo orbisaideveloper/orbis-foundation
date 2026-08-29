@@ -191,6 +191,7 @@ class FoundationChatOrchestrator {
       route: decision.route,
       brainDecision: decision.brainDecision || null,
       routingDurationMs,
+      evidence: response.evidence || null,
       clarification: {
         state: nextPending ? "pending" : clarification.state,
         pending: nextPending,

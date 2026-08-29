@@ -55,6 +55,30 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
     expect(result.clarification.state).toBe("resolved");
   });
 
+  it("keeps web evidence attached to the Brain decision without copying the user request", async () => {
+    const execute = vi.fn().mockResolvedValue({
+      message: { role: "assistant", content: "verified result" },
+      provider: { name: "ORBIS Brain (Web)", type: "WEB_SEARCH" },
+      evidence: {
+        kind: "web-search",
+        retrievedAt: "2026-08-29T00:00:00.000Z",
+        sources: [{ title: "Source", url: "https://example.test/source" }],
+      },
+    });
+    const orchestrator = new FoundationChatOrchestrator(undefined, () => NOW);
+    const result = await orchestrator.orchestrate(
+      { messages: [{ role: "user", content: "latest news" }] },
+      execute,
+    );
+
+    expect(result.evidence).toEqual({
+      kind: "web-search",
+      retrievedAt: "2026-08-29T00:00:00.000Z",
+      sources: [{ title: "Source", url: "https://example.test/source" }],
+    });
+    expect(JSON.stringify(result)).not.toContain("latest news");
+  });
+
   it("reconstructs a file clarification without weakening capability routing", async () => {
     const execute = vi.fn().mockResolvedValue({
       message: { role: "assistant", content: "approval required" },

@@ -1,3 +1,47 @@
+const MAX_ANSWER_CHARS = 12_000;
+const MAX_SOURCE_TITLE_CHARS = 240;
+const MAX_SOURCE_PUBLISHED_AT_CHARS = 80;
+const MAX_RESULT_CONTENT_CHARS = 3_000;
+
+function boundedText(value, maxChars) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, maxChars);
+}
+
+function normalizeSource(result) {
+  if (!result || typeof result !== "object") return null;
+  const rawUrl = boundedText(result.url, 2_048);
+  if (!rawUrl) return null;
+
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+
+  const title =
+    boundedText(result.title, MAX_SOURCE_TITLE_CHARS) || url.hostname;
+  const publishedAt = boundedText(
+    result.published_date || result.publishedAt,
+    MAX_SOURCE_PUBLISHED_AT_CHARS,
+  );
+  return publishedAt ? { title, url: url.toString(), publishedAt } : { title, url: url.toString() };
+}
+
+function buildAnswer(data) {
+  const directAnswer = boundedText(data?.answer, MAX_ANSWER_CHARS);
+  if (directAnswer) return directAnswer;
+
+  if (!Array.isArray(data?.results)) return "";
+  return data.results
+    .map((result) => boundedText(result?.content, MAX_RESULT_CONTENT_CHARS))
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, MAX_ANSWER_CHARS);
+}
+
 class TavilySearch {
   /**
    * TASK-020 Phase 1-D: `lang` is a new, optional second parameter
@@ -47,16 +91,20 @@ class TavilySearch {
       if (!response.ok) return null;
 
       const data = await response.json();
+      const answer = buildAnswer(data);
+      const sources = Array.isArray(data?.results)
+        ? data.results.map(normalizeSource).filter(Boolean).slice(0, 3)
+        : [];
 
-      // যদি Tavily সরাসরি উত্তর তৈরি করে দেয়
-      if (data.answer) return data.answer;
+      // A live/current answer without a source link is not evidence-backed.
+      // Do not present it as verified web research to the customer.
+      if (!answer || sources.length === 0) return null;
 
-      // নাহলে সেরা ৩টি রেজাল্ট থেকে টেক্সট তুলে আনা
-      if (data.results && data.results.length > 0) {
-        return data.results.map((r) => r.content).join("\n\n");
-      }
-
-      return null;
+      return {
+        answer,
+        sources,
+        retrievedAt: new Date().toISOString(),
+      };
     } catch {
       console.error("[TAVILY] Request failed");
       return null;

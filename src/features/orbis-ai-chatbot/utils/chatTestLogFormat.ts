@@ -27,6 +27,7 @@ export function formatTestLogEntry(entry: ResolvedChatTestLogEntry): string {
     "",
     `উৎস: ${entry.providerName} · ${entry.providerType}`,
     `Route: ${entry.route || "Unavailable"}`,
+    `Brain decision: ${entry.brainDecision || "Unavailable"}`,
     `উত্তর সময়: ${formatDuration(entry.durationMs)}`,
     `Routing সময়: ${entry.routingDurationMs === null ? "Unavailable" : formatDuration(entry.routingDurationMs)}`,
     `Delivery: ${entry.delivery}`,
@@ -34,6 +35,9 @@ export function formatTestLogEntry(entry: ResolvedChatTestLogEntry): string {
   ];
   if (entry.clarificationState) {
     lines.push(`Clarification: ${entry.clarificationState}`);
+  }
+  if (entry.webSourceCount !== null && entry.webSourceCount !== undefined) {
+    lines.push(`Verified web sources: ${entry.webSourceCount}`);
   }
   if (entry.errorCategory) lines.push(`Error category: ${entry.errorCategory}`);
   return lines.join("\n");

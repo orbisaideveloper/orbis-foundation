@@ -219,7 +219,7 @@ describe("FullscreenChatView", () => {
           },
         }),
       } as Response)
-      .mockResolvedValueOnce(successfulResponse("কলকাতার weather result"));
+      .mockResolvedValueOnce(successfulResponse("শিলিগুড়ির weather result"));
     render(<FullscreenChatView onClose={() => {}} />);
     const input = await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
 
@@ -228,9 +228,9 @@ describe("FullscreenChatView", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /send message/i }));
     await screen.findByText(WEATHER_CLARIFICATION_PROMPT);
-    fireEvent.change(input, { target: { value: "কলকাতা" } });
+    fireEvent.change(input, { target: { value: "শিলিগুড়ি" } });
     fireEvent.click(screen.getByRole("button", { name: /send message/i }));
-    await screen.findByText("কলকাতার weather result");
+    await screen.findByText("শিলিগুড়ির weather result");
 
     const followUpBody = JSON.parse(
       String((fetchMock.mock.calls[1][1] as RequestInit).body),

@@ -2,6 +2,19 @@ export type ChatRole = "user" | "assistant";
 export type ChatConsent = "accepted" | "declined" | null;
 export type LearningConsent = "accepted" | "declined" | null;
 
+export interface ChatWebSource {
+  title: string;
+  url: string;
+  publishedAt?: string;
+}
+
+/** Evidence returned by the server for a live web answer; stored only on this device. */
+export interface ChatWebEvidence {
+  kind: "web-search";
+  retrievedAt: string;
+  sources: ChatWebSource[];
+}
+
 export interface ChatMessage {
   id: number;
   profileId: string;
@@ -10,6 +23,7 @@ export interface ChatMessage {
   content: string;
   createdAt: number;
   providerName?: string;
+  evidence?: ChatWebEvidence;
   model?: string;
   important?: boolean;
 }
@@ -48,7 +62,9 @@ export interface CachedChatResponse {
     message: { role: "assistant"; content: string };
     provider: { name: string; type: string; model?: string };
     route?: string;
+    brainDecision?: string | null;
     routingDurationMs?: number;
+    evidence?: ChatWebEvidence | null;
     clarification?: {
       state: string;
       pending: PendingClarification | null;
@@ -78,7 +94,9 @@ export interface ChatTestLogEntry {
   providerName: string;
   providerType: string;
   route: string | null;
+  brainDecision?: string | null;
   routingDurationMs: number | null;
+  webSourceCount?: number | null;
   delivery: "fresh" | "device-cache";
   outcome: "success" | "error";
   clarificationState: string | null;

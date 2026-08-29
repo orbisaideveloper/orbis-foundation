@@ -1,6 +1,7 @@
 import React from "react";
 import { Bot } from "lucide-react";
 import { useLongPress } from "../hooks/useLongPress";
+import type { ChatWebEvidence } from "../storage/chatStorage.types";
 
 export type ChatRole = "user" | "assistant";
 
@@ -9,6 +10,7 @@ export interface ChatMessageBubbleData {
   role: ChatRole;
   content: string;
   providerName?: string;
+  evidence?: ChatWebEvidence;
 }
 
 interface ChatMessageBubbleProps {
@@ -61,6 +63,31 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
         >
           {message.content}
         </div>
+        {!userMessage && message.evidence?.sources.length ? (
+          <section
+            aria-label="Verified web sources"
+            className="w-full rounded-xl border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-slate-600"
+          >
+            <p className="font-semibold text-sky-800">
+              Web sources · {message.evidence.sources.length}
+            </p>
+            <ul className="mt-1 space-y-1">
+              {message.evidence.sources.map((source) => (
+                <li key={source.url}>
+                  <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="break-all text-sky-700 underline"
+                  >
+                    {source.title}
+                  </a>
+                  {source.publishedAt ? ` · ${source.publishedAt}` : ""}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </div>
     </div>
   );

@@ -380,9 +380,14 @@ class AIChatService {
       return {
         message: {
           role: "assistant",
-          content: `[ORBIS Web Analysis]:\n${searchResult}`,
+          content: `[ORBIS Web Analysis]:\n${searchResult.answer}`,
         },
         provider: { name: "ORBIS Brain (Web)", type: "WEB_SEARCH" },
+        evidence: {
+          kind: "web-search",
+          retrievedAt: searchResult.retrievedAt,
+          sources: searchResult.sources,
+        },
       };
     }
 
@@ -392,8 +397,8 @@ class AIChatService {
         role: "assistant",
         content:
           unavailableLang === "bn"
-            ? "লাইভ সার্চ সেবা এখন সাড়া দিচ্ছে না। বর্তমান তথ্য হিসেবে কোনো পুরোনো ফল দেখানো হয়নি।"
-            : "Live search is not responding. No stale result was shown as current.",
+            ? "লাইভ সার্চ থেকে এখন যাচাইযোগ্য current result পাওয়া যায়নি। কোনো পুরোনো ফল বর্তমান তথ্য হিসেবে দেখানো হয়নি।"
+            : "Live search did not return a verifiable current result. No stale result was shown as current.",
       },
       provider: { name: "ORBIS Brain (Web)", type: "WEB_UNAVAILABLE" },
     };

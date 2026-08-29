@@ -47,6 +47,34 @@ describe("ChatMessageBubble long-press", () => {
     expect(screen.queryByText("Share")).not.toBeInTheDocument();
   });
 
+  it("shows the validated web links beside a web answer", () => {
+    render(
+      <ChatMessageBubble
+        message={{
+          ...message,
+          evidence: {
+            kind: "web-search",
+            retrievedAt: "2026-08-29T00:00:00.000Z",
+            sources: [
+              {
+                title: "Official weather source",
+                url: "https://weather.example.test/siliguri",
+              },
+            ],
+          },
+        }}
+        onActivate={vi.fn()}
+        isMenuOpen={false}
+      />,
+    );
+
+    const source = screen.getByRole("link", { name: "Official weather source" });
+    expect(source).toHaveAttribute("href", "https://weather.example.test/siliguri");
+    expect(screen.getByLabelText("Verified web sources")).toHaveTextContent(
+      "Web sources · 1",
+    );
+  });
+
   it("opens the action menu after holding past the threshold", () => {
     const onActivate = vi.fn();
     render(

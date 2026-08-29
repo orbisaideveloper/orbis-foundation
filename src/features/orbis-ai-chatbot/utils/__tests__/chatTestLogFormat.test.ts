@@ -24,7 +24,9 @@ const entry: ResolvedChatTestLogEntry = {
   providerName: WEB_PROVIDER_NAME,
   providerType: "WEB_SEARCH",
   route: "web-search",
+  brainDecision: "live-web-search",
   routingDurationMs: 4,
+  webSourceCount: 2,
   delivery: "fresh",
   outcome: "success",
   clarificationState: null,
@@ -55,6 +57,8 @@ describe("chat Test Log formatting", () => {
     expect(formatted).toContain("কলকাতার weather result");
     expect(formatted).toContain(`${WEB_PROVIDER_NAME} · WEB_SEARCH`);
     expect(formatted).toContain("Route: web-search");
+    expect(formatted).toContain("Brain decision: live-web-search");
+    expect(formatted).toContain("Verified web sources: 2");
     expect(formatted).toContain("1.25 sec");
   });
 
