@@ -13,6 +13,19 @@ export interface ChatWebEvidence {
   kind: "web-search";
   retrievedAt: string;
   sources: ChatWebSource[];
+  verification?: {
+    status: "verified";
+    locationMatched: boolean | null;
+    numericFactsSupported: boolean | null;
+  };
+}
+
+export interface ChatBrainDecisionTrace {
+  intent: string;
+  route: string;
+  confidence: "high" | "medium" | "low";
+  evidenceRequired: boolean;
+  reason: string;
 }
 
 export interface ChatMessage {
@@ -63,6 +76,7 @@ export interface CachedChatResponse {
     provider: { name: string; type: string; model?: string };
     route?: string;
     brainDecision?: string | null;
+    brainDecisionTrace?: ChatBrainDecisionTrace | null;
     routingDurationMs?: number;
     evidence?: ChatWebEvidence | null;
     clarification?: {
@@ -95,8 +109,15 @@ export interface ChatTestLogEntry {
   providerType: string;
   route: string | null;
   brainDecision?: string | null;
+  brainDecisionIntent?: string | null;
+  brainDecisionConfidence?: "high" | "medium" | "low" | null;
+  brainDecisionReason?: string | null;
+  brainEvidenceRequired?: boolean | null;
   routingDurationMs: number | null;
   webSourceCount?: number | null;
+  webEvidenceStatus?: "verified" | null;
+  webLocationMatched?: boolean | null;
+  webNumericFactsSupported?: boolean | null;
   delivery: "fresh" | "device-cache";
   outcome: "success" | "error";
   clarificationState: string | null;

@@ -25,8 +25,15 @@ const entry: ResolvedChatTestLogEntry = {
   providerType: "WEB_SEARCH",
   route: "web-search",
   brainDecision: "live-web-search",
+  brainDecisionIntent: "live-information",
+  brainDecisionConfidence: "high",
+  brainDecisionReason: "time-sensitive-request",
+  brainEvidenceRequired: true,
   routingDurationMs: 4,
   webSourceCount: 2,
+  webEvidenceStatus: "verified",
+  webLocationMatched: true,
+  webNumericFactsSupported: true,
   delivery: "fresh",
   outcome: "success",
   clarificationState: null,
@@ -58,7 +65,13 @@ describe("chat Test Log formatting", () => {
     expect(formatted).toContain(`${WEB_PROVIDER_NAME} · WEB_SEARCH`);
     expect(formatted).toContain("Route: web-search");
     expect(formatted).toContain("Brain decision: live-web-search");
+    expect(formatted).toContain("Decision intent: live-information");
+    expect(formatted).toContain("Decision confidence: high");
+    expect(formatted).toContain("Evidence required: yes");
     expect(formatted).toContain("Verified web sources: 2");
+    expect(formatted).toContain("Evidence verification: verified");
+    expect(formatted).toContain("Location matched: yes");
+    expect(formatted).toContain("Numeric facts supported: yes");
     expect(formatted).toContain("1.25 sec");
   });
 

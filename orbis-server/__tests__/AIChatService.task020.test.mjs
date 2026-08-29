@@ -31,13 +31,17 @@ beforeEach(() => {
     }),
   });
 
-  vi.spyOn(tavilySearch, "search").mockResolvedValue({
-    answer: "[stub tavily answer]",
+  vi.spyOn(tavilySearch, "search").mockImplementation(async (query) => ({
+    answer: `${query} [stub tavily answer]`,
     sources: [
-      { title: "Stub source", url: "https://example.test/stub" },
+      {
+        title: "Stub source",
+        url: "https://example.test/stub",
+        excerpt: `${query} [stub tavily answer]`,
+      },
     ],
-    retrievedAt: "2026-08-29T00:00:00.000Z",
-  });
+    retrievedAt: new Date().toISOString(),
+  }));
 });
 
 afterEach(() => {
@@ -151,6 +155,15 @@ describe("TASK-020 Phase 1-B: realtime context safety (no silent default locatio
     expect(second.evidence).toMatchObject({
       kind: "web-search",
       sources: [{ url: "https://example.test/stub" }],
+      verification: {
+        status: "verified",
+        locationMatched: true,
+      },
+    });
+    expect(second.brainDecisionTrace).toMatchObject({
+      intent: "live-information",
+      evidenceRequired: true,
+      confidence: "high",
     });
   });
 

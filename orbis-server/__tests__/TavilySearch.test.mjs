@@ -38,7 +38,9 @@ describe("TavilySearch", () => {
       }),
     });
 
-    await expect(tavilySearch.search("Kolkata weather", "bn")).resolves.toMatchObject({
+    await expect(
+      tavilySearch.search("Kolkata weather", "bn"),
+    ).resolves.toMatchObject({
       answer: "আজ বৃষ্টি হতে পারে",
       sources: [
         {
@@ -52,7 +54,7 @@ describe("TavilySearch", () => {
     const request = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(request).toMatchObject({
       api_key: "test-key",
-      query: "Kolkata weather (দয়া করে বাংলায় উত্তর দিন)",
+      query: expect.stringContaining("স্বাভাবিক ও সহজ বাংলায় উত্তর দিন"),
       search_depth: "basic",
       include_answer: true,
       max_results: 3,
@@ -83,15 +85,17 @@ describe("TavilySearch", () => {
     fetchMock.mockRejectedValueOnce(new Error("network failure"));
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(tavilySearch.search("latest news", "en")).resolves.toMatchObject({
+    await expect(
+      tavilySearch.search("latest news", "en"),
+    ).resolves.toMatchObject({
       answer: "First\n\nSecond",
       sources: [
         { title: "First source", url: "https://news.example.test/one" },
         { title: "Second source", url: "https://news.example.test/two" },
       ],
     });
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).query).toBe(
-      "latest news (please answer in English)",
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).query).toContain(
+      "Answer in clear natural English",
     );
     await expect(tavilySearch.search("unavailable")).resolves.toBeNull();
     await expect(tavilySearch.search("failure")).resolves.toBeNull();

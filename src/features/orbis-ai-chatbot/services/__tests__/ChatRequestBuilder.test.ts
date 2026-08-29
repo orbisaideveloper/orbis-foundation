@@ -72,22 +72,23 @@ describe("ChatRequestBuilder", () => {
   });
 
   it("builds a minimal recovery payload without changing the saved transcript", () => {
+    const newestQuestion = "নতুন যেকোনো প্রশ্ন";
     const source = [
       { role: "user" as const, content: "পুরোনো প্রশ্ন" },
       { role: "assistant" as const, content: "পুরোনো উত্তর" },
-      { role: "user" as const, content: "  নতুন যেকোনো প্রশ্ন  " },
+      { role: "user" as const, content: `  ${newestQuestion}  ` },
     ];
 
     const result = prepareContextRecoveryRequest(source);
 
     expect(result.errorCode).toBeNull();
     expect(result.payload).toEqual({
-      messages: [{ role: "user", content: "নতুন যেকোনো প্রশ্ন" }],
+      messages: [{ role: "user", content: newestQuestion }],
     });
     expect(source).toEqual([
       { role: "user", content: "পুরোনো প্রশ্ন" },
       { role: "assistant", content: "পুরোনো উত্তর" },
-      { role: "user", content: "  নতুন যেকোনো প্রশ্ন  " },
+      { role: "user", content: `  ${newestQuestion}  ` },
     ]);
   });
 });

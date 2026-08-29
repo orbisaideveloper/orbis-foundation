@@ -20,6 +20,7 @@ import type { ChatRequestPayload } from "../services/ChatRequestBuilder";
 import { chatStorage } from "../storage/ChatStorageManager";
 import type {
   CachedChatResponse,
+  ChatBrainDecisionTrace,
   ChatTestLogEntry,
   ChatWebEvidence,
   ChatStorageUsage,
@@ -67,6 +68,7 @@ interface ChatApiResponse {
   provider: { name: string; type: string; model?: string };
   route?: string;
   brainDecision?: string | null;
+  brainDecisionTrace?: ChatBrainDecisionTrace | null;
   routingDurationMs?: number;
   evidence?: ChatWebEvidence | null;
   clarification?: {
@@ -136,6 +138,101 @@ function nextMessageId(): number {
   const randomValues = new Uint32Array(1);
   globalThis.crypto.getRandomValues(randomValues);
   return Date.now() * 1_000 + (randomValues[0] % 1_000);
+}
+
+function buildAssistantMessage(
+  data: ChatApiResponse,
+  cached: boolean,
+  content: string,
+): ChatMessage {
+  return {
+    id: nextMessageId(),
+    role: "assistant",
+    content,
+    providerName: cached
+      ? `${data.provider.name} (device cache)`
+      : data.provider.name || "ORBIS",
+    evidence: data.evidence || undefined,
+  };
+}
+
+function brainDecisionTestLogMetadata(
+  data: ChatApiResponse,
+): Pick<
+  ChatTestLogEntry,
+  | "brainDecisionIntent"
+  | "brainDecisionConfidence"
+  | "brainDecisionReason"
+  | "brainEvidenceRequired"
+> {
+  const trace = data.brainDecisionTrace;
+  return {
+    brainDecisionIntent: trace?.intent || null,
+    brainDecisionConfidence: trace?.confidence || null,
+    brainDecisionReason: trace?.reason || null,
+    brainEvidenceRequired: trace?.evidenceRequired ?? null,
+  };
+}
+
+function webEvidenceTestLogMetadata(
+  data: ChatApiResponse,
+): Pick<
+  ChatTestLogEntry,
+  | "webSourceCount"
+  | "webEvidenceStatus"
+  | "webLocationMatched"
+  | "webNumericFactsSupported"
+> {
+  const evidence = data.evidence;
+  const verification = evidence?.verification;
+  return {
+    webSourceCount: evidence?.sources.length || null,
+    webEvidenceStatus: verification?.status || null,
+    webLocationMatched: verification?.locationMatched ?? null,
+    webNumericFactsSupported: verification?.numericFactsSupported ?? null,
+  };
+}
+
+function normalizedRoutingDuration(value: number | undefined): number | null {
+  return Number.isFinite(value) ? value || 0 : null;
+}
+
+function successfulTestLogMetadata(
+  data: ChatApiResponse,
+  cached: boolean,
+): Pick<
+  ChatTestLogEntry,
+  | "providerName"
+  | "providerType"
+  | "route"
+  | "brainDecision"
+  | "brainDecisionIntent"
+  | "brainDecisionConfidence"
+  | "brainDecisionReason"
+  | "brainEvidenceRequired"
+  | "routingDurationMs"
+  | "delivery"
+  | "outcome"
+  | "clarificationState"
+  | "webSourceCount"
+  | "webEvidenceStatus"
+  | "webLocationMatched"
+  | "webNumericFactsSupported"
+  | "errorCategory"
+> {
+  return {
+    providerName: data.provider?.name || "ORBIS",
+    providerType: data.provider?.type || "UNKNOWN",
+    route: data.route || null,
+    brainDecision: data.brainDecision || null,
+    ...brainDecisionTestLogMetadata(data),
+    routingDurationMs: normalizedRoutingDuration(data.routingDurationMs),
+    delivery: cached ? "device-cache" : "fresh",
+    outcome: "success",
+    clarificationState: data.clarification?.state || null,
+    ...webEvidenceTestLogMetadata(data),
+    errorCategory: null,
+  };
 }
 
 function providerHealthLabel(providerHealth: ProviderHealth): string {
@@ -522,31 +619,12 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   ) => {
     const content = data.message?.content?.trim();
     if (!content) throw new Error("EMPTY_RESPONSE");
-    const assistantMessage: ChatMessage = {
-      id: nextMessageId(),
-      role: "assistant",
-      content,
-      providerName: cached
-        ? `${data.provider.name} (device cache)`
-        : data.provider.name || "ORBIS",
-      evidence: data.evidence || undefined,
-    };
+    const assistantMessage = buildAssistantMessage(data, cached, content);
     setMessages((current) => [...current, assistantMessage]);
     await persistMessage(assistantMessage);
     await persistTestLog({
       ...createTestLogReference(userMessage, assistantMessage, startedAt),
-      providerName: data.provider?.name || "ORBIS",
-      providerType: data.provider?.type || "UNKNOWN",
-      route: data.route || null,
-      brainDecision: data.brainDecision || null,
-      routingDurationMs: Number.isFinite(data.routingDurationMs)
-        ? data.routingDurationMs || 0
-        : null,
-      delivery: cached ? "device-cache" : "fresh",
-      outcome: "success",
-      clarificationState: data.clarification?.state || null,
-      webSourceCount: data.evidence?.sources.length || null,
-      errorCategory: null,
+      ...successfulTestLogMetadata(data, cached),
     });
     const nextPending = data.clarification?.pending || null;
     setPending(nextPending);
@@ -598,11 +676,18 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       providerType: "ERROR",
       route: null,
       brainDecision: null,
+      brainDecisionIntent: null,
+      brainDecisionConfidence: null,
+      brainDecisionReason: null,
+      brainEvidenceRequired: null,
       routingDurationMs: null,
       delivery: "fresh",
       outcome: "error",
       clarificationState: null,
       webSourceCount: null,
+      webEvidenceStatus: null,
+      webLocationMatched: null,
+      webNumericFactsSupported: null,
       errorCategory: category,
     });
   };

@@ -51,6 +51,13 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
     );
     expect(execute.mock.calls[0][1].route).toBe("web-search");
     expect(result.brainDecision).toBe("live-web-search");
+    expect(result.brainDecisionTrace).toEqual({
+      intent: "live-information",
+      route: "web-search",
+      confidence: "high",
+      evidenceRequired: true,
+      reason: "time-sensitive-request",
+    });
     expect(execute.mock.calls[0][1].weatherLocationResolved).toBe(true);
     expect(result.clarification.state).toBe("resolved");
   });
@@ -281,5 +288,38 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
       brainDecision: "test-question-offer",
     });
     expect(result.brainDecision).toBe("test-question-offer");
+  });
+
+  it("asks for clarification instead of executing an invalid internal decision", async () => {
+    const invalidRegistry = {
+      select: () => ({
+        route: "web-search",
+        capabilityId: "web.search.tavily",
+        brainDecision: "live-web-search",
+        intent: "live-information",
+        confidence: "high",
+        evidenceRequired: false,
+        reason: "time-sensitive-request",
+      }),
+      get: vi.fn(),
+    };
+    const execute = vi.fn();
+    const orchestrator = new FoundationChatOrchestrator(
+      invalidRegistry,
+      () => NOW,
+    );
+
+    const result = await orchestrator.orchestrate(
+      { messages: [{ role: "user", content: "আজকের খবর বলো" }] },
+      execute,
+    );
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.provider.type).toBe("BRAIN_DECISION_INVALID");
+    expect(result.message.content).toContain("আরেকবার");
+    expect(result.brainDecisionTrace).toMatchObject({
+      confidence: "low",
+      reason: "invalid-decision",
+    });
   });
 });

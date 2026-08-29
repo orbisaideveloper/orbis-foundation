@@ -10,6 +10,10 @@ const {
 const {
   buildProviderPlanningInstruction,
 } = require("./FoundationConversationPolicy.cjs");
+const { verifyWebSearchResult } = require("./brain/WebEvidenceVerifier.cjs");
+const {
+  composeEvidenceAwareWebAnswer,
+} = require("./brain/EvidenceAwareResponseComposer.cjs");
 
 /**
  * TASK-013 — AI Chat -> Brain Command Integration
@@ -221,7 +225,8 @@ class AIChatService {
     const approvalResponse = await this.tryApprovalRequest(lastUserMessage);
     if (approvalResponse) return approvalResponse;
 
-    const capabilityRequest = capabilityIntentMatcher.matchRequest(lastUserMessage);
+    const capabilityRequest =
+      capabilityIntentMatcher.matchRequest(lastUserMessage);
     if (!capabilityRequest) return null;
     return this.executeCapabilityRequest(capabilityRequest, lastUserMessage);
   }
@@ -233,7 +238,10 @@ class AIChatService {
 
     const approvalGateway = loadBrainRequestGateway();
     const lang = capabilityIntentMatcher.detectLanguage(lastUserMessage);
-    if (!approvalGateway || typeof approvalGateway.submitApproval !== "function") {
+    if (
+      !approvalGateway ||
+      typeof approvalGateway.submitApproval !== "function"
+    ) {
       return {
         message: {
           role: "assistant",
@@ -376,22 +384,30 @@ class AIChatService {
 
     const searchLang = capabilityIntentMatcher.detectLanguage(lastUserMessage);
     const searchResult = await tavilySearch.search(lastUserMessage, searchLang);
-    if (searchResult) {
+    const verifiedResult = verifyWebSearchResult(
+      lastUserMessage,
+      searchResult,
+      {
+        expectedLocation:
+          routeDecision?.weatherLocation || weatherRequest?.location || null,
+      },
+    );
+    if (verifiedResult) {
       return {
         message: {
           role: "assistant",
-          content: `[ORBIS Web Analysis]:\n${searchResult.answer}`,
+          content: composeEvidenceAwareWebAnswer(
+            verifiedResult.answer,
+            searchLang,
+          ),
         },
         provider: { name: "ORBIS Brain (Web)", type: "WEB_SEARCH" },
-        evidence: {
-          kind: "web-search",
-          retrievedAt: searchResult.retrievedAt,
-          sources: searchResult.sources,
-        },
+        evidence: verifiedResult.evidence,
       };
     }
 
-    const unavailableLang = capabilityIntentMatcher.detectLanguage(lastUserMessage);
+    const unavailableLang =
+      capabilityIntentMatcher.detectLanguage(lastUserMessage);
     return {
       message: {
         role: "assistant",

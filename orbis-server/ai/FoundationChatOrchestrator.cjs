@@ -1,5 +1,10 @@
 const { chatCapabilityRegistry } = require("./ChatCapabilityRegistry.cjs");
 const capabilityIntentMatcher = require("./brain/ChatCapabilityIntentMatcher.cjs");
+const {
+  parseBrainDecision,
+  decisionTrace,
+  invalidDecisionTrace,
+} = require("./brain/BrainDecisionContract.cjs");
 
 const MAX_MESSAGES = 20;
 const MAX_MESSAGE_CHARS = 16_000;
@@ -81,6 +86,7 @@ function clarificationFollowUp(message, pending, now) {
         return {
           message: `${pending.originalRequest} ${message}`.trim(),
           state: "resolved",
+          location,
         };
       }
     }
@@ -164,7 +170,35 @@ class FoundationChatOrchestrator {
     });
 
     const routeStartedAt = this.clock();
-    const decision = this.registry.select(clarification.message);
+    let decision;
+    try {
+      decision = parseBrainDecision(
+        this.registry.select(clarification.message),
+      );
+    } catch {
+      const bengali = /[\u0980-\u09FF]/.test(rawLastMessage);
+      return {
+        message: {
+          role: "assistant",
+          content: bengali
+            ? "আমি নিরাপদভাবে কোন পথে উত্তর দেব বুঝতে পারিনি। অনুরোধটি আরেকবার একটু পরিষ্কার করে বলুন।"
+            : "I could not safely determine how to handle that request. Please clarify it once more.",
+        },
+        provider: {
+          name: "ORBIS Brain",
+          type: "BRAIN_DECISION_INVALID",
+        },
+        route: "clarification",
+        brainDecision: "decision-validation-failed",
+        brainDecisionTrace: invalidDecisionTrace(),
+        routingDurationMs: Math.max(0, this.clock() - routeStartedAt),
+        evidence: null,
+        clarification: {
+          state: pending ? "pending" : "none",
+          pending,
+        },
+      };
+    }
     const capability = decision.capabilityId
       ? this.registry.get(decision.capabilityId)
       : null;
@@ -176,6 +210,7 @@ class FoundationChatOrchestrator {
       weatherLocationResolved:
         pending?.kind === "weather-location" &&
         clarification.state === "resolved",
+      weatherLocation: clarification.location || null,
     });
     const nextPending = pendingFromResponse(
       response,
@@ -190,6 +225,7 @@ class FoundationChatOrchestrator {
       provider: response.provider,
       route: decision.route,
       brainDecision: decision.brainDecision || null,
+      brainDecisionTrace: decisionTrace(decision),
       routingDurationMs,
       evidence: response.evidence || null,
       clarification: {

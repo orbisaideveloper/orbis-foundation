@@ -5,6 +5,7 @@ const {
 const {
   createConversationPlan,
 } = require("./FoundationConversationPolicy.cjs");
+const { parseBrainDecision } = require("./brain/BrainDecisionContract.cjs");
 
 const MANIFEST = Object.freeze([
   Object.freeze({
@@ -113,54 +114,78 @@ class ChatCapabilityRegistry {
   select(message) {
     const approval = capabilityIntentMatcher.matchApprovalDecision(message);
     if (approval) {
-      return {
+      return parseBrainDecision({
         route: "approval",
         capabilityId: null,
         brainDecision: "approval-decision",
-      };
+        intent: "approval",
+        confidence: "high",
+        evidenceRequired: false,
+        reason: "approval-decision",
+      });
     }
 
     const capability = capabilityIntentMatcher.matchRequest(message);
     if (capability) {
-      return {
+      return parseBrainDecision({
         route: "foundation-capability",
         capabilityId: capability.capabilityId,
         brainDecision: "foundation-capability",
-      };
+        intent: "foundation-capability",
+        confidence: "high",
+        evidenceRequired: false,
+        reason: "registered-capability",
+      });
     }
 
     if (getFoundationCapabilityStatus(message)) {
-      return {
+      return parseBrainDecision({
         route: "foundation-capability-status",
         capabilityId: null,
         brainDecision: "foundation-capability-status",
-      };
+        intent: "capability-status",
+        confidence: "high",
+        evidenceRequired: false,
+        reason: "capability-status",
+      });
     }
 
     if (isTemporalRequest(message)) {
-      return {
+      return parseBrainDecision({
         route: "web-search",
         capabilityId: "web.search.tavily",
         brainDecision: "live-web-search",
-      };
+        intent: "live-information",
+        confidence: "high",
+        evidenceRequired: true,
+        reason: "time-sensitive-request",
+      });
     }
 
     const conversationPlan = createConversationPlan(message);
     if (conversationPlan.mode === "direct") {
-      return {
+      return parseBrainDecision({
         route: "brain-direct-reply",
         capabilityId: null,
         brainDecision: conversationPlan.id,
+        intent: "direct-conversation",
+        confidence: "high",
+        evidenceRequired: false,
+        reason: "brain-direct-policy",
         conversationPlan,
-      };
+      });
     }
 
-    return {
+    return parseBrainDecision({
       route: "brain-orchestrated-provider",
       capabilityId: "provider.chat",
       brainDecision: conversationPlan.id,
+      intent: "general-conversation",
+      confidence: "medium",
+      evidenceRequired: false,
+      reason: "provider-reasoning",
       conversationPlan,
-    };
+    });
   }
 }
 

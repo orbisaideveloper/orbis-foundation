@@ -1,7 +1,26 @@
+const { z } = require("zod");
+
 const MAX_ANSWER_CHARS = 12_000;
 const MAX_SOURCE_TITLE_CHARS = 240;
 const MAX_SOURCE_PUBLISHED_AT_CHARS = 80;
 const MAX_RESULT_CONTENT_CHARS = 3_000;
+
+const TavilyResultSchema = z
+  .object({
+    title: z.unknown().optional(),
+    url: z.unknown().optional(),
+    content: z.unknown().optional(),
+    published_date: z.unknown().optional(),
+    publishedAt: z.unknown().optional(),
+  })
+  .passthrough();
+
+const TavilyResponseSchema = z
+  .object({
+    answer: z.unknown().optional(),
+    results: z.array(TavilyResultSchema).max(20).optional(),
+  })
+  .passthrough();
 
 function boundedText(value, maxChars) {
   if (typeof value !== "string") return "";
@@ -27,7 +46,11 @@ function normalizeSource(result) {
     result.published_date || result.publishedAt,
     MAX_SOURCE_PUBLISHED_AT_CHARS,
   );
-  return publishedAt ? { title, url: url.toString(), publishedAt } : { title, url: url.toString() };
+  const excerpt = boundedText(result.content, MAX_RESULT_CONTENT_CHARS);
+  const source = { title, url: url.toString() };
+  if (publishedAt) source.publishedAt = publishedAt;
+  if (excerpt) source.excerpt = excerpt;
+  return source;
 }
 
 function buildAnswer(data) {
@@ -67,9 +90,13 @@ class TavilySearch {
 
     let outgoingQuery = query;
     if (lang === "bn") {
-      outgoingQuery = `${query} (দয়া করে বাংলায় উত্তর দিন)`;
+      outgoingQuery =
+        `${query} (স্বাভাবিক ও সহজ বাংলায় উত্তর দিন। স্থান, তারিখ ` +
+        "ও সংখ্যা ঠিক রাখুন; আক্ষরিক অনুবাদ বা অস্পষ্ট শব্দ এড়িয়ে চলুন।)";
     } else if (lang === "en") {
-      outgoingQuery = `${query} (please answer in English)`;
+      outgoingQuery =
+        `${query} (Answer in clear natural English. Preserve locations, ` +
+        "dates, and numbers; avoid unclear literal translations.)";
     }
 
     const controller = new AbortController();
@@ -90,7 +117,9 @@ class TavilySearch {
 
       if (!response.ok) return null;
 
-      const data = await response.json();
+      const parsed = TavilyResponseSchema.safeParse(await response.json());
+      if (!parsed.success) return null;
+      const data = parsed.data;
       const answer = buildAnswer(data);
       const sources = Array.isArray(data?.results)
         ? data.results.map(normalizeSource).filter(Boolean).slice(0, 3)
