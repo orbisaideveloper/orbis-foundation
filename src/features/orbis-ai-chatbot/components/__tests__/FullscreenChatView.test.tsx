@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
     saveMessage: vi.fn(),
     saveTestLog: vi.fn(),
     setPending: vi.fn(),
+    getMessages: vi.fn(),
     learningConsent: declined as "accepted" | "declined" | null,
     setLearningConsent: vi.fn(),
   };
@@ -40,7 +41,7 @@ vi.mock("../../storage/ChatStorageManager", () => ({
     getOrCreateAnonymousProfileId: vi.fn(() => "anonymous-test"),
     init: mocks.init,
     createConversation: vi.fn().mockResolvedValue(undefined),
-    getMessagesByConversation: vi.fn().mockResolvedValue([]),
+    getMessagesByConversation: mocks.getMessages,
     saveMessage: mocks.saveMessage,
     saveTestLog: mocks.saveTestLog,
     getPendingClarification: vi.fn().mockResolvedValue(null),
@@ -89,6 +90,7 @@ describe("FullscreenChatView", () => {
     mocks.saveMessage.mockResolvedValue(undefined);
     mocks.saveTestLog.mockResolvedValue(undefined);
     mocks.setPending.mockResolvedValue(undefined);
+    mocks.getMessages.mockResolvedValue([]);
     mocks.setLearningConsent.mockReset();
     fetchMock = vi
       .spyOn(global, "fetch")
@@ -268,12 +270,12 @@ describe("FullscreenChatView", () => {
     expect(await screen.findByText(/সময়মতো সাড়া দেয়নি/)).toBeInTheDocument();
   });
 
-  it("does not tell a user to shorten text for a different invalid request", async () => {
+  it("does not retry or tell a user to shorten text for unsupported attachments", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 400,
       json: async () => ({
-        error: { category: "invalid_request", code: "CHAT_INPUT_INVALID" },
+        error: { category: "invalid_request", code: "ATTACHMENTS_UNSUPPORTED" },
       }),
     } as Response);
     render(<FullscreenChatView onClose={() => {}} />);
@@ -283,10 +285,56 @@ describe("FullscreenChatView", () => {
 
     expect(
       await screen.findByText(
-        "অনুরোধটির format ঠিক ছিল না। নতুন করে চেষ্টা করুন।",
+        "Attachment এখনো chat-এ যুক্ত হয়নি।",
       ),
     ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/লেখা ছোট করে/)).not.toBeInTheDocument();
+  });
+
+  it("retries any valid new question once with minimal context after legacy context is rejected", async () => {
+    mocks.consent = "accepted";
+    mocks.getMessages.mockResolvedValue(
+      Array.from({ length: 124 }, (_, index) => ({
+        id: index + 100,
+        role: index % 2 === 0 ? "user" : "assistant",
+        content: `পুরোনো turn ${index}`,
+        providerName: "ORBIS",
+      })),
+    );
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: { category: "invalid_request", code: "CHAT_INPUT_INVALID" },
+        }),
+      } as Response)
+      .mockResolvedValueOnce(successfulResponse("নতুন প্রশ্নের উত্তর"));
+
+    render(<FullscreenChatView onClose={() => {}} />);
+    const input = await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
+    await waitFor(() => expect(input).not.toBeDisabled());
+    fireEvent.change(input, { target: { value: "নতুন যেকোনো প্রশ্ন" } });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+    expect(await screen.findByText("নতুন প্রশ্নের উত্তর")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const initialBody = JSON.parse(
+      String((fetchMock.mock.calls[0][1] as RequestInit).body),
+    );
+    const recoveryBody = JSON.parse(
+      String((fetchMock.mock.calls[1][1] as RequestInit).body),
+    );
+    expect(initialBody.messages).toHaveLength(20);
+    expect(recoveryBody).toEqual({
+      messages: [{ role: "user", content: "নতুন যেকোনো প্রশ্ন" }],
+    });
+    expect(mocks.setPending).toHaveBeenCalledWith(
+      "account-1",
+      DEFAULT_CONVERSATION_ID,
+      null,
+    );
   });
 
   it("shows voice support warning when speech recognition is unavailable", async () => {

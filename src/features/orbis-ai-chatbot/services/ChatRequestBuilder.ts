@@ -65,6 +65,54 @@ export function chatRequestByteLength(payload: ChatRequestPayload): number {
 }
 
 /**
+ * Builds the smallest safe request that can represent the user's newest
+ * question. It deliberately does not alter the persisted transcript: this
+ * is only an in-flight recovery body when an older client/context format is
+ * rejected before the chat service is reached.
+ */
+export function prepareContextRecoveryRequest(
+  sourceMessages: ReadonlyArray<ChatRequestMessage>,
+): ChatRequestPreparation {
+  let latestUser: ChatRequestMessage | undefined;
+
+  for (let index = sourceMessages.length - 1; index >= 0; index -= 1) {
+    const message = sourceMessages[index];
+    if (
+      message?.role === "user" &&
+      typeof message.content === "string" &&
+      message.content.trim().length > 0
+    ) {
+      latestUser = { role: "user", content: message.content.trim() };
+      break;
+    }
+  }
+
+  if (!latestUser) {
+    return {
+      payload: { messages: [] },
+      pendingClarification: null,
+      droppedInvalidPending: false,
+      errorCode: "CHAT_INPUT_INVALID",
+    };
+  }
+  if (latestUser.content.length > MAX_CHAT_MESSAGE_CHARS) {
+    return {
+      payload: { messages: [latestUser] },
+      pendingClarification: null,
+      droppedInvalidPending: false,
+      errorCode: "CHAT_MESSAGE_TOO_LARGE",
+    };
+  }
+
+  return {
+    payload: { messages: [latestUser] },
+    pendingClarification: null,
+    droppedInvalidPending: false,
+    errorCode: null,
+  };
+}
+
+/**
  * Produces the exact chat body sent to the server. It never splits a message:
  * old complete turns are removed first, while the newest user message stays.
  */

@@ -12,7 +12,10 @@ import {
 } from "lucide-react";
 import { supabase } from "../../../core/supabase/client";
 import { DeviceChatRequestCache } from "../services/DeviceChatRequestCache";
-import { prepareChatRequest } from "../services/ChatRequestBuilder";
+import {
+  prepareChatRequest,
+  prepareContextRecoveryRequest,
+} from "../services/ChatRequestBuilder";
 import type { ChatRequestPayload } from "../services/ChatRequestBuilder";
 import { chatStorage } from "../storage/ChatStorageManager";
 import type {
@@ -67,6 +70,23 @@ interface ChatApiResponse {
     state?: string;
     pending?: PendingClarification | null;
   };
+}
+
+const RECOVERABLE_CONTEXT_ERROR_CODES = new Set([
+  "CHAT_INPUT_INVALID",
+  "CHAT_REQUEST_TOO_LARGE",
+  "CHAT_TOO_MANY_MESSAGES",
+  "REQUEST_TOO_LARGE",
+]);
+
+function shouldRetryWithMinimalContext(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { category?: unknown; code?: unknown };
+  return (
+    value.category === "invalid_request" &&
+    typeof value.code === "string" &&
+    RECOVERABLE_CONTEXT_ERROR_CODES.has(value.code)
+  );
 }
 
 async function requestChatResponse(
@@ -578,6 +598,20 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     });
   };
 
+  const clearPendingContext = async () => {
+    setPending(null);
+    if (!persistent) return;
+    try {
+      await chatStorage.setPendingClarification(
+        profileIdRef.current,
+        conversationIdRef.current,
+        null,
+      );
+    } catch {
+      setStorageError("Pending context could not be cleared from this device.");
+    }
+  };
+
   const sendMessage = async (messageOverride?: string) => {
     const message = (messageOverride ?? inputText).trim();
     if (!message || isSending || !ready) return;
@@ -596,20 +630,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       await persistMessage(userMessage);
       const prepared = prepareChatRequest(nextMessages, pending);
       if (prepared.droppedInvalidPending) {
-        setPending(null);
-        if (persistent) {
-          try {
-            await chatStorage.setPendingClarification(
-              profileIdRef.current,
-              conversationIdRef.current,
-              null,
-            );
-          } catch {
-            setStorageError(
-              "Expired pending context could not be cleared from this device.",
-            );
-          }
-        }
+        await clearPendingContext();
       }
       if (prepared.errorCode) {
         const preparationError = new Error(prepared.errorCode);
@@ -619,14 +640,37 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         });
         throw preparationError;
       }
-      const result = await cache.run({
-        profileId: profileIdRef.current,
-        conversationId: conversationIdRef.current,
-        query: message,
-        pending: prepared.pendingClarification,
-        persistent,
-        request: () => requestChatResponse(prepared.payload),
-      });
+      let result: {
+        response: CachedChatResponse["response"];
+        cached: boolean;
+      };
+      try {
+        result = await cache.run({
+          profileId: profileIdRef.current,
+          conversationId: conversationIdRef.current,
+          query: message,
+          pending: prepared.pendingClarification,
+          persistent,
+          request: () => requestChatResponse(prepared.payload),
+        });
+      } catch (error) {
+        if (!shouldRetryWithMinimalContext(error)) throw error;
+        const recovery = prepareContextRecoveryRequest(nextMessages);
+        if (recovery.errorCode) throw error;
+
+        // The first request was rejected before the Brain/provider ran. Drop
+        // only incompatible pending context and retry this one user question;
+        // the complete local history remains untouched on the device.
+        await clearPendingContext();
+        result = await cache.run({
+          profileId: profileIdRef.current,
+          conversationId: conversationIdRef.current,
+          query: message,
+          pending: null,
+          persistent,
+          request: () => requestChatResponse(recovery.payload),
+        });
+      }
       await handleSuccessfulChatResponse(
         result.response as ChatApiResponse,
         result.cached,

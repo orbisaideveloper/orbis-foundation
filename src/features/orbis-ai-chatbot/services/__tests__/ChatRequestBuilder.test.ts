@@ -3,6 +3,7 @@ import {
   chatRequestByteLength,
   MAX_CHAT_REQUEST_BYTES,
   MAX_CHAT_REQUEST_MESSAGES,
+  prepareContextRecoveryRequest,
   prepareChatRequest,
 } from "../ChatRequestBuilder";
 
@@ -68,5 +69,25 @@ describe("ChatRequestBuilder", () => {
 
     expect(result.errorCode).toBe("CHAT_MESSAGE_TOO_LARGE");
     expect(result.payload.messages[0].content).toBe(content);
+  });
+
+  it("builds a minimal recovery payload without changing the saved transcript", () => {
+    const source = [
+      { role: "user" as const, content: "পুরোনো প্রশ্ন" },
+      { role: "assistant" as const, content: "পুরোনো উত্তর" },
+      { role: "user" as const, content: "  নতুন যেকোনো প্রশ্ন  " },
+    ];
+
+    const result = prepareContextRecoveryRequest(source);
+
+    expect(result.errorCode).toBeNull();
+    expect(result.payload).toEqual({
+      messages: [{ role: "user", content: "নতুন যেকোনো প্রশ্ন" }],
+    });
+    expect(source).toEqual([
+      { role: "user", content: "পুরোনো প্রশ্ন" },
+      { role: "assistant", content: "পুরোনো উত্তর" },
+      { role: "user", content: "  নতুন যেকোনো প্রশ্ন  " },
+    ]);
   });
 });
