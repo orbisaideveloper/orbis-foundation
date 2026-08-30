@@ -29,6 +29,7 @@ const entry: ResolvedChatTestLogEntry = {
   brainDecisionConfidence: "high",
   brainDecisionReason: "time-sensitive-request",
   brainEvidenceRequired: true,
+  appliedLearningPolicyCodes: ["time-sensitive-evidence"],
   routingDurationMs: 4,
   webSourceCount: 2,
   webEvidenceStatus: "verified",
@@ -68,6 +69,9 @@ describe("chat Test Log formatting", () => {
     expect(formatted).toContain("Decision intent: live-information");
     expect(formatted).toContain("Decision confidence: high");
     expect(formatted).toContain("Evidence required: yes");
+    expect(formatted).toContain(
+      "Approved policy applied: Evidence verification",
+    );
     expect(formatted).toContain("Verified web sources: 2");
     expect(formatted).toContain("Evidence verification: verified");
     expect(formatted).toContain("Location matched: yes");

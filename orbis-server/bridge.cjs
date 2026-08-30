@@ -28,6 +28,9 @@ const {
 const {
   createProviderLearningCandidateGenerator,
 } = require("./ai/learning/ProviderLearningCandidateGenerator.cjs");
+const {
+  FoundationLearningPolicyEngine,
+} = require("./ai/learning/FoundationLearningPolicyEngine.cjs");
 const sourceApi = require("./source-api.cjs");
 const { getSystemStats } = require("./system-stats.cjs");
 const { buildAdminDiagnosticExport } = require("./admin-diagnostic-export.cjs");
@@ -512,15 +515,20 @@ app.get("/api/ai/providers/status", (req, res) => {
 
 const chatRateLimiter = createChatRateLimiter();
 
+const learningRepository = new PgLearningRepository(
+  telemetryConnectionString ? telemetryPool : null,
+);
+const learningEventRepository = new PgLearningEventRepository(
+  telemetryConnectionString ? telemetryPool : null,
+);
 const learningService = new FoundationLearningService({
-  repository: new PgLearningRepository(
-    telemetryConnectionString ? telemetryPool : null,
-  ),
-  eventRepository: new PgLearningEventRepository(
-    telemetryConnectionString ? telemetryPool : null,
-  ),
+  repository: learningRepository,
+  eventRepository: learningEventRepository,
   candidateGenerator: createProviderLearningCandidateGenerator(providerManager),
 });
+aiChatService.setLearningPolicyEngine(
+  new FoundationLearningPolicyEngine({ repository: learningRepository }),
+);
 app.use(
   "/api/chat/learning",
   createLearningRouter({

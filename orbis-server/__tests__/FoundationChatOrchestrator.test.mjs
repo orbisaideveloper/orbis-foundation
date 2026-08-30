@@ -86,6 +86,42 @@ describe("FoundationChatOrchestrator clarification continuity", () => {
     expect(JSON.stringify(result)).not.toContain("latest news");
   });
 
+  it("returns only the safe applied learning-policy trace", async () => {
+    const execute = vi.fn().mockResolvedValue({
+      message: { role: "assistant", content: "verified result" },
+      provider: { name: "ORBIS Brain (Web)", type: "WEB_SEARCH" },
+      learningPolicy: {
+        applied: [
+          {
+            code: "time-sensitive-evidence",
+            label: "Evidence verification",
+          },
+        ],
+        requireVerifiedEvidence: true,
+      },
+    });
+    const orchestrator = new FoundationChatOrchestrator(undefined, () => NOW);
+    const result = await orchestrator.orchestrate(
+      {
+        messages: [{ role: "user", content: "private current price request" }],
+      },
+      execute,
+    );
+
+    expect(result.learningPolicy).toEqual({
+      applied: [
+        {
+          code: "time-sensitive-evidence",
+          label: "Evidence verification",
+        },
+      ],
+      requireVerifiedEvidence: true,
+    });
+    expect(JSON.stringify(result)).not.toContain(
+      "private current price request",
+    );
+  });
+
   it("reconstructs a file clarification without weakening capability routing", async () => {
     const execute = vi.fn().mockResolvedValue({
       message: { role: "assistant", content: "approval required" },

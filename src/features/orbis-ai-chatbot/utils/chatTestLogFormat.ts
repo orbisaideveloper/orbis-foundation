@@ -51,6 +51,21 @@ function appendWebEvidenceLines(
   }
 }
 
+function appendLearningPolicyLines(
+  lines: string[],
+  entry: ResolvedChatTestLogEntry,
+): void {
+  const labels: Record<string, string> = {
+    "time-sensitive-evidence": "Evidence verification",
+  };
+  const applied = (entry.appliedLearningPolicyCodes || [])
+    .map((code) => labels[code])
+    .filter((label): label is string => Boolean(label));
+  if (applied.length > 0) {
+    lines.push(`Approved policy applied: ${applied.join(", ")}`);
+  }
+}
+
 export function formatTestLogEntry(entry: ResolvedChatTestLogEntry): string {
   const lines = [
     `[${formatTimestamp(entry.completedAt)}]`,
@@ -76,6 +91,7 @@ export function formatTestLogEntry(entry: ResolvedChatTestLogEntry): string {
     lines.push(`Clarification: ${entry.clarificationState}`);
   }
   appendWebEvidenceLines(lines, entry);
+  appendLearningPolicyLines(lines, entry);
   if (entry.errorCategory) lines.push(`Error category: ${entry.errorCategory}`);
   return lines.join("\n");
 }

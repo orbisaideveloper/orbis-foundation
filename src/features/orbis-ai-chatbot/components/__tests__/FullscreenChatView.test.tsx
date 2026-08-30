@@ -172,6 +172,14 @@ describe("FullscreenChatView", () => {
         provider: { name: WEB_PROVIDER_NAME, type: "WEB_SEARCH" },
         route: "web-search",
         routingDurationMs: 4,
+        learningPolicy: {
+          applied: [
+            {
+              code: "time-sensitive-evidence",
+              label: "Evidence verification",
+            },
+          ],
+        },
         clarification: { state: "none", pending: null },
       }),
     } as Response);
@@ -188,6 +196,7 @@ describe("FullscreenChatView", () => {
         providerType: "WEB_SEARCH",
         route: "web-search",
         routingDurationMs: 4,
+        appliedLearningPolicyCodes: ["time-sensitive-evidence"],
         delivery: "fresh",
         outcome: "success",
       }),
@@ -284,9 +293,7 @@ describe("FullscreenChatView", () => {
     fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
     expect(
-      await screen.findByText(
-        "Attachment এখনো chat-এ যুক্ত হয়নি।",
-      ),
+      await screen.findByText("Attachment এখনো chat-এ যুক্ত হয়নি।"),
     ).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/লেখা ছোট করে/)).not.toBeInTheDocument();

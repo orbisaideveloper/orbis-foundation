@@ -228,6 +228,7 @@ class FoundationChatOrchestrator {
       brainDecisionTrace: decisionTrace(decision),
       routingDurationMs,
       evidence: response.evidence || null,
+      learningPolicy: response.learningPolicy || null,
       clarification: {
         state: nextPending ? "pending" : clarification.state,
         pending: nextPending,

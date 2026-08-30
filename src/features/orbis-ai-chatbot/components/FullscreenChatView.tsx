@@ -20,6 +20,7 @@ import type { ChatRequestPayload } from "../services/ChatRequestBuilder";
 import { chatStorage } from "../storage/ChatStorageManager";
 import type {
   CachedChatResponse,
+  ChatLearningPolicyTrace,
   ChatBrainDecisionTrace,
   ChatTestLogEntry,
   ChatWebEvidence,
@@ -69,6 +70,7 @@ interface ChatApiResponse {
   route?: string;
   brainDecision?: string | null;
   brainDecisionTrace?: ChatBrainDecisionTrace | null;
+  learningPolicy?: ChatLearningPolicyTrace | null;
   routingDurationMs?: number;
   evidence?: ChatWebEvidence | null;
   clarification?: {
@@ -193,6 +195,17 @@ function webEvidenceTestLogMetadata(
   };
 }
 
+function learningPolicyTestLogMetadata(
+  data: ChatApiResponse,
+): Pick<ChatTestLogEntry, "appliedLearningPolicyCodes"> {
+  const applied = data.learningPolicy?.applied || [];
+  return {
+    appliedLearningPolicyCodes: applied
+      .map((policy) => policy.code)
+      .filter((code) => code === "time-sensitive-evidence"),
+  };
+}
+
 function normalizedRoutingDuration(value: number | undefined): number | null {
   return Number.isFinite(value) ? value || 0 : null;
 }
@@ -210,6 +223,7 @@ function successfulTestLogMetadata(
   | "brainDecisionConfidence"
   | "brainDecisionReason"
   | "brainEvidenceRequired"
+  | "appliedLearningPolicyCodes"
   | "routingDurationMs"
   | "delivery"
   | "outcome"
@@ -226,6 +240,7 @@ function successfulTestLogMetadata(
     route: data.route || null,
     brainDecision: data.brainDecision || null,
     ...brainDecisionTestLogMetadata(data),
+    ...learningPolicyTestLogMetadata(data),
     routingDurationMs: normalizedRoutingDuration(data.routingDurationMs),
     delivery: cached ? "device-cache" : "fresh",
     outcome: "success",
@@ -680,6 +695,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       brainDecisionConfidence: null,
       brainDecisionReason: null,
       brainEvidenceRequired: null,
+      appliedLearningPolicyCodes: [],
       routingDurationMs: null,
       delivery: "fresh",
       outcome: "error",

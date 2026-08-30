@@ -14,6 +14,37 @@ const { verifyWebSearchResult } = require("./brain/WebEvidenceVerifier.cjs");
 const {
   composeEvidenceAwareWebAnswer,
 } = require("./brain/EvidenceAwareResponseComposer.cjs");
+const {
+  EMPTY_LEARNING_POLICY,
+  TIME_SENSITIVE_EVIDENCE_POLICY,
+  hasVerifiedEvidence,
+} = require("./learning/FoundationLearningPolicyEngine.cjs");
+
+function learningDecisionMetadata(decision) {
+  return {
+    route: decision?.route || null,
+    intent: decision?.intent || null,
+    confidence: decision?.confidence || null,
+    evidenceRequired: decision?.evidenceRequired === true,
+    reason: decision?.reason || null,
+  };
+}
+
+function normalizeLearningPolicy(rawPolicy) {
+  const appliesTimeSensitiveEvidence =
+    rawPolicy?.requireVerifiedEvidence === true &&
+    Array.isArray(rawPolicy?.applied) &&
+    rawPolicy.applied.some(
+      (item) => item?.code === TIME_SENSITIVE_EVIDENCE_POLICY.code,
+    );
+  if (!appliesTimeSensitiveEvidence) {
+    return { ...EMPTY_LEARNING_POLICY, applied: [] };
+  }
+  return {
+    applied: [{ ...TIME_SENSITIVE_EVIDENCE_POLICY }],
+    requireVerifiedEvidence: true,
+  };
+}
 
 /**
  * TASK-013 — AI Chat -> Brain Command Integration
@@ -189,14 +220,44 @@ function formatApprovalResultAsChatReply(result, lang) {
 }
 
 class AIChatService {
+  constructor({
+    orchestrator = foundationChatOrchestrator,
+    learningPolicyEngine,
+  } = {}) {
+    this.orchestrator = orchestrator;
+    this.learningPolicyEngine = learningPolicyEngine || null;
+  }
+
+  setLearningPolicyEngine(learningPolicyEngine) {
+    this.learningPolicyEngine = learningPolicyEngine || null;
+  }
+
+  async learningPolicyFor(decision) {
+    try {
+      if (typeof this.learningPolicyEngine?.evaluate !== "function") {
+        return { ...EMPTY_LEARNING_POLICY, applied: [] };
+      }
+      return normalizeLearningPolicy(
+        await this.learningPolicyEngine.evaluate(
+          learningDecisionMetadata(decision),
+        ),
+      );
+    } catch {
+      return { ...EMPTY_LEARNING_POLICY, applied: [] };
+    }
+  }
+
   async processChatRequest(rawMessages, context = {}) {
-    return foundationChatOrchestrator.orchestrate(
+    return this.orchestrator.orchestrate(
       {
         messages: rawMessages,
         pendingClarification: context.pendingClarification,
       },
-      (messages, routeDecision) =>
-        this.executeNormalizedRequest(messages, routeDecision),
+      async (messages, routeDecision) =>
+        this.executeNormalizedRequest(messages, {
+          ...routeDecision,
+          learningPolicy: await this.learningPolicyFor(routeDecision),
+        }),
     );
   }
 
@@ -205,12 +266,17 @@ class AIChatService {
       formattedMessages[formattedMessages.length - 1].content;
     try {
       const brainResponse = await this.tryBrainRequest(lastUserMessage);
-      if (brainResponse) return brainResponse;
-      return await this.executeRoute(
-        formattedMessages,
-        lastUserMessage,
-        routeDecision,
-      );
+      const response =
+        brainResponse ||
+        (await this.executeRoute(
+          formattedMessages,
+          lastUserMessage,
+          routeDecision,
+        ));
+      return {
+        ...response,
+        learningPolicy: routeDecision?.learningPolicy || null,
+      };
     } catch (error) {
       const failureType = error instanceof Error ? "Error" : "NonError";
       console.error(`[AI_CHAT_SERVICE] ${failureType} request failed`);
@@ -392,7 +458,11 @@ class AIChatService {
           routeDecision?.weatherLocation || weatherRequest?.location || null,
       },
     );
-    if (verifiedResult) {
+    if (
+      verifiedResult &&
+      (!routeDecision?.learningPolicy?.requireVerifiedEvidence ||
+        hasVerifiedEvidence(verifiedResult.evidence))
+    ) {
       return {
         message: {
           role: "assistant",
@@ -452,4 +522,9 @@ class AIChatService {
   }
 }
 
-module.exports = new AIChatService();
+const aiChatService = new AIChatService();
+
+module.exports = aiChatService;
+module.exports.AIChatService = AIChatService;
+module.exports.learningDecisionMetadata = learningDecisionMetadata;
+module.exports.normalizeLearningPolicy = normalizeLearningPolicy;

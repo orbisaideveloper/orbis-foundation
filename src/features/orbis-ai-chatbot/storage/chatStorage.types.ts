@@ -28,6 +28,15 @@ export interface ChatBrainDecisionTrace {
   reason: string;
 }
 
+export interface ChatAppliedLearningPolicy {
+  code: "time-sensitive-evidence";
+  label: "Evidence verification";
+}
+
+export interface ChatLearningPolicyTrace {
+  applied: ChatAppliedLearningPolicy[];
+}
+
 export interface ChatMessage {
   id: number;
   profileId: string;
@@ -77,6 +86,7 @@ export interface CachedChatResponse {
     route?: string;
     brainDecision?: string | null;
     brainDecisionTrace?: ChatBrainDecisionTrace | null;
+    learningPolicy?: ChatLearningPolicyTrace | null;
     routingDurationMs?: number;
     evidence?: ChatWebEvidence | null;
     clarification?: {
@@ -113,6 +123,7 @@ export interface ChatTestLogEntry {
   brainDecisionConfidence?: "high" | "medium" | "low" | null;
   brainDecisionReason?: string | null;
   brainEvidenceRequired?: boolean | null;
+  appliedLearningPolicyCodes?: string[];
   routingDurationMs: number | null;
   webSourceCount?: number | null;
   webEvidenceStatus?: "verified" | null;
