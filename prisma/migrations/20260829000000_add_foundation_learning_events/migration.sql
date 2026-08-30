@@ -26,5 +26,7 @@ ON "FoundationLearningEvent"("decisionRoute", "outcome");
 
 ALTER TABLE public."FoundationLearningEvent" ENABLE ROW LEVEL SECURITY;
 
+REVOKE ALL PRIVILEGES ON TABLE public."FoundationLearningEvent" FROM PUBLIC;
+
 REVOKE ALL PRIVILEGES ON TABLE public."FoundationLearningEvent" FROM anon;
 REVOKE ALL PRIVILEGES ON TABLE public."FoundationLearningEvent" FROM authenticated;
