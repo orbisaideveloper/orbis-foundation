@@ -20,6 +20,7 @@ const FOUNDATION_COUNT_QUERIES = Object.freeze([
   ["FoundationSourceCodeHistory", "foundationSourceCodeHistory"],
   ["FoundationBrainKnowledge", "foundationBrainKnowledge"],
   ["FoundationLearnedKnowledge", "foundationLearnedKnowledge"],
+  ["FoundationLearningEvent", "foundationLearningEvent"],
 ]);
 
 function safeIdentifier(value, fallback = "unknown") {

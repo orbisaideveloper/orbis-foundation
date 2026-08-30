@@ -1,4 +1,8 @@
 const crypto = require("node:crypto");
+const {
+  learningEventDeduplicationHash,
+  parseLearningEventBatch,
+} = require("./LearningEventContract.cjs");
 
 const ALLOWED_CATEGORIES = new Set([
   "FOUNDATION_GUIDANCE",
@@ -153,6 +157,7 @@ function deduplicationHash(candidate) {
 class FoundationLearningService {
   constructor(options) {
     this.repository = options.repository;
+    this.eventRepository = options.eventRepository || null;
     this.candidateGenerator = options.candidateGenerator;
     this.clock = options.clock || (() => Date.now());
     this.signingKey = options.signingKey || crypto.randomBytes(32);
@@ -224,6 +229,47 @@ class FoundationLearningService {
       throw fail("LEARNING_RECORD_INVALID");
     }
     return this.repository.delete(id);
+  }
+
+  async recordEventBatch(rawBatch) {
+    const batch = parseLearningEventBatch(rawBatch);
+    if (
+      !this.eventRepository ||
+      typeof this.eventRepository.createOrGetBatch !== "function"
+    ) {
+      throw fail("LEARNING_EVENT_STORAGE_UNAVAILABLE");
+    }
+    let results;
+    try {
+      results = await this.eventRepository.createOrGetBatch(
+        batch.events.map((event) => ({
+          ...event,
+          deduplicationHash: learningEventDeduplicationHash(event.eventId),
+        })),
+      );
+    } catch (error) {
+      if (error?.code === "LEARNING_EVENT_STORAGE_UNAVAILABLE") throw error;
+      throw fail("LEARNING_EVENT_STORAGE_UNAVAILABLE");
+    }
+    if (!Array.isArray(results) || results.length !== batch.events.length) {
+      throw fail("LEARNING_EVENT_STORAGE_UNAVAILABLE");
+    }
+    const eventResults = results.map((result) => {
+      if (
+        !result ||
+        typeof result.duplicate !== "boolean" ||
+        typeof result.record?.eventId !== "string"
+      ) {
+        throw fail("LEARNING_EVENT_STORAGE_UNAVAILABLE");
+      }
+      return { eventId: result.record.eventId, duplicate: result.duplicate };
+    });
+    const duplicates = eventResults.filter((event) => event.duplicate).length;
+    return {
+      accepted: eventResults.length - duplicates,
+      duplicates,
+      events: eventResults,
+    };
   }
 
   verifyApprovalToken(token) {

@@ -78,6 +78,26 @@ model FoundationLearnedKnowledge {
   updatedAt         DateTime @updatedAt
 }
 
+// Metadata-only decision feedback for the Learning Loop. This table never
+// stores prompts, answers, user identity, free-text corrections, or provider output.
+model FoundationLearningEvent {
+  id                 String   @id
+  eventType          String
+  decisionRoute      String
+  decisionIntent     String
+  decisionConfidence String
+  evidenceRequired   Boolean
+  decisionReason     String
+  outcome            String
+  feedbackCode       String
+  occurredAt         DateTime
+  receivedAt         DateTime @default(now())
+  deduplicationHash  String   @unique
+
+  @@index([receivedAt])
+  @@index([decisionRoute, outcome])
+}
+
 // ২. User Memory (ইউজারদের সম্পর্কে যা যা শিখবে বা মনে রাখবে)
 model FoundationUserMemory {
   id        String   @id @default(uuid())

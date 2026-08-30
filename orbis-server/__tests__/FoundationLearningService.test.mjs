@@ -18,6 +18,20 @@ const CANDIDATE = {
   category: "OPERATING_RULE",
   tags: ["validation", "capability-security"],
 };
+const LEARNING_EVENT = {
+  eventId: "11111111-1111-4111-8111-111111111111",
+  kind: "decision-feedback",
+  occurredAt: "2026-08-29T12:00:00.000Z",
+  decision: {
+    intent: "live-information",
+    route: "web-search",
+    confidence: "high",
+    evidenceRequired: true,
+    reason: "time-sensitive-request",
+  },
+  outcome: "failed",
+  feedbackCode: "missing-evidence",
+};
 
 function createRepository() {
   const records = new Map();
@@ -50,11 +64,29 @@ function createRepository() {
   };
 }
 
+function createEventRepository() {
+  const records = new Map();
+  return {
+    createOrGetBatch: vi.fn(async (events) =>
+      events.map((event) => {
+        const existing = records.get(event.deduplicationHash);
+        if (existing) return { record: existing, duplicate: true };
+        const saved = { eventId: event.eventId };
+        records.set(event.deduplicationHash, saved);
+        return { record: saved, duplicate: false };
+      }),
+    ),
+  };
+}
+
 function createService(repository = createRepository()) {
+  const eventRepository = createEventRepository();
   return {
     repository,
+    eventRepository,
     service: new FoundationLearningService({
       repository,
+      eventRepository,
       candidateGenerator: vi.fn().mockResolvedValue(CANDIDATE),
       signingKey: Buffer.alloc(32, 7),
       clock: () => 1_800_000_000_000,
@@ -172,5 +204,42 @@ describe("Admin-reviewed Foundation learning", () => {
       { role: "user", content: "Explain deterministic validation" },
     ]);
     expect(repository.createOrGet).not.toHaveBeenCalled();
+  });
+
+  it("records idempotent metadata-only decision feedback without a provider call", async () => {
+    const { eventRepository, service } = createService();
+    const providerCall = vi.spyOn(providerManager, "generateChat");
+    const first = await service.recordEventBatch({ events: [LEARNING_EVENT] });
+    const retry = await service.recordEventBatch({ events: [LEARNING_EVENT] });
+
+    expect(first).toEqual({
+      accepted: 1,
+      duplicates: 0,
+      events: [{ eventId: LEARNING_EVENT.eventId, duplicate: false }],
+    });
+    expect(retry).toEqual({
+      accepted: 0,
+      duplicates: 1,
+      events: [{ eventId: LEARNING_EVENT.eventId, duplicate: true }],
+    });
+    expect(providerCall).not.toHaveBeenCalled();
+    expect(JSON.stringify(eventRepository.createOrGetBatch.mock.calls)).not.toContain(
+      "private user question",
+    );
+  });
+
+  it("rejects raw fields before an event repository write", async () => {
+    const { eventRepository, service } = createService();
+    await expect(
+      service.recordEventBatch({
+        events: [
+          {
+            ...LEARNING_EVENT,
+            sourceText: "private user question",
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "LEARNING_EVENT_INVALID" });
+    expect(eventRepository.createOrGetBatch).not.toHaveBeenCalled();
   });
 });

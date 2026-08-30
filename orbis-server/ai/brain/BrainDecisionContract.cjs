@@ -30,17 +30,21 @@ const REASONS = [
   "invalid-decision",
 ];
 
-const BrainDecisionSchema = z
+const BrainDecisionTraceSchema = z
   .object({
     route: z.enum(ROUTES),
-    capabilityId: z.string().trim().min(1).max(120).nullable(),
-    brainDecision: z.string().trim().min(1).max(120),
     intent: z.enum(INTENTS),
     confidence: z.enum(["high", "medium", "low"]),
     evidenceRequired: z.boolean(),
     reason: z.enum(REASONS),
-    conversationPlan: z.unknown().optional(),
   })
+  .strict();
+
+const BrainDecisionSchema = BrainDecisionTraceSchema.extend({
+  capabilityId: z.string().trim().min(1).max(120).nullable(),
+  brainDecision: z.string().trim().min(1).max(120),
+  conversationPlan: z.unknown().optional(),
+})
   .strict()
   .superRefine((decision, context) => {
     if (decision.route === "web-search" && !decision.evidenceRequired) {
@@ -85,6 +89,7 @@ function invalidDecisionTrace() {
 
 module.exports = {
   BrainDecisionSchema,
+  BrainDecisionTraceSchema,
   parseBrainDecision,
   decisionTrace,
   invalidDecisionTrace,

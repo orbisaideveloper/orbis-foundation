@@ -23,6 +23,9 @@ const {
   PgLearningRepository,
 } = require("./ai/learning/PgLearningRepository.cjs");
 const {
+  PgLearningEventRepository,
+} = require("./ai/learning/PgLearningEventRepository.cjs");
+const {
   createProviderLearningCandidateGenerator,
 } = require("./ai/learning/ProviderLearningCandidateGenerator.cjs");
 const sourceApi = require("./source-api.cjs");
@@ -511,6 +514,9 @@ const chatRateLimiter = createChatRateLimiter();
 
 const learningService = new FoundationLearningService({
   repository: new PgLearningRepository(
+    telemetryConnectionString ? telemetryPool : null,
+  ),
+  eventRepository: new PgLearningEventRepository(
     telemetryConnectionString ? telemetryPool : null,
   ),
   candidateGenerator: createProviderLearningCandidateGenerator(providerManager),

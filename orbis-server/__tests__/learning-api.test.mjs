@@ -76,6 +76,53 @@ describe("authenticated learning endpoints", () => {
     expect(service.delete).toHaveBeenCalledWith(id);
   });
 
+  it("accepts only the service's metadata-only event result after authentication", async () => {
+    const eventId = "11111111-1111-4111-8111-111111111111";
+    const service = {
+      preview: vi.fn(),
+      approve: vi.fn(),
+      list: vi.fn(),
+      delete: vi.fn(),
+      recordEventBatch: vi.fn().mockResolvedValue({
+        accepted: 1,
+        duplicates: 0,
+        events: [{ eventId, duplicate: false }],
+      }),
+    };
+    const app = createApp(service);
+    const body = {
+      events: [
+        {
+          eventId,
+          kind: "decision-feedback",
+          occurredAt: "2026-08-29T12:00:00.000Z",
+          decision: {
+            intent: "live-information",
+            route: "web-search",
+            confidence: "high",
+            evidenceRequired: true,
+            reason: "time-sensitive-request",
+          },
+          outcome: "failed",
+          feedbackCode: "missing-evidence",
+        },
+      ],
+    };
+    await request(app).post("/learning/events").send(body).expect(401);
+    const response = await request(app)
+      .post("/learning/events")
+      .set("Authorization", "Bearer admin.token")
+      .send(body)
+      .expect(202);
+    expect(response.body).toEqual({
+      accepted: 1,
+      duplicates: 0,
+      events: [{ eventId, duplicate: false }],
+    });
+    expect(service.recordEventBatch).toHaveBeenCalledWith(body);
+    expect(JSON.stringify(response.body)).not.toContain("sourceText");
+  });
+
   it("preserves domain-specific error status and response shapes", async () => {
     const storageError = new Error("LEARNING_STORAGE_UNAVAILABLE");
     storageError.code = "LEARNING_STORAGE_UNAVAILABLE";

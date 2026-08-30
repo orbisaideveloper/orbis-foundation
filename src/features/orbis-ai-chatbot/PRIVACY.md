@@ -45,6 +45,15 @@ minimal tags, active state, timestamps, and a SHA-256 deduplication hash. It
 contains no source chat, response, account identity, or personal memory.
 Authenticated Admin list and delete operations expose only those safe fields.
 
+Learning Loop Phase 1 is a separate, authenticated server-to-server feedback
+path. It accepts only a bounded batch of opaque event IDs, the existing
+deterministic Brain decision trace, a fixed outcome, and a fixed feedback code.
+Unknown fields are rejected, so prompts, answers, account identity, locations,
+free-text corrections, and provider output cannot enter the event store. An
+event ID is idempotent: retries return the prior result without another write.
+This phase collects metadata for later pattern review; it never changes a
+Brain decision, invokes a provider, or makes an automatic knowledge update.
+
 The current Chatbot and every chat/learning endpoint remain inside verified
 Admin authentication. Generic-user authentication and the separately deployed
 public-user Chatbot are intentionally deferred.

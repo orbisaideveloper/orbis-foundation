@@ -10,6 +10,7 @@ function safeCode(error) {
 function statusFor(code) {
   if (
     code === "LEARNING_STORAGE_UNAVAILABLE" ||
+    code === "LEARNING_EVENT_STORAGE_UNAVAILABLE" ||
     code === "LEARNING_UNAVAILABLE"
   ) {
     return 503;
@@ -51,6 +52,15 @@ function createLearningRouter(options) {
         approvalToken: req.body?.approvalToken,
       });
       return res.status(result.duplicate ? 200 : 201).json(result);
+    } catch (error) {
+      return sendLearningError(res, error);
+    }
+  });
+
+  router.post("/events", async (req, res) => {
+    try {
+      const result = await service.recordEventBatch(req.body);
+      return res.status(result.accepted > 0 ? 202 : 200).json(result);
     } catch (error) {
       return sendLearningError(res, error);
     }

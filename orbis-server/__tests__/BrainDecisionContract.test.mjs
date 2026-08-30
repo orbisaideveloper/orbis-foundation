@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const {
   BrainDecisionSchema,
+  BrainDecisionTraceSchema,
   decisionTrace,
 } = require("../ai/brain/BrainDecisionContract.cjs");
 
@@ -66,6 +67,28 @@ describe("BrainDecisionContract", () => {
         evidenceRequired: false,
         reason: "provider-reasoning",
         rawUserMessage: "must never enter a decision trace",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("exposes the privacy-safe trace contract without a message field", () => {
+    expect(
+      BrainDecisionTraceSchema.safeParse({
+        intent: "live-information",
+        route: "web-search",
+        confidence: "high",
+        evidenceRequired: true,
+        reason: "time-sensitive-request",
+      }).success,
+    ).toBe(true);
+    expect(
+      BrainDecisionTraceSchema.safeParse({
+        intent: "live-information",
+        route: "web-search",
+        confidence: "high",
+        evidenceRequired: true,
+        reason: "time-sensitive-request",
+        rawUserMessage: "must never enter a learning event",
       }).success,
     ).toBe(false);
   });
