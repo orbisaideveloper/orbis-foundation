@@ -203,6 +203,22 @@ describe("AdminDashboard", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
+  it("keeps the Learning Review tab read-only in the public dashboard preview", async () => {
+    render(<AdminDashboard previewMode />);
+    await screen.findByText(/Your ORBIS\. Visible\./i);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open dashboard menu" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Brain" }));
+    fireEvent.click(screen.getByRole("button", { name: "Learning Review" }));
+
+    expect(
+      screen.getByText(/Learning Review is an authenticated Admin control/i),
+    ).toBeInTheDocument();
+    expect(mocks.readAdminJson).not.toHaveBeenCalled();
+  });
+
   it("uses safe mobile spans and one-column detail metrics before sm", async () => {
     render(<AdminDashboard />);
     await screen.findByText(/Your ORBIS\. Visible\./i);

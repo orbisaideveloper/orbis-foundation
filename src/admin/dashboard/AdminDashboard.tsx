@@ -25,6 +25,7 @@ import {
 import { readAdminJson } from "../auth/adminFetch";
 import { FullscreenChatView } from "../../features/orbis-ai-chatbot/components/FullscreenChatView";
 import { BrainChatTestLog } from "../../features/orbis-ai-chatbot/components/BrainChatTestLog";
+import { LearningReviewPanel } from "./sections/LearningReviewPanel";
 
 type DashboardView =
   | "overview"
@@ -36,7 +37,7 @@ type DashboardView =
   | "data"
   | "releases";
 
-type BrainDetailTab = "status" | "test-log" | "scan" | "changes";
+type BrainDetailTab = "status" | "test-log" | "learning" | "scan" | "changes";
 
 type Availability = "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN";
 
@@ -883,6 +884,7 @@ export function AdminDashboard({
         {([
           ["status", "Status"],
           ["test-log", "Chat Test Log"],
+          ["learning", "Learning Review"],
           ["scan", "Improvement Scan"],
           ["changes", "Boundaries"],
         ] as const).map(([tab, label]) => (
@@ -927,6 +929,10 @@ export function AdminDashboard({
       )}
 
       {brainDetailTab === "test-log" && <BrainChatTestLog previewMode={previewMode} />}
+
+      {brainDetailTab === "learning" && (
+        <LearningReviewPanel previewMode={previewMode} />
+      )}
 
       {brainDetailTab === "scan" && (
         <>

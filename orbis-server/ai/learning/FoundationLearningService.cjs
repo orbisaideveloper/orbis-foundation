@@ -16,6 +16,83 @@ const MIN_CONTENT_CHARS = 30;
 const MAX_CONTENT_CHARS = 500;
 const MAX_TAGS = 5;
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
+const REVIEWABLE_OUTCOMES = new Set(["corrected", "failed"]);
+const REVIEW_PATTERN_VALUES = Object.freeze({
+  route: new Set([
+    "approval",
+    "foundation-capability",
+    "foundation-capability-status",
+    "web-search",
+    "brain-direct-reply",
+    "brain-orchestrated-provider",
+    "clarification",
+  ]),
+  intent: new Set([
+    "approval",
+    "foundation-capability",
+    "capability-status",
+    "live-information",
+    "direct-conversation",
+    "general-conversation",
+    "unclear",
+  ]),
+  confidence: new Set(["high", "medium", "low"]),
+  reason: new Set([
+    "approval-decision",
+    "registered-capability",
+    "capability-status",
+    "time-sensitive-request",
+    "brain-direct-policy",
+    "provider-reasoning",
+    "invalid-decision",
+  ]),
+  outcome: REVIEWABLE_OUTCOMES,
+  feedbackCode: new Set([
+    "answer-incorrect",
+    "route-incorrect",
+    "missing-evidence",
+    "clarification-needed",
+    "capability-failed",
+    "provider-failed",
+  ]),
+});
+const REVIEW_CANDIDATES = Object.freeze({
+  "answer-incorrect": Object.freeze({
+    content:
+      "Uncertain factual responses require verification before final delivery.",
+    category: "OPERATING_RULE",
+    tags: Object.freeze(["verification", "response-quality"]),
+  }),
+  "route-incorrect": Object.freeze({
+    content: "Route selection requires intent validation before execution begins.",
+    category: "OPERATING_RULE",
+    tags: Object.freeze(["routing", "validation"]),
+  }),
+  "missing-evidence": Object.freeze({
+    content:
+      "Time-sensitive responses require evidence-backed verification before final delivery.",
+    category: "OPERATING_RULE",
+    tags: Object.freeze(["evidence", "verification"]),
+  }),
+  "clarification-needed": Object.freeze({
+    content:
+      "Ambiguous requests require clarification before an action or final response.",
+    category: "OPERATING_RULE",
+    tags: Object.freeze(["clarification", "safety"]),
+  }),
+  "capability-failed": Object.freeze({
+    content:
+      "Capability failures require a bounded fallback and diagnostic review.",
+    category: "OPERATING_RULE",
+    tags: Object.freeze(["capability", "fallback"]),
+  }),
+  "provider-failed": Object.freeze({
+    content:
+      "Provider failures require a bounded fallback without unverified claims.",
+    category: "OPERATING_RULE",
+    tags: Object.freeze(["provider", "fallback"]),
+  }),
+});
 
 const PERSONAL_OR_SECRET_PATTERNS = [
   /\b(?:i am|i'm|my|mine|me|we|our|username|user id|account id|email|phone|mobile|password|passcode|secret|token|bearer)\b/i,
@@ -66,6 +143,8 @@ function validateSourceText(rawSource) {
   if (
     source.length < MIN_SOURCE_CHARS ||
     source.length > MAX_SOURCE_CHARS ||
+    // The validation intentionally rejects ASCII control characters.
+    // eslint-disable-next-line no-control-regex
     /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(source) ||
     containsRejectedData(source)
   ) {
@@ -154,6 +233,55 @@ function deduplicationHash(candidate) {
     .digest("hex");
 }
 
+function validateReviewPattern(rawPattern) {
+  if (!rawPattern || typeof rawPattern !== "object") {
+    throw fail("LEARNING_PATTERN_INVALID");
+  }
+  const allowedKeys = [
+    "route",
+    "intent",
+    "confidence",
+    "evidenceRequired",
+    "reason",
+    "outcome",
+    "feedbackCode",
+  ];
+  if (
+    Object.keys(rawPattern).some((key) => !allowedKeys.includes(key)) ||
+    Object.keys(rawPattern).length !== allowedKeys.length
+  ) {
+    throw fail("LEARNING_PATTERN_INVALID");
+  }
+
+  const pattern = {
+    route: normalizeText(rawPattern.route),
+    intent: normalizeText(rawPattern.intent),
+    confidence: normalizeText(rawPattern.confidence),
+    evidenceRequired: rawPattern.evidenceRequired,
+    reason: normalizeText(rawPattern.reason),
+    outcome: normalizeText(rawPattern.outcome),
+    feedbackCode: normalizeText(rawPattern.feedbackCode),
+  };
+  if (
+    typeof pattern.evidenceRequired !== "boolean" ||
+    !REVIEW_PATTERN_VALUES.route.has(pattern.route) ||
+    !REVIEW_PATTERN_VALUES.intent.has(pattern.intent) ||
+    !REVIEW_PATTERN_VALUES.confidence.has(pattern.confidence) ||
+    !REVIEW_PATTERN_VALUES.reason.has(pattern.reason) ||
+    !REVIEW_PATTERN_VALUES.outcome.has(pattern.outcome) ||
+    !REVIEW_PATTERN_VALUES.feedbackCode.has(pattern.feedbackCode)
+  ) {
+    throw fail("LEARNING_PATTERN_INVALID");
+  }
+  return pattern;
+}
+
+function candidateForReviewPattern(pattern) {
+  const candidate = REVIEW_CANDIDATES[pattern.feedbackCode];
+  if (!candidate) throw fail("LEARNING_PATTERN_NOT_REVIEWABLE");
+  return validateCandidate({ ...candidate, tags: [...candidate.tags] });
+}
+
 class FoundationLearningService {
   constructor(options) {
     this.repository = options.repository;
@@ -174,6 +302,10 @@ class FoundationLearningService {
       throw fail("LEARNING_CANDIDATE_UNAVAILABLE");
     }
     const candidate = validateCandidate(generated, source);
+    return this.createApprovalPreview(candidate);
+  }
+
+  createApprovalPreview(candidate) {
     const expiresAt = this.clock() + APPROVAL_TTL_MS;
     const payload = Buffer.from(
       JSON.stringify({
@@ -191,6 +323,66 @@ class FoundationLearningService {
       approvalToken: `${payload}.${signature}`,
       expiresAt,
     };
+  }
+
+  async listReviewPatterns() {
+    if (
+      !this.eventRepository ||
+      typeof this.eventRepository.listReviewPatterns !== "function"
+    ) {
+      throw fail("LEARNING_EVENT_STORAGE_UNAVAILABLE");
+    }
+    try {
+      const patterns = await this.eventRepository.listReviewPatterns();
+      if (!Array.isArray(patterns)) throw new Error("invalid patterns");
+      return patterns.map((rawPattern) => {
+        const { occurrences, firstOccurredAt, lastOccurredAt, ...pattern } =
+          rawPattern || {};
+        const normalizedOccurrences = Number(occurrences);
+        if (
+          !Number.isSafeInteger(normalizedOccurrences) ||
+          normalizedOccurrences < 1 ||
+          typeof firstOccurredAt !== "string" ||
+          typeof lastOccurredAt !== "string"
+        ) {
+          throw new Error("invalid pattern summary");
+        }
+        return {
+          ...validateReviewPattern(pattern),
+          occurrences: normalizedOccurrences,
+          firstOccurredAt,
+          lastOccurredAt,
+        };
+      });
+    } catch (error) {
+      if (error?.code === "LEARNING_EVENT_STORAGE_UNAVAILABLE") throw error;
+      throw fail("LEARNING_EVENT_STORAGE_UNAVAILABLE");
+    }
+  }
+
+  async previewReviewPattern({ consent, pattern: rawPattern }) {
+    if (consent !== true) throw fail("LEARNING_CONSENT_REQUIRED");
+    const pattern = validateReviewPattern(rawPattern);
+    if (
+      !this.eventRepository ||
+      typeof this.eventRepository.hasReviewPattern !== "function"
+    ) {
+      throw fail("LEARNING_EVENT_STORAGE_UNAVAILABLE");
+    }
+    try {
+      if (!(await this.eventRepository.hasReviewPattern(pattern))) {
+        throw fail("LEARNING_PATTERN_NOT_FOUND");
+      }
+    } catch (error) {
+      if (
+        error?.code === "LEARNING_PATTERN_NOT_FOUND" ||
+        error?.code === "LEARNING_EVENT_STORAGE_UNAVAILABLE"
+      ) {
+        throw error;
+      }
+      throw fail("LEARNING_EVENT_STORAGE_UNAVAILABLE");
+    }
+    return this.createApprovalPreview(candidateForReviewPattern(pattern));
   }
 
   async approve({ consent, candidate: rawCandidate, approvalToken }) {
@@ -318,6 +510,7 @@ module.exports = {
   APPROVAL_TTL_MS,
   FoundationLearningService,
   deduplicationHash,
+  validateReviewPattern,
   validateCandidate,
   validateSourceText,
 };

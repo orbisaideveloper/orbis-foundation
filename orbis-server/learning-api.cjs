@@ -16,6 +16,7 @@ function statusFor(code) {
     return 503;
   }
   if (code === "LEARNING_RECORD_NOT_FOUND") return 404;
+  if (code === "LEARNING_PATTERN_NOT_FOUND") return 404;
   return 400;
 }
 
@@ -61,6 +62,27 @@ function createLearningRouter(options) {
     try {
       const result = await service.recordEventBatch(req.body);
       return res.status(result.accepted > 0 ? 202 : 200).json(result);
+    } catch (error) {
+      return sendLearningError(res, error);
+    }
+  });
+
+  router.get("/review-patterns", async (_req, res) => {
+    try {
+      return res.json({ patterns: await service.listReviewPatterns() });
+    } catch (error) {
+      return sendLearningError(res, error);
+    }
+  });
+
+  router.post("/review-patterns/preview", async (req, res) => {
+    try {
+      return res.json(
+        await service.previewReviewPattern({
+          consent: req.body?.consent,
+          pattern: req.body?.pattern,
+        }),
+      );
     } catch (error) {
       return sendLearningError(res, error);
     }

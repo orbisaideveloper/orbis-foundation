@@ -33,6 +33,14 @@ const LEARNING_EVENT = {
   feedbackCode: "missing-evidence",
 };
 
+const REVIEW_PATTERN = {
+  ...LEARNING_EVENT.decision,
+  outcome: LEARNING_EVENT.outcome,
+  feedbackCode: LEARNING_EVENT.feedbackCode,
+};
+const REVIEW_FIRST_OCCURRED_AT = LEARNING_EVENT.occurredAt;
+const REVIEW_LAST_OCCURRED_AT = "2026-08-30T12:00:00.000Z";
+
 function createRepository() {
   const records = new Map();
   return {
@@ -75,6 +83,24 @@ function createEventRepository() {
         records.set(event.deduplicationHash, saved);
         return { record: saved, duplicate: false };
       }),
+    ),
+    listReviewPatterns: vi.fn(async () => [
+      {
+        ...REVIEW_PATTERN,
+        occurrences: 2,
+        firstOccurredAt: REVIEW_FIRST_OCCURRED_AT,
+        lastOccurredAt: REVIEW_LAST_OCCURRED_AT,
+      },
+    ]),
+    hasReviewPattern: vi.fn(
+      async (pattern) =>
+        pattern.route === REVIEW_PATTERN.route &&
+        pattern.intent === REVIEW_PATTERN.intent &&
+        pattern.confidence === REVIEW_PATTERN.confidence &&
+        pattern.evidenceRequired === REVIEW_PATTERN.evidenceRequired &&
+        pattern.reason === REVIEW_PATTERN.reason &&
+        pattern.outcome === REVIEW_PATTERN.outcome &&
+        pattern.feedbackCode === REVIEW_PATTERN.feedbackCode,
     ),
   };
 }
@@ -241,5 +267,62 @@ describe("Admin-reviewed Foundation learning", () => {
       }),
     ).rejects.toMatchObject({ code: "LEARNING_EVENT_INVALID" });
     expect(eventRepository.createOrGetBatch).not.toHaveBeenCalled();
+  });
+
+  it("lets an Admin preview a deterministic safe rule from a review pattern without a provider call", async () => {
+    const { repository, eventRepository, service } = createService();
+    const providerCall = vi.spyOn(providerManager, "generateChat");
+
+    const patterns = await service.listReviewPatterns();
+    expect(patterns).toEqual([
+      {
+        ...REVIEW_PATTERN,
+        occurrences: 2,
+        firstOccurredAt: REVIEW_FIRST_OCCURRED_AT,
+        lastOccurredAt: REVIEW_LAST_OCCURRED_AT,
+      },
+    ]);
+
+    const preview = await service.previewReviewPattern({
+      consent: true,
+      pattern: REVIEW_PATTERN,
+    });
+    expect(preview.candidate).toEqual({
+      content:
+        "Time-sensitive responses require evidence-backed verification before final delivery.",
+      category: "OPERATING_RULE",
+      tags: ["evidence", "verification"],
+    });
+    expect(repository.createOrGet).not.toHaveBeenCalled();
+    expect(providerCall).not.toHaveBeenCalled();
+    expect(eventRepository.hasReviewPattern).toHaveBeenCalledWith(REVIEW_PATTERN);
+    expect(JSON.stringify(preview)).not.toContain("sourceText");
+
+    await service.approve({
+      consent: true,
+      candidate: preview.candidate,
+      approvalToken: preview.approvalToken,
+    });
+    expect(repository.createOrGet).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when an Admin attempts to preview a forged or stale pattern", async () => {
+    const { repository, eventRepository, service } = createService();
+
+    await expect(
+      service.previewReviewPattern({
+        consent: true,
+        pattern: { ...REVIEW_PATTERN, rawUserMessage: "private" },
+      }),
+    ).rejects.toMatchObject({ code: "LEARNING_PATTERN_INVALID" });
+    expect(eventRepository.hasReviewPattern).not.toHaveBeenCalled();
+
+    await expect(
+      service.previewReviewPattern({
+        consent: true,
+        pattern: { ...REVIEW_PATTERN, feedbackCode: "provider-failed" },
+      }),
+    ).rejects.toMatchObject({ code: "LEARNING_PATTERN_NOT_FOUND" });
+    expect(repository.createOrGet).not.toHaveBeenCalled();
   });
 });
