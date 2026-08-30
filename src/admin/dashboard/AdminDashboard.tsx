@@ -26,6 +26,7 @@ import { readAdminJson } from "../auth/adminFetch";
 import { FullscreenChatView } from "../../features/orbis-ai-chatbot/components/FullscreenChatView";
 import { BrainChatTestLog } from "../../features/orbis-ai-chatbot/components/BrainChatTestLog";
 import { LearningReviewPanel } from "./sections/LearningReviewPanel";
+import { ManagedProductModels } from "./sections/ManagedProductModels";
 
 type DashboardView =
   | "overview"
@@ -851,6 +852,7 @@ export function AdminDashboard({
           {!diagnosticExport && <p className="py-4 text-xs text-slate-400">Capability registry unavailable.</p>}
         </div>
       </section>
+      <ManagedProductModels previewMode={previewMode} />
     </div>
   );
 

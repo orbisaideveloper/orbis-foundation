@@ -107,3 +107,58 @@ model FoundationUserMemory {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// ==========================================
+// FOUNDATION PRODUCT MODEL REGISTRY
+// ==========================================
+//
+// Product configuration is intentionally separate from customer accounting
+// records. The Admin dashboard manages these definitions; a later public app
+// may resolve only the PUBLISHED version.
+model FoundationManagedProductModel {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  displayName String
+  category    String
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  versions FoundationManagedProductModelVersion[]
+  events   FoundationManagedProductModelEvent[]
+}
+
+model FoundationManagedProductModelVersion {
+  id          String    @id @default(uuid())
+  modelId     String
+  sequence    Int
+  lifecycle   String    @default("DRAFT")
+  definition  Json
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publishedAt DateTime?
+
+  model  FoundationManagedProductModel        @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  events FoundationManagedProductModelEvent[]
+
+  @@unique([modelId, sequence])
+  @@index([modelId, lifecycle])
+}
+
+// Audit events contain only release metadata. They never contain financial
+// entries, customer credentials, prompts, or AI replies.
+model FoundationManagedProductModelEvent {
+  id             String   @id @default(uuid())
+  modelId        String
+  modelVersionId String?
+  action         String
+  actorAdminId   String
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  model   FoundationManagedProductModel         @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  version FoundationManagedProductModelVersion? @relation(fields: [modelVersionId], references: [id], onDelete: SetNull)
+
+  @@index([modelId, createdAt])
+  @@index([modelVersionId])
+}

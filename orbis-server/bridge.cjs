@@ -42,6 +42,9 @@ const {
   createFoundationCapabilityRouter,
 } = require("./foundation-capability-api.cjs");
 const {
+  createAdminModelRegistryRouter,
+} = require("./admin-model-registry-api.cjs");
+const {
   getDiagnostics,
   addSystemLog,
   cleanupExpiredSystemLogs,
@@ -114,6 +117,10 @@ const telemetryAdapter = new PrismaPg(telemetryPool);
 const prisma = new PrismaClient({ adapter: telemetryAdapter });
 const foundationDataCapabilityOrchestrator =
   new FoundationDataCapabilityOrchestrator({ prisma });
+const adminModelRegistryRouter = createAdminModelRegistryRouter({
+  prisma,
+  authMiddleware: requireAuthenticatedAdmin,
+});
 
 prisma
   .$connect()
@@ -481,6 +488,10 @@ app.get(
     }
   },
 );
+
+// Product-model release records are Admin-only. This registry contains
+// configuration snapshots, never customer accounting rows or AI chat data.
+app.use("/api/admin/models", adminModelRegistryRouter);
 
 function getDirectoryTree(dirPath, indent = "", changedFiles = []) {
   let result = "";
