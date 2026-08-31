@@ -69,6 +69,10 @@ export interface LotteryAccountingClient {
   }) => Promise<LotteryOrganization>;
   createParty: (payload: Record<string, unknown>) => Promise<void>;
   updatePartyProfile: (payload: Record<string, unknown>) => Promise<void>;
+  updateOrganizationTdsRate: (payload: {
+    organizationId: string;
+    tdsRateBps: number;
+  }) => Promise<void>;
   createPeriod: (payload: Record<string, unknown>) => Promise<void>;
   createFinancialYearPeriod: (
     payload: Record<string, unknown>,
@@ -128,6 +132,9 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
       `/parties/${encodeURIComponent(partyId)}/profile`,
       payload,
     );
+  },
+  async updateOrganizationTdsRate(payload) {
+    await patchLottery("/settings/tds-rate", payload);
   },
   async createPeriod(payload) {
     await postLottery("/periods", payload);

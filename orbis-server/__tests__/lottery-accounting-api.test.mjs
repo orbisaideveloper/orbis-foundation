@@ -33,6 +33,7 @@ function serviceMock() {
     listOrganizations: vi.fn().mockResolvedValue([{ id: "org-1" }]),
     createParty: vi.fn().mockResolvedValue({ id: "party-1" }),
     updatePartyProfile: vi.fn().mockResolvedValue({ id: "party-1" }),
+    updateOrganizationTdsRate: vi.fn().mockResolvedValue({ id: "org-1" }),
     createPeriod: vi.fn().mockResolvedValue({ id: "period-1" }),
     createFinancialYearPeriod: vi.fn().mockResolvedValue({ id: "period-1" }),
     recordStockMovement: vi.fn().mockResolvedValue({ id: "stock-1" }),
@@ -113,6 +114,10 @@ describe("Lottery Accounting Admin API", () => {
       .send({ organizationId: "org-1" })
       .expect(200);
     await request(app)
+      .patch("/lottery/settings/tds-rate")
+      .send({ organizationId: "org-1", tdsRateBps: 200 })
+      .expect(200);
+    await request(app)
       .post("/lottery/periods")
       .send({ label: "Period" })
       .expect(201);
@@ -157,6 +162,7 @@ describe("Lottery Accounting Admin API", () => {
       service.createOrganization,
       service.createParty,
       service.updatePartyProfile,
+      service.updateOrganizationTdsRate,
       service.createPeriod,
       service.createFinancialYearPeriod,
       service.recordStockMovement,

@@ -157,6 +157,7 @@ model FoundationManagedProductModelVersion {
 model FoundationAccountingOrganization {
   id        String   @id @default(uuid())
   name      String
+  tdsRateBps Int      @default(200)
   status    String   @default("ACTIVE")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

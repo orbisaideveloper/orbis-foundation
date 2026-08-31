@@ -7,14 +7,13 @@ import {
   WalletCards,
 } from "lucide-react";
 import { DailySellerEntry } from "./DailySellerEntry";
+import { WorkspaceSectionTabs } from "./WorkspaceSectionTabs";
 import {
   lotteryAccountingClient,
   type LotteryAccountingClient,
 } from "../../models/lotteryAccountingClient";
 import {
   formatPaise,
-  formatPercentFromBasisPoints,
-  percentToBasisPoints,
   rupeesToPaise,
   sumPaise,
 } from "../../models/lotteryAccountingMoney";
@@ -87,8 +86,6 @@ function partyListLabel(party: LotteryWorkspace["parties"][number]) {
   return [
     identity,
     `${formatPaise(party.ticketRatePaise)} / ticket`,
-    `${formatPercentFromBasisPoints(party.commissionRateBps)} commission`,
-    `${formatPercentFromBasisPoints(party.tdsRateBps)} TDS`,
   ].join(" · ");
 }
 
@@ -396,21 +393,12 @@ export function LotteryAccountingWorkspace({
         </p>
       )}
 
-      <div
-        className="flex gap-2 overflow-x-auto pb-1"
-        aria-label="Accounting workspace sections"
-      >
-        {WORKSPACE_TABS.map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setTab(value)}
-            className={`shrink-0 rounded-xl px-3 py-2 text-[10px] font-bold ${tab === value ? "bg-emerald-600 text-white" : "border border-emerald-100 bg-white text-slate-600"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <WorkspaceSectionTabs
+        ariaLabel="Accounting workspace sections"
+        tabs={WORKSPACE_TABS}
+        activeTab={tab}
+        onSelect={setTab}
+      />
 
       {!selectedOrganization || !workspace ? (
         <SetupPanel
@@ -441,7 +429,7 @@ export function LotteryAccountingWorkspace({
                 runAction(
                   "party-profile",
                   () => api.updatePartyProfile(payload),
-                  "Party rate, commission and TDS profile updated.",
+                  "Seller fixed rate updated.",
                 )
               }
               onCreateFinancialYearPeriod={(payload) =>
@@ -492,6 +480,17 @@ export function LotteryAccountingWorkspace({
                   `daily-seller-correct-${saleId}`,
                   () => api.correctPostedSale(saleId, { organizationId }),
                   "Posted entry reversed safely; a replacement draft is ready to edit.",
+                )
+              }
+              onUpdateTdsRate={(tdsRateBps) =>
+                runAction(
+                  "global-tds-rate",
+                  () =>
+                    api.updateOrganizationTdsRate({
+                      organizationId,
+                      tdsRateBps,
+                    }),
+                  "Global TDS rate updated for new and draft seller entries.",
                 )
               }
             />
@@ -614,8 +613,6 @@ function SetupPanel({
   const [partyType, setPartyType] = useState<LotteryPartyType>("SELLER");
   const [phone, setPhone] = useState("");
   const [ticketRate, setTicketRate] = useState("");
-  const [commissionPercent, setCommissionPercent] = useState("0");
-  const [tdsPercent, setTdsPercent] = useState("0");
   const [profilePartyId, setProfilePartyId] = useState("");
   const [financialYearStart, setFinancialYearStart] = useState(
     String(currentFinancialYearStart()),
@@ -643,17 +640,9 @@ function SetupPanel({
       return;
     }
     const ticketRatePaise = rupeesToPaise(ticketRate);
-    const commissionRateBps = percentToBasisPoints(commissionPercent);
-    const tdsRateBps = percentToBasisPoints(tdsPercent);
-    if (
-      partyType === "SELLER" &&
-      (!ticketRatePaise ||
-        ticketRatePaise === "0" ||
-        !commissionRateBps ||
-        !tdsRateBps)
-    ) {
+    if (partyType === "SELLER" && (!ticketRatePaise || ticketRatePaise === "0")) {
       setLocalError(
-        "Seller needs a fixed ticket rate, commission percentage and TDS percentage.",
+        "Seller needs a fixed ticket rate.",
       );
       return;
     }
@@ -665,15 +654,13 @@ function SetupPanel({
         partyType,
         phone: phone.trim() || undefined,
         ...(partyType === "SELLER"
-          ? { ticketRatePaise, commissionRateBps, tdsRateBps }
+          ? { ticketRatePaise }
           : {}),
       })
     ) {
       setPartyName("");
       setPhone("");
       setTicketRate("");
-      setCommissionPercent("0");
-      setTdsPercent("0");
     }
   };
 
@@ -695,17 +682,9 @@ function SetupPanel({
   ) => {
     event.preventDefault();
     const ticketRatePaise = rupeesToPaise(ticketRate);
-    const commissionRateBps = percentToBasisPoints(commissionPercent);
-    const tdsRateBps = percentToBasisPoints(tdsPercent);
-    if (
-      !profilePartyId ||
-      !ticketRatePaise ||
-      ticketRatePaise === "0" ||
-      !commissionRateBps ||
-      !tdsRateBps
-    ) {
+    if (!profilePartyId || !ticketRatePaise || ticketRatePaise === "0") {
       setLocalError(
-        "Select a party and enter its rate, commission percentage and TDS percentage.",
+        "Select a seller and enter its fixed rate.",
       );
       return;
     }
@@ -714,8 +693,6 @@ function SetupPanel({
       organizationId,
       partyId: profilePartyId,
       ticketRatePaise,
-      commissionRateBps,
-      tdsRateBps,
     });
   };
 
@@ -813,30 +790,6 @@ function SetupPanel({
                         className={CONTROL_CLASS}
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="lottery-party-commission">
-                        Commission (%)
-                      </Label>
-                      <input
-                        id="lottery-party-commission"
-                        inputMode="decimal"
-                        value={commissionPercent}
-                        onChange={(event) =>
-                          setCommissionPercent(event.target.value)
-                        }
-                        className={CONTROL_CLASS}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="lottery-party-tds">TDS (%)</Label>
-                      <input
-                        id="lottery-party-tds"
-                        inputMode="decimal"
-                        value={tdsPercent}
-                        onChange={(event) => setTdsPercent(event.target.value)}
-                        className={CONTROL_CLASS}
-                      />
-                    </div>
                   </>
                 )}
               </div>
@@ -850,7 +803,7 @@ function SetupPanel({
             />
           </WorkspaceCard>
 
-          <WorkspaceCard title="Update a seller pricing profile">
+          <WorkspaceCard title="Update a seller fixed rate">
             <form
               className="space-y-3"
               onSubmit={(event) => void submitPartyProfile(event)}
@@ -867,10 +820,6 @@ function SetupPanel({
                     setProfilePartyId(event.target.value);
                     if (party) {
                       setTicketRate(paiseToRupeesInput(party.ticketRatePaise));
-                      setCommissionPercent(
-                        (party.commissionRateBps / 100).toFixed(2),
-                      );
-                      setTdsPercent((party.tdsRateBps / 100).toFixed(2));
                     }
                   }}
                   className={CONTROL_CLASS}
@@ -885,7 +834,7 @@ function SetupPanel({
                     ))}
                 </select>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2">
                 <div>
                   <Label htmlFor="lottery-profile-ticket-rate">Rate (₹)</Label>
                   <input
@@ -896,37 +845,13 @@ function SetupPanel({
                     className={CONTROL_CLASS}
                   />
                 </div>
-                <div>
-                  <Label htmlFor="lottery-profile-commission">
-                    Commission (%)
-                  </Label>
-                  <input
-                    id="lottery-profile-commission"
-                    inputMode="decimal"
-                    value={commissionPercent}
-                    onChange={(event) =>
-                      setCommissionPercent(event.target.value)
-                    }
-                    className={CONTROL_CLASS}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="lottery-profile-tds">TDS (%)</Label>
-                  <input
-                    id="lottery-profile-tds"
-                    inputMode="decimal"
-                    value={tdsPercent}
-                    onChange={(event) => setTdsPercent(event.target.value)}
-                    className={CONTROL_CLASS}
-                  />
-                </div>
               </div>
               <p className="text-[9px] leading-relaxed text-slate-500">
-                TDS is calculated only on the commission. The party payable is
-                gross amount − commission + TDS withheld from commission.
+                Commission is entered on each sale. TDS is controlled once from
+                the Daily sellers screen for every seller in this workspace.
               </p>
               <SubmitButton busy={workingAction === "party-profile"}>
-                Save pricing profile
+                Save fixed rate
               </SubmitButton>
             </form>
           </WorkspaceCard>
@@ -1138,17 +1063,19 @@ function StockForm({
   );
 }
 
+type AccountingFormProps = {
+  organizationId: string;
+  workspace: LotteryWorkspace;
+  busy: boolean;
+  onSubmit: (payload: Record<string, unknown>) => Promise<boolean>;
+};
+
 function PaymentForm({
   organizationId,
   workspace,
   busy,
   onSubmit,
-}: Readonly<{
-  organizationId: string;
-  workspace: LotteryWorkspace;
-  busy: boolean;
-  onSubmit: (payload: Record<string, unknown>) => Promise<boolean>;
-}>) {
+}: Readonly<AccountingFormProps>) {
   const [partyId, setPartyId] = useState("");
   const [periodId, setPeriodId] = useState("");
   const [direction, setDirection] = useState("RECEIPT");
@@ -1309,12 +1236,7 @@ function SettlementForm({
   workspace,
   busy,
   onSubmit,
-}: Readonly<{
-  organizationId: string;
-  workspace: LotteryWorkspace;
-  busy: boolean;
-  onSubmit: (payload: Record<string, unknown>) => Promise<boolean>;
-}>) {
+}: Readonly<AccountingFormProps>) {
   const [saleId, setSaleId] = useState("");
   const [paymentId, setPaymentId] = useState("");
   const [amount, setAmount] = useState("");

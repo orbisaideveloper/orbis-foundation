@@ -9,9 +9,16 @@ const {
 } = require("../lottery-accounting-service.cjs");
 
 function createPrismaMock() {
-  let id = 1;
+  let id = 2;
   const state = {
-    organizations: [],
+    organizations: [
+      {
+        id: "org-1",
+        name: "Demo Lottery",
+        status: "ACTIVE",
+        tdsRateBps: 200,
+      },
+    ],
     parties: [
       {
         id: "party-1",
@@ -20,7 +27,7 @@ function createPrismaMock() {
         partyType: "SELLER",
         ticketRatePaise: 1_000n,
         commissionRateBps: 500,
-        tdsRateBps: 1_000,
+        tdsRateBps: 0,
       },
     ],
     periods: [],
@@ -58,6 +65,11 @@ function createPrismaMock() {
         state.organizations.find((row) => within(row, where)) || null,
       findMany: async ({ where = {} }) =>
         state.organizations.filter((row) => within(row, where)),
+      update: async ({ where, data }) => {
+        const row = state.organizations.find((item) => item.id === where.id);
+        Object.assign(row, data);
+        return row;
+      },
     },
     foundationAccountingParty: {
       findFirst: async ({ where }) =>
@@ -198,6 +210,7 @@ const sale = {
   morningReturnQuantity: 5,
   dayReturnQuantity: 10,
   eveningReturnQuantity: 5,
+  commissionPaise: 4_000,
 };
 
 describe("Lottery Accounting Service", () => {
@@ -263,7 +276,7 @@ describe("Lottery Accounting Service", () => {
     ).rejects.toMatchObject({ code: "INVALID_PERIOD_RANGE" });
   });
 
-  it("posts a profile-calculated timed-return sale, stock rows and balanced ledger", async () => {
+  it("posts an entry-commission timed-return sale, stock rows and balanced ledger", async () => {
     const prisma = createPrismaMock();
     const service = createLotteryAccountingService({
       prisma,
@@ -280,7 +293,7 @@ describe("Lottery Accounting Service", () => {
       dayReturnQuantity: "10",
       eveningReturnQuantity: "5",
       returnQuantity: "20",
-      netPayablePaise: "76400",
+      netPayablePaise: "76080",
     });
     expect(result.ledger).toHaveLength(4);
     expect(prisma.state.sales).toHaveLength(1);
@@ -294,6 +307,30 @@ describe("Lottery Accounting Service", () => {
     await expect(
       service.recordSale({ ...sale, partyId: "missing" }, "admin-1"),
     ).rejects.toMatchObject({ code: "PARTY_NOT_FOUND" });
+  });
+
+  it("uses one editable organization TDS rate for every new seller entry", async () => {
+    const prisma = createPrismaMock();
+    const service = createLotteryAccountingService({ prisma });
+    await service.updateOrganizationTdsRate(
+      { organizationId: "org-1", tdsRateBps: 500 },
+      "admin-1",
+    );
+    const result = await service.previewSale(sale);
+    expect(result.calculated).toMatchObject({
+      commissionPaise: "4000",
+      tdsRateBps: "500",
+      tdsPaise: "200",
+      netPayablePaise: "76200",
+    });
+    expect(prisma.state.parties[0]).toMatchObject({
+      commissionRateBps: 500,
+      tdsRateBps: 0,
+    });
+    expect(prisma.state.audits.at(-1)).toMatchObject({
+      eventType: "GLOBAL_TDS_RATE_UPDATED",
+      metadata: { tdsRateBps: 500 },
+    });
   });
 
   it("keeps seller rows editable only as drafts, then posts or corrects them safely", async () => {
@@ -314,9 +351,7 @@ describe("Lottery Accounting Service", () => {
         morningReturnQuantity: 10,
         dayReturnQuantity: 20,
         eveningReturnQuantity: 5,
-        ticketRatePaise: 1,
-        commissionRateBps: 1,
-        tdsRateBps: 1,
+        commissionPaise: 4_000,
       },
       "admin-1",
     );
@@ -324,10 +359,10 @@ describe("Lottery Accounting Service", () => {
       reference: "SAL-FY26-27-0001",
       status: "DRAFT",
       ticketRatePaise: "1000",
-      commissionRateBps: 500,
-      tdsRateBps: 1000,
+      commissionRateBps: 0,
+      tdsRateBps: 200,
       returnQuantity: 35,
-      netPayablePaise: "62075",
+      netPayablePaise: "61080",
     });
     const updated = await service.updateDailySellerDraft(
       {
@@ -338,13 +373,14 @@ describe("Lottery Accounting Service", () => {
         morningReturnQuantity: 10,
         dayReturnQuantity: 10,
         eveningReturnQuantity: 5,
+        commissionPaise: 4_000,
       },
       "admin-1",
     );
     expect(updated.calculated).toMatchObject({
       returnQuantity: "25",
       netTickets: "75",
-      netPayablePaise: "71625",
+      netPayablePaise: "71080",
     });
     const posted = await service.postDailySellerDraft(
       { organizationId: "org-1", saleId: saved.sale.id },
@@ -502,7 +538,7 @@ describe("Lottery Accounting Service", () => {
     const result = await service.analyzeVerifiedAccounting({
       organizationId: "org-1",
     });
-    expect(result.summary.outstandingPaise).toBe("26400");
+    expect(result.summary.outstandingPaise).toBe("26080");
     expect(result.insights).toHaveLength(4);
 
     prisma.state.sales[0].grossSalesPaise = 1n;
@@ -574,13 +610,13 @@ describe("Lottery Accounting Service", () => {
       organizationId: organization.id,
     });
 
-    expect(preview.calculated.netPayablePaise).toBe("76400");
+    expect(preview.calculated.netPayablePaise).toBe("76080");
     expect(preview.ledger).toHaveLength(4);
     expect(workspace.organization.name).toBe("Demo Lottery");
     expect(workspace.sales[0]).toMatchObject({
       partyName: "Seller A",
       settledPaise: "40000",
-      outstandingPaise: "36400",
+      outstandingPaise: "36080",
     });
     expect(workspace.payments[0].availablePaise).toBe("10000");
     expect(workspace.ledgerEntries).toHaveLength(6);

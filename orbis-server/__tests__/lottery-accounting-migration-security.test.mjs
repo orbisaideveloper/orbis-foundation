@@ -11,6 +11,13 @@ const migration = fs.readFileSync(
   "utf8",
 );
 
+const globalTdsMigration = fs.readFileSync(
+  path.resolve(
+    "prisma/migrations/20260831010000_add_global_lottery_tds_rate/migration.sql",
+  ),
+  "utf8",
+);
+
 const TABLES = [
   "FoundationAccountingOrganization",
   "FoundationAccountingParty",
@@ -65,5 +72,16 @@ describe("Lottery Accounting migration security", () => {
     expect(migration).toContain('ADD COLUMN "reviewedByAdminId" TEXT');
     expect(migration.trim().startsWith("BEGIN;")).toBe(true);
     expect(migration.trim().endsWith("COMMIT;")).toBe(true);
+  });
+
+  it("keeps one organization-level TDS rate for every seller", () => {
+    expect(globalTdsMigration).toContain(
+      'ADD COLUMN "tdsRateBps" INTEGER NOT NULL DEFAULT 200',
+    );
+    expect(globalTdsMigration).toContain(
+      '"FoundationAccountingOrganization_tds_rate_check"',
+    );
+    expect(globalTdsMigration.trim().startsWith("BEGIN;")).toBe(true);
+    expect(globalTdsMigration.trim().endsWith("COMMIT;")).toBe(true);
   });
 });

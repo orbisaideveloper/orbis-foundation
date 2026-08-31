@@ -11,6 +11,8 @@ import {
 import {
   formatPaise,
   formatPercentFromBasisPoints,
+  percentToBasisPoints,
+  rupeesToPaise,
 } from "../../models/lotteryAccountingMoney";
 import type {
   LotteryDraftSale,
@@ -30,6 +32,7 @@ type DailySellerRow = {
   morningReturnQuantity: string;
   dayReturnQuantity: string;
   eveningReturnQuantity: string;
+  commissionRupees: string;
 };
 
 type SaleLike = LotterySale | LotteryDraftSale;
@@ -70,6 +73,7 @@ function rowFromSale(sale: SaleLike): DailySellerRow {
     morningReturnQuantity: String(sale.morningReturnQuantity),
     dayReturnQuantity: String(sale.dayReturnQuantity),
     eveningReturnQuantity: String(sale.eveningReturnQuantity),
+    commissionRupees: paiseToRupeesInput(sale.commissionPaise),
   };
 }
 
@@ -80,14 +84,24 @@ function blankRow(partyId: string): DailySellerRow {
     morningReturnQuantity: "0",
     dayReturnQuantity: "0",
     eveningReturnQuantity: "0",
+    commissionRupees: "0",
   };
+}
+
+function paiseToRupeesInput(value: string) {
+  const paise = BigInt(value);
+  return `${paise / 100n}.${(paise % 100n).toString().padStart(2, "0")}`;
 }
 
 function roundedBasisPoints(amount: bigint, rateBps: number) {
   return (amount * BigInt(rateBps) + 5_000n) / 10_000n;
 }
 
-function calculateRow(row: DailySellerRow, party: LotteryParty) {
+function calculateRow(
+  row: DailySellerRow,
+  party: LotteryParty,
+  tdsRateBps: number,
+) {
   const dispatch = naturalNumber(row.dispatchQuantity);
   const morningReturn = naturalNumber(row.morningReturnQuantity);
   const dayReturn = naturalNumber(row.dayReturnQuantity);
@@ -97,9 +111,14 @@ function calculateRow(row: DailySellerRow, party: LotteryParty) {
   const netSale = hasInvalidReturn ? 0n : dispatch - totalReturn;
   const rate = BigInt(party.ticketRatePaise || "0");
   const grossAmount = netSale * rate;
-  const commission = roundedBasisPoints(grossAmount, party.commissionRateBps);
-  const tds = roundedBasisPoints(commission, party.tdsRateBps);
-  const partyPayable = grossAmount - commission + tds;
+  const commission = BigInt(rupeesToPaise(row.commissionRupees) || "0");
+  const hasInvalidCommission = commission > grossAmount;
+  const tds = hasInvalidCommission
+    ? 0n
+    : roundedBasisPoints(commission, tdsRateBps);
+  const partyPayable = hasInvalidCommission
+    ? 0n
+    : grossAmount - commission + tds;
   return {
     dispatch,
     morningReturn,
@@ -112,6 +131,7 @@ function calculateRow(row: DailySellerRow, party: LotteryParty) {
     tds,
     partyPayable,
     hasInvalidReturn,
+    hasInvalidCommission,
   };
 }
 
@@ -289,6 +309,7 @@ export interface DailySellerEntryProps {
   onPostDraft: (saleId: string) => Promise<boolean>;
   onDeleteDraft: (saleId: string) => Promise<boolean>;
   onCorrectPosted: (saleId: string) => Promise<boolean>;
+  onUpdateTdsRate: (tdsRateBps: number) => Promise<boolean>;
 }
 
 export function DailySellerEntry({
@@ -300,10 +321,15 @@ export function DailySellerEntry({
   onPostDraft,
   onDeleteDraft,
   onCorrectPosted,
+  onUpdateTdsRate,
 }: Readonly<DailySellerEntryProps>) {
   const [viewMode, setViewMode] = useState<DailyViewMode>("table");
   const [selectedDate, setSelectedDate] = useState(todayInputValue());
   const [periodId, setPeriodId] = useState("");
+  const globalTdsRateBps = workspace.organization.tdsRateBps ?? 200;
+  const [tdsPercent, setTdsPercent] = useState(
+    (globalTdsRateBps / 100).toFixed(2),
+  );
   const sellers = useMemo(
     () => workspace.parties.filter((party) => party.partyType === "SELLER"),
     [workspace.parties],
@@ -318,6 +344,10 @@ export function DailySellerEntry({
         : workspace.periods[0]?.id || "",
     );
   }, [workspace.periods]);
+
+  useEffect(() => {
+    setTdsPercent((globalTdsRateBps / 100).toFixed(2));
+  }, [globalTdsRateBps]);
 
   useEffect(() => {
     setRows(
@@ -357,7 +387,11 @@ export function DailySellerEntry({
   };
 
   const entryPayload = (party: LotteryParty, row: DailySellerRow) => {
-    const calculation = calculateRow(row, party);
+    const calculation = calculateRow(
+      row,
+      party,
+      globalTdsRateBps,
+    );
     if (!/^\d+$/.test(row.dispatchQuantity) || calculation.dispatch === 0n) {
       throw new Error("Enter a dispatch quantity before saving this seller.");
     }
@@ -369,6 +403,16 @@ export function DailySellerEntry({
     ) {
       throw new Error(
         "Morning, day and evening returns must be whole numbers within dispatch.",
+      );
+    }
+    const commissionPaise = rupeesToPaise(row.commissionRupees);
+    if (
+      !commissionPaise ||
+      row.commissionRupees.trim() === "" ||
+      calculation.hasInvalidCommission
+    ) {
+      throw new Error(
+        "Enter a commission amount that is not greater than the net amount.",
       );
     }
     if (!periodId) {
@@ -388,6 +432,7 @@ export function DailySellerEntry({
       morningReturnQuantity: row.morningReturnQuantity,
       dayReturnQuantity: row.dayReturnQuantity,
       eveningReturnQuantity: row.eveningReturnQuantity,
+      commissionPaise,
     };
   };
 
@@ -412,6 +457,27 @@ export function DailySellerEntry({
     setLocalError(null);
     await action();
   };
+  const saveGlobalTdsRate = async () => {
+    const tdsRateBps = percentToBasisPoints(tdsPercent);
+    if (tdsRateBps === null) {
+      setLocalError("Enter a global TDS percentage from 0.00 to 100.00.");
+      return;
+    }
+    setLocalError(null);
+    await onUpdateTdsRate(Number(tdsRateBps));
+  };
+  const sellerViewProps = {
+    sellers,
+    rows,
+    busy,
+    onChange: updateRow,
+    onSave: saveRow,
+    onPost: (saleId: string) => runRowAction(() => onPostDraft(saleId)),
+    onDelete: (saleId: string) => runRowAction(() => onDeleteDraft(saleId)),
+    onCorrect: (saleId: string) =>
+      runRowAction(() => onCorrectPosted(saleId)),
+    tdsRateBps: globalTdsRateBps,
+  };
 
   if (!sellers.length) {
     return (
@@ -420,8 +486,8 @@ export function DailySellerEntry({
           Daily seller entry
         </h4>
         <p className="mt-2 rounded-xl border border-dashed border-emerald-200 bg-emerald-50/50 p-3 text-[10px] leading-relaxed text-slate-600">
-          Add a <strong>Seller</strong> in Setup with its fixed ticket rate,
-          commission and TDS profile before entering the daily table.
+          Add a <strong>Seller</strong> in Setup with its fixed ticket rate
+          before entering the daily table.
         </p>
       </section>
     );
@@ -439,8 +505,9 @@ export function DailySellerEntry({
               Daily seller entry
             </h4>
             <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-              Rate, commission and TDS come only from each party profile. Bill
-              reference is created by the server when a draft is saved.
+              Rate comes from the seller profile. Enter commission in each sale
+              row; one global TDS rate applies to every seller. Bill reference
+              is created by the server when a draft is saved.
             </p>
           </div>
           <span className="rounded-xl bg-emerald-600 p-2.5 text-white">
@@ -448,7 +515,7 @@ export function DailySellerEntry({
           </span>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label>
             <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">
               Entry date for all sellers
@@ -463,6 +530,23 @@ export function DailySellerEntry({
           </label>
           <label>
             <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">
+              Global TDS on commission (%)
+            </span>
+            <div className="flex gap-2">
+              <input
+                aria-label="Global TDS percentage"
+                inputMode="decimal"
+                value={tdsPercent}
+                onChange={(event) => setTdsPercent(event.target.value)}
+                className={CONTROL_CLASS}
+              />
+              <ActionButton disabled={busy} onClick={() => void saveGlobalTdsRate()}>
+                Save TDS
+              </ActionButton>
+            </div>
+          </label>
+          <label>
+            <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">
               Financial year
             </span>
             <select
@@ -472,18 +556,19 @@ export function DailySellerEntry({
               className={CONTROL_CLASS}
             >
               <option value="">Select financial year</option>
-              {workspace.periods.map((period) => (
-                <option key={period.id} value={period.id}>
-                  {period.label}
+              {workspace.periods.map(({ id, label }) => (
+                <option key={id} value={id}>
+                  {label}
                 </option>
               ))}
             </select>
           </label>
         </div>
         <p className="mt-2 text-[9px] text-slate-500">
-          {dateCaption(selectedDate)} · Draft can be edited or deleted. Posted
-          entries remain auditable; <strong>Correct</strong> reverses safely and
-          opens a replacement draft.
+          {dateCaption(selectedDate)} · Global TDS is currently{" "}
+          <strong>{formatPercentFromBasisPoints(globalTdsRateBps)}</strong>.
+          Draft can be edited or deleted. Posted entries keep their saved TDS
+          snapshot; <strong>Correct</strong> reverses safely and opens a replacement draft.
         </p>
       </header>
 
@@ -515,27 +600,9 @@ export function DailySellerEntry({
       )}
 
       {viewMode === "table" ? (
-        <DailySellerTable
-          sellers={sellers}
-          rows={rows}
-          busy={busy}
-          onChange={updateRow}
-          onSave={saveRow}
-          onPost={(saleId) => runRowAction(() => onPostDraft(saleId))}
-          onDelete={(saleId) => runRowAction(() => onDeleteDraft(saleId))}
-          onCorrect={(saleId) => runRowAction(() => onCorrectPosted(saleId))}
-        />
+        <DailySellerTable {...sellerViewProps} />
       ) : (
-        <DailySellerGrid
-          sellers={sellers}
-          rows={rows}
-          busy={busy}
-          onChange={updateRow}
-          onSave={saveRow}
-          onPost={(saleId) => runRowAction(() => onPostDraft(saleId))}
-          onDelete={(saleId) => runRowAction(() => onDeleteDraft(saleId))}
-          onCorrect={(saleId) => runRowAction(() => onCorrectPosted(saleId))}
-        />
+        <DailySellerGrid {...sellerViewProps} />
       )}
 
       <DailyTotals
@@ -551,6 +618,7 @@ interface SellerRowsProps {
   sellers: LotteryParty[];
   rows: Record<string, DailySellerRow>;
   busy: boolean;
+  tdsRateBps: number;
   onChange: (
     partyId: string,
     field: keyof DailySellerRow,
@@ -562,6 +630,28 @@ interface SellerRowsProps {
   onCorrect: (saleId: string) => Promise<void>;
 }
 
+type SellerActionProps = Pick<
+  SellerRowsProps,
+  "busy" | "onSave" | "onPost" | "onDelete" | "onCorrect"
+> & {
+  party: LotteryParty;
+  row: DailySellerRow;
+};
+
+type SellerQuantityProps = {
+  party: LotteryParty;
+  row: DailySellerRow;
+  field: keyof Pick<
+    DailySellerRow,
+    | "dispatchQuantity"
+    | "morningReturnQuantity"
+    | "dayReturnQuantity"
+    | "eveningReturnQuantity"
+  >;
+  label: string;
+  onChange: SellerRowsProps["onChange"];
+};
+
 function SellerActionCell({
   party,
   row,
@@ -570,15 +660,7 @@ function SellerActionCell({
   onPost,
   onDelete,
   onCorrect,
-}: Readonly<{
-  party: LotteryParty;
-  row: DailySellerRow;
-  busy: boolean;
-  onSave: (party: LotteryParty) => Promise<void>;
-  onPost: (saleId: string) => Promise<void>;
-  onDelete: (saleId: string) => Promise<void>;
-  onCorrect: (saleId: string) => Promise<void>;
-}>) {
+}: Readonly<SellerActionProps>) {
   if (row.status === "POSTED" && row.saleId) {
     return (
       <div className="flex flex-wrap gap-1">
@@ -631,6 +713,7 @@ function DailySellerTable({
   sellers,
   rows,
   busy,
+  tdsRateBps,
   onChange,
   onSave,
   onPost,
@@ -644,48 +727,52 @@ function DailySellerTable({
   const totals = {
     dispatch: sumValues(
       rowCalculations.map(
-        ({ party, row }) => calculateRow(row, party).dispatch,
+        ({ party, row }) => calculateRow(row, party, tdsRateBps).dispatch,
       ),
     ),
     morningReturn: sumValues(
       rowCalculations.map(
-        ({ party, row }) => calculateRow(row, party).morningReturn,
+        ({ party, row }) => calculateRow(row, party, tdsRateBps).morningReturn,
       ),
     ),
     dayReturn: sumValues(
       rowCalculations.map(
-        ({ party, row }) => calculateRow(row, party).dayReturn,
+        ({ party, row }) => calculateRow(row, party, tdsRateBps).dayReturn,
       ),
     ),
     eveningReturn: sumValues(
       rowCalculations.map(
-        ({ party, row }) => calculateRow(row, party).eveningReturn,
+        ({ party, row }) => calculateRow(row, party, tdsRateBps).eveningReturn,
       ),
     ),
     totalReturn: sumValues(
       rowCalculations.map(
-        ({ party, row }) => calculateRow(row, party).totalReturn,
+        ({ party, row }) => calculateRow(row, party, tdsRateBps).totalReturn,
       ),
     ),
     netSale: sumValues(
-      rowCalculations.map(({ party, row }) => calculateRow(row, party).netSale),
+      rowCalculations.map(({ party, row }) =>
+        calculateRow(row, party, tdsRateBps).netSale,
+      ),
     ),
     grossAmount: sumValues(
       rowCalculations.map(
-        ({ party, row }) => calculateRow(row, party).grossAmount,
+        ({ party, row }) => calculateRow(row, party, tdsRateBps).grossAmount,
       ),
     ),
     commission: sumValues(
       rowCalculations.map(
-        ({ party, row }) => calculateRow(row, party).commission,
+        ({ party, row }) => calculateRow(row, party, tdsRateBps).commission,
       ),
     ),
     tds: sumValues(
-      rowCalculations.map(({ party, row }) => calculateRow(row, party).tds),
+      rowCalculations.map(({ party, row }) =>
+        calculateRow(row, party, tdsRateBps).tds,
+      ),
     ),
     partyPayable: sumValues(
       rowCalculations.map(
-        ({ party, row }) => calculateRow(row, party).partyPayable,
+        ({ party, row }) => calculateRow(row, party, tdsRateBps).partyPayable,
       ),
     ),
   };
@@ -726,7 +813,7 @@ function DailySellerTable({
           </thead>
           <tbody>
             {rowCalculations.map(({ party, row }) => {
-              const calculation = calculateRow(row, party);
+              const calculation = calculateRow(row, party, tdsRateBps);
               return (
                 <tr
                   key={party.id}
@@ -735,9 +822,8 @@ function DailySellerTable({
                   <td className="min-w-[150px] px-2 py-2">
                     <p className="font-black text-slate-900">{party.name}</p>
                     <p className="mt-1 text-[8px] text-slate-500">
-                      {formatPaise(party.ticketRatePaise)} / ticket · Commission{" "}
-                      {formatPercentFromBasisPoints(party.commissionRateBps)} ·
-                      TDS {formatPercentFromBasisPoints(party.tdsRateBps)}
+                      Fixed rate {formatPaise(party.ticketRatePaise)} / ticket · Global TDS{" "}
+                      {formatPercentFromBasisPoints(tdsRateBps)}
                     </p>
                   </td>
                   <QuantityCell
@@ -774,7 +860,12 @@ function DailySellerTable({
                   />
                   <AmountCell value={calculation.netSale.toString()} />
                   <AmountCell value={formatPaise(calculation.grossAmount)} />
-                  <AmountCell value={formatPaise(calculation.commission)} />
+                  <CommissionCell
+                    party={party}
+                    row={row}
+                    onChange={onChange}
+                    invalid={calculation.hasInvalidCommission}
+                  />
                   <AmountCell value={formatPaise(calculation.tds)} />
                   <AmountCell value={formatPaise(calculation.partyPayable)} />
                   <td className="min-w-[180px] px-2 py-2">
@@ -823,28 +914,15 @@ function QuantityCell({
   field,
   label,
   onChange,
-}: Readonly<{
-  party: LotteryParty;
-  row: DailySellerRow;
-  field: keyof Pick<
-    DailySellerRow,
-    | "dispatchQuantity"
-    | "morningReturnQuantity"
-    | "dayReturnQuantity"
-    | "eveningReturnQuantity"
-  >;
-  label: string;
-  onChange: SellerRowsProps["onChange"];
-}>) {
+}: Readonly<SellerQuantityProps>) {
   return (
     <td className="min-w-[112px] px-2 py-2">
-      <input
-        aria-label={`${party.name} ${label}`}
-        inputMode="numeric"
-        value={row[field]}
-        disabled={row.status === "POSTED"}
-        onChange={(event) => onChange(party.id, field, event.target.value)}
-        className={CONTROL_CLASS}
+      <SellerQuantityInput
+        party={party}
+        row={row}
+        field={field}
+        label={label}
+        onChange={onChange}
       />
     </td>
   );
@@ -863,10 +941,55 @@ function AmountCell({
   );
 }
 
+function SellerCommissionInput({
+  party,
+  row,
+  onChange,
+}: Readonly<{
+  party: LotteryParty;
+  row: DailySellerRow;
+  onChange: SellerRowsProps["onChange"];
+}>) {
+  return (
+    <input
+      aria-label={`${party.name} commission amount`}
+      inputMode="decimal"
+      value={row.commissionRupees}
+      disabled={row.status === "POSTED"}
+      onChange={(event) =>
+        onChange(party.id, "commissionRupees", event.target.value)
+      }
+      className={CONTROL_CLASS}
+    />
+  );
+}
+
+function CommissionCell({
+  party,
+  row,
+  onChange,
+  invalid,
+}: Readonly<{
+  party: LotteryParty;
+  row: DailySellerRow;
+  onChange: SellerRowsProps["onChange"];
+  invalid: boolean;
+}>) {
+  return (
+    <td className="min-w-[112px] px-2 py-2">
+      <SellerCommissionInput party={party} row={row} onChange={onChange} />
+      {invalid && (
+        <p className="mt-1 text-[8px] font-bold text-orange-700">Too high</p>
+      )}
+    </td>
+  );
+}
+
 function DailySellerGrid({
   sellers,
   rows,
   busy,
+  tdsRateBps,
   onChange,
   onSave,
   onPost,
@@ -877,7 +1000,7 @@ function DailySellerGrid({
     <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
       {sellers.map((party) => {
         const row = rows[party.id] || blankRow(party.id);
-        const calculation = calculateRow(row, party);
+        const calculation = calculateRow(row, party, tdsRateBps);
         return (
           <article
             key={party.id}
@@ -889,9 +1012,8 @@ function DailySellerGrid({
                   {party.name}
                 </h5>
                 <p className="mt-1 text-[9px] leading-relaxed text-slate-500">
-                  Fixed rate {formatPaise(party.ticketRatePaise)} · Commission{" "}
-                  {formatPercentFromBasisPoints(party.commissionRateBps)} · TDS
-                  on commission {formatPercentFromBasisPoints(party.tdsRateBps)}
+                  Fixed rate {formatPaise(party.ticketRatePaise)} · Global TDS{" "}
+                  {formatPercentFromBasisPoints(tdsRateBps)} on commission
                 </p>
               </div>
               <span className="rounded-lg bg-emerald-50 px-2 py-1 text-[8px] font-bold text-emerald-800">
@@ -905,6 +1027,12 @@ function DailySellerGrid({
                 field="dispatchQuantity"
                 label="Dispatch"
                 onChange={onChange}
+              />
+              <GridCommission
+                party={party}
+                row={row}
+                onChange={onChange}
+                invalid={calculation.hasInvalidCommission}
               />
               <GridQuantity
                 party={party}
@@ -979,33 +1107,65 @@ function GridQuantity({
   field,
   label,
   onChange,
-}: Readonly<{
-  party: LotteryParty;
-  row: DailySellerRow;
-  field: keyof Pick<
-    DailySellerRow,
-    | "dispatchQuantity"
-    | "morningReturnQuantity"
-    | "dayReturnQuantity"
-    | "eveningReturnQuantity"
-  >;
-  label: string;
-  onChange: SellerRowsProps["onChange"];
-}>) {
+}: Readonly<SellerQuantityProps>) {
   return (
     <label>
       <span className="mb-1 block text-[8px] font-bold uppercase tracking-wide text-slate-500">
         {label}
       </span>
-      <input
-        aria-label={`${party.name} ${label.toLowerCase()}`}
-        inputMode="numeric"
-        value={row[field]}
-        disabled={row.status === "POSTED"}
-        onChange={(event) => onChange(party.id, field, event.target.value)}
-        className={CONTROL_CLASS}
+      <SellerQuantityInput
+        party={party}
+        row={row}
+        field={field}
+        label={label.toLowerCase()}
+        onChange={onChange}
       />
     </label>
+  );
+}
+
+function GridCommission({
+  party,
+  row,
+  onChange,
+  invalid,
+}: Readonly<{
+  party: LotteryParty;
+  row: DailySellerRow;
+  onChange: SellerRowsProps["onChange"];
+  invalid: boolean;
+}>) {
+  return (
+    <label>
+      <span className="mb-1 block text-[8px] font-bold uppercase tracking-wide text-slate-500">
+        Commission (₹)
+      </span>
+      <SellerCommissionInput party={party} row={row} onChange={onChange} />
+      {invalid && (
+        <span className="mt-1 block text-[8px] font-bold text-orange-700">
+          Cannot exceed net amount
+        </span>
+      )}
+    </label>
+  );
+}
+
+function SellerQuantityInput({
+  party,
+  row,
+  field,
+  label,
+  onChange,
+}: Readonly<SellerQuantityProps>) {
+  return (
+    <input
+      aria-label={`${party.name} ${label}`}
+      inputMode="numeric"
+      value={row[field]}
+      disabled={row.status === "POSTED"}
+      onChange={(event) => onChange(party.id, field, event.target.value)}
+      className={CONTROL_CLASS}
+    />
   );
 }
 

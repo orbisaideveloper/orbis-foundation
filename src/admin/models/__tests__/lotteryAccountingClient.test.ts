@@ -32,6 +32,13 @@ describe("lotteryAccountingClient", () => {
       organization: { id: "org-1" },
     });
     await lotteryAccountingClient.previewSale({ dispatchQuantity: 1 });
+    authenticatedAdminFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ organization: { id: "org-1" } })),
+    );
+    await lotteryAccountingClient.updateOrganizationTdsRate({
+      organizationId: "org-1",
+      tdsRateBps: 200,
+    });
 
     expect(authenticatedAdminFetch).toHaveBeenNthCalledWith(
       1,
@@ -49,6 +56,14 @@ describe("lotteryAccountingClient", () => {
       expect.objectContaining({
         method: "POST",
         body: '{"dispatchQuantity":1}',
+      }),
+    );
+    expect(authenticatedAdminFetch).toHaveBeenNthCalledWith(
+      4,
+      "/api/admin/models/orbis-accounting-ai/modules/lottery/settings/tds-rate",
+      expect.objectContaining({
+        method: "PATCH",
+        body: '{"organizationId":"org-1","tdsRateBps":200}',
       }),
     );
   });

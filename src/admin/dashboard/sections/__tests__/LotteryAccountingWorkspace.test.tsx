@@ -14,6 +14,7 @@ const RECORDED_AT = "2026-08-30T00:00:00.000Z";
 const organization = {
   id: "org-1",
   name: ORGANIZATION_NAME,
+  tdsRateBps: 200,
   status: "ACTIVE",
   createdAt: "2026-08-31T00:00:00.000Z",
 };
@@ -159,6 +160,7 @@ function createApi(): LotteryAccountingClient {
     createOrganization: vi.fn().mockResolvedValue(organization),
     createParty: vi.fn().mockResolvedValue(undefined),
     updatePartyProfile: vi.fn().mockResolvedValue(undefined),
+    updateOrganizationTdsRate: vi.fn().mockResolvedValue(undefined),
     createPeriod: vi.fn().mockResolvedValue(undefined),
     createFinancialYearPeriod: vi.fn().mockResolvedValue(undefined),
     recordStockMovement: vi.fn().mockResolvedValue(undefined),
@@ -234,6 +236,9 @@ describe("LotteryAccountingWorkspace", () => {
     fireEvent.change(screen.getByLabelText("Seller A evening return"), {
       target: { value: "5" },
     });
+    fireEvent.change(screen.getByLabelText("Seller A commission amount"), {
+      target: { value: "100" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
 
     await waitFor(() => expect(api.saveDailySellerDraft).toHaveBeenCalled());
@@ -246,6 +251,7 @@ describe("LotteryAccountingWorkspace", () => {
         morningReturnQuantity: "10",
         dayReturnQuantity: "20",
         eveningReturnQuantity: "5",
+        commissionPaise: "10000",
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Grid view" }));

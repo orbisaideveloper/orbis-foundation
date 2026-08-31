@@ -9,6 +9,7 @@ export type LotteryStockMovementType =
 export interface LotteryOrganization {
   id: string;
   name: string;
+  tdsRateBps: number;
   status: string;
   createdAt: string;
 }
@@ -20,8 +21,6 @@ export interface LotteryParty {
   name: string;
   phone: string | null;
   ticketRatePaise: string;
-  commissionRateBps: number;
-  tdsRateBps: number;
   status: string;
 }
 

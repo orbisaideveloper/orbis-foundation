@@ -39,6 +39,27 @@ function roundedBasisPoints(amount, basisPoints) {
   return (amount * basisPoints + 5_000n) / 10_000n;
 }
 
+function commissionAmount(input, grossSalesPaise) {
+  if (input.commissionPaise !== undefined) {
+    const commissionPaise = integer(input.commissionPaise, "commissionPaise");
+    if (commissionPaise > grossSalesPaise) {
+      throw accountingError("COMMISSION_EXCEEDS_GROSS", "commissionPaise");
+    }
+    return { commissionPaise, commissionRateBps: 0n };
+  }
+
+  // Existing posted rows retain their historical percentage snapshot. New rows
+  // always send commissionPaise and do not use this compatibility branch.
+  const commissionRateBps = rate(
+    input.commissionRateBps ?? 0,
+    "commissionRateBps",
+  );
+  return {
+    commissionPaise: roundedBasisPoints(grossSalesPaise, commissionRateBps),
+    commissionRateBps,
+  };
+}
+
 function returnBreakdown(input, dispatchQuantity) {
   const hasTimedReturn = [
     "morningReturnQuantity",
@@ -96,7 +117,6 @@ function calculateLotterySale(input) {
   const dispatchQuantity = integer(input.dispatchQuantity, "dispatchQuantity");
   const returns = returnBreakdown(input, dispatchQuantity);
   const ticketRatePaise = integer(input.ticketRatePaise, "ticketRatePaise");
-  const commissionRateBps = rate(input.commissionRateBps, "commissionRateBps");
   const tdsRateBps = rate(input.tdsRateBps, "tdsRateBps");
   const previousOutstandingPaise = integer(
     input.previousOutstandingPaise ?? 0,
@@ -105,9 +125,9 @@ function calculateLotterySale(input) {
   );
   const netTickets = dispatchQuantity - returns.returnQuantity;
   const grossSalesPaise = netTickets * ticketRatePaise;
-  const commissionPaise = roundedBasisPoints(
+  const { commissionPaise, commissionRateBps } = commissionAmount(
+    input,
     grossSalesPaise,
-    commissionRateBps,
   );
   const tdsPaise = roundedBasisPoints(commissionPaise, tdsRateBps);
   // TDS is withheld from the commission, not charged again on top of it.
@@ -325,8 +345,8 @@ function runLotteryCoreVerification() {
       dayReturnQuantity: 10,
       eveningReturnQuantity: 5,
       ticketRatePaise: 1_000,
-      commissionRateBps: 500,
-      tdsRateBps: 1_000,
+      commissionPaise: 4_000,
+      tdsRateBps: 200,
     });
     const ledger = buildLotterySaleLedger(sale);
     const summary = summarizeLotteryAccounting({
@@ -337,8 +357,8 @@ function runLotteryCoreVerification() {
           dayReturnQuantity: 10,
           eveningReturnQuantity: 5,
           ticketRatePaise: 1_000,
-          commissionRateBps: 500,
-          tdsRateBps: 1_000,
+          commissionPaise: 4_000,
+          tdsRateBps: 200,
         },
       ],
       payments: [
@@ -358,11 +378,11 @@ function runLotteryCoreVerification() {
       ["net tickets", sale.netTickets === "80"],
       ["gross sales", sale.grossSalesPaise === "80000"],
       ["commission", sale.commissionPaise === "4000"],
-      ["TDS", sale.tdsPaise === "400"],
+      ["TDS", sale.tdsPaise === "80"],
       ["timed returns", sale.returnQuantity === "20"],
-      ["net payable", sale.netPayablePaise === "76400"],
+      ["net payable", sale.netPayablePaise === "76080"],
       ["balanced ledger", ledger.length === 4],
-      ["outstanding", summary.outstandingPaise === "26400"],
+      ["outstanding", summary.outstandingPaise === "26080"],
       ["closing stock", summary.stock.closing === "40"],
       ["read-only AI skills", analyzeLotterySummary(summary).length === 4],
     ].map(([name, passed]) => ({ name, passed }));

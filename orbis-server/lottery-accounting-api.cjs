@@ -133,6 +133,18 @@ function createLotteryAccountingRouter({
     }
   });
 
+  router.patch("/settings/tds-rate", async (req, res) => {
+    try {
+      const organization = await service.updateOrganizationTdsRate(
+        req.body,
+        req.adminUser?.id,
+      );
+      return res.json({ organization });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
   router.post("/periods", async (req, res) => {
     try {
       const period = await service.createPeriod(req.body, req.adminUser?.id);

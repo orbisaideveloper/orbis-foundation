@@ -20,8 +20,8 @@ const saleInput = {
   dayReturnQuantity: 10,
   eveningReturnQuantity: 5,
   ticketRatePaise: 1_000,
-  commissionRateBps: 500,
-  tdsRateBps: 1_000,
+  commissionPaise: 4_000,
+  tdsRateBps: 200,
 };
 
 describe("Lottery Accounting Core", () => {
@@ -38,9 +38,9 @@ describe("Lottery Accounting Core", () => {
       returnQuantity: "20",
       grossSalesPaise: "80000",
       commissionPaise: "4000",
-      tdsPaise: "400",
-      netPayablePaise: "76400",
-      currentOutstandingPaise: "76500",
+      tdsPaise: "80",
+      netPayablePaise: "76080",
+      currentOutstandingPaise: "76180",
     });
     expect(Object.isFrozen(sale)).toBe(true);
     const ledger = buildLotterySaleLedger(sale);
@@ -48,7 +48,7 @@ describe("Lottery Accounting Core", () => {
       expect.objectContaining({
         accountCode: "PARTY_RECEIVABLE",
         side: "DEBIT",
-        amountPaise: "76400",
+        amountPaise: "76080",
       }),
       expect.objectContaining({
         accountCode: "COMMISSION_EXPENSE",
@@ -58,7 +58,7 @@ describe("Lottery Accounting Core", () => {
       expect.objectContaining({
         accountCode: "TDS_PAYABLE",
         side: "CREDIT",
-        amountPaise: "400",
+        amountPaise: "80",
       }),
       expect.objectContaining({
         accountCode: "LOTTERY_SALES",
@@ -76,7 +76,7 @@ describe("Lottery Accounting Core", () => {
       dayReturnQuantity: 0,
       eveningReturnQuantity: 0,
       ticketRatePaise: 100_000,
-      commissionRateBps: 1_000,
+      commissionPaise: 10_000,
       tdsRateBps: 200,
     });
     expect(sale).toMatchObject({
@@ -101,7 +101,7 @@ describe("Lottery Accounting Core", () => {
     [{ ...saleInput, dispatchQuantity: 1.5 }, "INVALID_INTEGER"],
     [{ ...saleInput, morningReturnQuantity: 101 }, "RETURN_EXCEEDS_DISPATCH"],
     [{ ...saleInput, returnQuantity: 99 }, "RETURN_TOTAL_MISMATCH"],
-    [{ ...saleInput, commissionRateBps: 10_001 }, "RATE_OUT_OF_RANGE"],
+    [{ ...saleInput, commissionPaise: 80_001 }, "COMMISSION_EXCEEDS_GROSS"],
     [{ ...saleInput, ticketRatePaise: -1 }, "NEGATIVE_VALUE"],
   ])("rejects invalid sale input %#", (input, code) => {
     expect(() => calculateLotterySale(input)).toThrow(code);
@@ -159,8 +159,8 @@ describe("Lottery Accounting Core", () => {
     });
     expect(summary).toMatchObject({
       verified: true,
-      outstandingPaise: "26400",
-      operatingResultPaise: "70400",
+      outstandingPaise: "26080",
+      operatingResultPaise: "70080",
       netCashFlowPaise: "44000",
       stock: { closing: "39" },
     });
@@ -175,7 +175,7 @@ describe("Lottery Accounting Core", () => {
 
   it("flags over-collection, high commission and credit/negative outcomes", () => {
     const summary = summarizeLotteryAccounting({
-      sales: [{ ...saleInput, commissionRateBps: 3_000 }],
+      sales: [{ ...saleInput, commissionPaise: 24_000 }],
       payments: [
         {
           direction: "RECEIPT",

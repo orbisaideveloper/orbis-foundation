@@ -20,6 +20,7 @@ import type {
   ManagedProductModule,
 } from "../../models/types";
 import { LotteryAccountingWorkspace } from "./LotteryAccountingWorkspace";
+import { WorkspaceSectionTabs } from "./WorkspaceSectionTabs";
 import type { LotteryAccountingClient } from "../../models/lotteryAccountingClient";
 
 type WorkspaceScreen = "catalog" | "model" | "module";
@@ -31,6 +32,16 @@ type ModuleTab =
   | "skills"
   | "review"
   | "versions";
+
+const MODULE_TABS: Array<[ModuleTab, string]> = [
+  ["accounting", "Accounting"],
+  ["overview", "Overview"],
+  ["data", "Data"],
+  ["workflow", "Workflow"],
+  ["skills", "AI Skills"],
+  ["review", "Test & Review"],
+  ["versions", "Versions"],
+];
 
 interface ManagedProductModelsProps {
   previewMode?: boolean;
@@ -354,31 +365,12 @@ export function ManagedProductModels({
           <StatusBadge>Web search disabled</StatusBadge>
         </div>
       </div>
-      <div
-        className="flex gap-2 overflow-x-auto pb-1"
-        aria-label="Lottery workspace sections"
-      >
-        {(
-          [
-            ["accounting", "Accounting"],
-            ["overview", "Overview"],
-            ["data", "Data"],
-            ["workflow", "Workflow"],
-            ["skills", "AI Skills"],
-            ["review", "Test & Review"],
-            ["versions", "Versions"],
-          ] as Array<[ModuleTab, string]>
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setTab(value)}
-            className={`shrink-0 rounded-xl px-3 py-2 text-[10px] font-bold ${tab === value ? "bg-emerald-600 text-white" : "border border-emerald-100 bg-white text-slate-600"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <WorkspaceSectionTabs
+        ariaLabel="Lottery workspace sections"
+        tabs={MODULE_TABS}
+        activeTab={tab}
+        onSelect={setTab}
+      />
       {tab === "accounting" && (
         <LotteryAccountingWorkspace api={lotteryAccountingApi} />
       )}
