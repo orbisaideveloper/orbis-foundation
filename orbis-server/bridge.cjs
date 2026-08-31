@@ -45,6 +45,9 @@ const {
   createAdminModelRegistryRouter,
 } = require("./admin-model-registry-api.cjs");
 const {
+  createLotteryAccountingRouter,
+} = require("./lottery-accounting-api.cjs");
+const {
   getDiagnostics,
   addSystemLog,
   cleanupExpiredSystemLogs,
@@ -118,6 +121,10 @@ const prisma = new PrismaClient({ adapter: telemetryAdapter });
 const foundationDataCapabilityOrchestrator =
   new FoundationDataCapabilityOrchestrator({ prisma });
 const adminModelRegistryRouter = createAdminModelRegistryRouter({
+  prisma,
+  authMiddleware: requireAuthenticatedAdmin,
+});
+const lotteryAccountingRouter = createLotteryAccountingRouter({
   prisma,
   authMiddleware: requireAuthenticatedAdmin,
 });
@@ -492,6 +499,10 @@ app.get(
 // Product-model release records are Admin-only. This registry contains
 // configuration snapshots, never customer accounting rows or AI chat data.
 app.use("/api/admin/models", adminModelRegistryRouter);
+app.use(
+  "/api/admin/models/orbis-accounting-ai/modules/lottery",
+  lotteryAccountingRouter,
+);
 
 function getDirectoryTree(dirPath, indent = "", changedFiles = []) {
   let result = "";

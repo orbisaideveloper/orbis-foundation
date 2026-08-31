@@ -218,6 +218,7 @@ describe("AdminDashboard current control-center coverage", () => {
       "ORBIS Chat",
       MARKET_INTELLIGENCE_TITLE,
       "Modules",
+      "ORBiS Accounting AI",
       RUNTIME_TITLE,
       BRAIN_TITLE,
       DIAGNOSTICS_TITLE,

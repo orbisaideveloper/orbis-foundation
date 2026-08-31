@@ -11,6 +11,7 @@ const {
   createAdminModelRegistryRouter,
   createManagedProductModelRegistry,
 } = require("../admin-model-registry-api.cjs");
+const MODEL_ROUTE = "/api/admin/models";
 
 function createPrismaMock() {
   const state = { models: [], versions: [], events: [] };
@@ -50,6 +51,10 @@ function createPrismaMock() {
           createdAt: timestamp,
           updatedAt: timestamp,
           publishedAt: null,
+          reviewStatus: data.versions.create.reviewStatus || "NOT_RUN",
+          reviewReport: null,
+          reviewedAt: null,
+          reviewedByAdminId: null,
         };
         state.versions.push(version);
         return { ...model, versions: versionsFor(model.id) };
@@ -71,6 +76,10 @@ function createPrismaMock() {
           createdAt: timestamp,
           updatedAt: timestamp,
           publishedAt: null,
+          reviewStatus: data.reviewStatus || "NOT_RUN",
+          reviewReport: null,
+          reviewedAt: null,
+          reviewedByAdminId: null,
         };
         state.versions.push(version);
         return version;
@@ -109,6 +118,11 @@ describe("managed product model registry", () => {
       writeAccess: "DISABLED",
       webSearch: "DISABLED",
     });
+    expect(model.currentVersion.definition).toMatchObject({ schemaVersion: 2 });
+    expect(model.currentVersion.definition.modules[0]).toMatchObject({
+      lifecycle: "READY_FOR_REVIEW",
+      dataContract: { moneyUnit: "PAISE", rateUnit: "BASIS_POINTS" },
+    });
     expect(model.currentVersion.definition.modules).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -131,6 +145,8 @@ describe("managed product model registry", () => {
       now: () => new Date("2026-08-30T01:00:00.000Z"),
     });
     const before = await registry.getAccountingModel("admin-1");
+    const reviewed = await registry.reviewAccountingModel("admin-1");
+    expect(reviewed.currentVersion.reviewStatus).toBe("PASSED");
 
     const after = await registry.publishAccountingModel("admin-1");
 
@@ -141,6 +157,7 @@ describe("managed product model registry", () => {
     expect(after.currentVersion).toMatchObject({
       sequence: 2,
       lifecycle: "DRAFT",
+      reviewStatus: "NOT_RUN",
     });
     expect(after.currentVersion.definition).toEqual(
       before.currentVersion.definition,
@@ -161,18 +178,80 @@ describe("managed product model registry", () => {
     );
   });
 
+  it("blocks publish until deterministic contract and core review pass", async () => {
+    const prisma = createPrismaMock();
+    const registry = createManagedProductModelRegistry({ prisma });
+    await registry.getAccountingModel("admin-1");
+    await expect(
+      registry.publishAccountingModel("admin-1"),
+    ).rejects.toMatchObject({
+      code: "VERSION_REVIEW_REQUIRED",
+    });
+    expect(prisma.state.versions).toHaveLength(1);
+  });
+
+  it("upgrades the existing v1 draft definition without touching a published snapshot", async () => {
+    const prisma = createPrismaMock();
+    await prisma.foundationManagedProductModel.create({
+      data: {
+        slug: ACCOUNTING_AI_MODEL_SLUG,
+        displayName: "ORBiS Accounting AI",
+        category: "ACCOUNTING_AI",
+        versions: {
+          create: {
+            sequence: 1,
+            lifecycle: "DRAFT",
+            definition: { schemaVersion: 1 },
+          },
+        },
+      },
+    });
+    const registry = createManagedProductModelRegistry({ prisma });
+    const model = await registry.getAccountingModel("admin-1");
+    expect(model.currentVersion.definition.schemaVersion).toBe(2);
+    expect(prisma.state.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "MODEL_DEFINITION_UPGRADED" }),
+      ]),
+    );
+  });
+
   it("requires the supplied Admin middleware before exposing a model", async () => {
     const prisma = createPrismaMock();
     const app = express();
     app.use(
-      "/api/admin/models",
+      MODEL_ROUTE,
       createAdminModelRegistryRouter({
         prisma,
         authMiddleware: (_req, res) => res.status(401).json({ success: false }),
       }),
     );
 
-    await request(app).get("/api/admin/models").expect(401);
+    await request(app).get(MODEL_ROUTE).expect(401);
     expect(prisma.state.models).toHaveLength(0);
+  });
+
+  it("exposes review and publish through Admin-only, no-store routes", async () => {
+    const prisma = createPrismaMock();
+    const app = express();
+    app.use(express.json());
+    app.use(
+      MODEL_ROUTE,
+      createAdminModelRegistryRouter({
+        prisma,
+        authMiddleware: (req, _res, next) => {
+          req.adminUser = { id: "admin-1" };
+          next();
+        },
+      }),
+    );
+    const review = await request(app)
+      .post(`/api/admin/models/${ACCOUNTING_AI_MODEL_SLUG}/review`)
+      .expect(200);
+    expect(review.headers["cache-control"]).toBe("no-store");
+    expect(review.body.model.currentVersion.reviewStatus).toBe("PASSED");
+    await request(app)
+      .post(`/api/admin/models/${ACCOUNTING_AI_MODEL_SLUG}/publish`)
+      .expect(200);
   });
 });

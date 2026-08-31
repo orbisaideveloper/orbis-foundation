@@ -3,6 +3,7 @@ import type {
   ManagedProductModel,
   ManagedProductModelsResponse,
   PublishManagedProductModelResponse,
+  ReviewManagedProductModelResponse,
 } from "./types";
 
 export async function loadManagedProductModels(): Promise<
@@ -13,17 +14,36 @@ export async function loadManagedProductModels(): Promise<
   return response.models;
 }
 
+async function runModelAction<T extends { model: ManagedProductModel }>(
+  slug: string,
+  action: "publish" | "review",
+  message: string,
+): Promise<ManagedProductModel> {
+  const response = await authenticatedAdminFetch(
+    `/api/admin/models/${encodeURIComponent(slug)}/${action}`,
+    { method: "POST" },
+  );
+  const body = (await response.json()) as Partial<T>;
+  if (!response.ok || !body.model) throw new Error(message);
+  return body.model;
+}
+
 export async function publishManagedProductModel(
   slug: string,
 ): Promise<ManagedProductModel> {
-  const response = await authenticatedAdminFetch(
-    `/api/admin/models/${encodeURIComponent(slug)}/publish`,
-    { method: "POST" },
+  return runModelAction<PublishManagedProductModelResponse>(
+    slug,
+    "publish",
+    "The Accounting AI version could not be published.",
   );
-  const body =
-    (await response.json()) as Partial<PublishManagedProductModelResponse>;
-  if (!response.ok || !body.model) {
-    throw new Error("The Accounting AI version could not be published.");
-  }
-  return body.model;
+}
+
+export async function reviewManagedProductModel(
+  slug: string,
+): Promise<ManagedProductModel> {
+  return runModelAction<ReviewManagedProductModelResponse>(
+    slug,
+    "review",
+    "The Accounting AI draft review could not be completed.",
+  );
 }

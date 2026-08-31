@@ -75,6 +75,73 @@ const diagnosticExport = {
   },
   exclusions: ["credentials-and-environment-values"],
 };
+const MODEL_TIMESTAMP = "2026-08-30";
+
+const managedModel = {
+  id: "model-1",
+  slug: "orbis-accounting-ai",
+  displayName: "ORBiS Accounting AI",
+  category: "ACCOUNTING_AI",
+  status: "ACTIVE",
+  createdAt: MODEL_TIMESTAMP,
+  updatedAt: MODEL_TIMESTAMP,
+  currentVersion: {
+    id: "version-1",
+    sequence: 1,
+    lifecycle: "DRAFT",
+    createdAt: MODEL_TIMESTAMP,
+    updatedAt: MODEL_TIMESTAMP,
+    publishedAt: null,
+    reviewStatus: "NOT_RUN",
+    reviewReport: null,
+    reviewedAt: null,
+    reviewedByAdminId: null,
+    definition: {
+      schemaVersion: 2,
+      product: {
+        name: "ORBiS Accounting AI",
+        distribution: { current: "PWA_PILOT", future: "PLAY_STORE" },
+      },
+      releasePolicy: {
+        publicResolver: "PUBLISHED_VERSION_ONLY",
+        nextCurrentVersion: "COPY_OF_PUBLISHED_SNAPSHOT",
+      },
+      aiBoundary: {
+        purpose: "ACCOUNTING_ANALYSIS_ONLY",
+        dataScope: "ACTIVE_MODULE_VERIFIED_SUMMARY",
+        writeAccess: "DISABLED",
+        webSearch: "DISABLED",
+      },
+      modules: [
+        {
+          slug: "lottery",
+          name: "Lottery Accounting",
+          lifecycle: "READY_FOR_REVIEW",
+          workspace: [],
+          workflow: [
+            "stock-receipt",
+            "return",
+            "sales",
+            "commission",
+            "tax-deduction",
+            "payment",
+            "settlement",
+          ],
+          dataContract: {
+            moneyUnit: "PAISE",
+            rateUnit: "BASIS_POINTS",
+            entities: [],
+            rules: [],
+          },
+          aiSkills: [],
+          aiAnalysis: "MODULE_SCOPED_VERIFIED_ACCOUNTING_DATA_ONLY",
+        },
+      ],
+    },
+  },
+  publishedVersion: null,
+  versionHistory: [],
+};
 
 function jsonResponse(data: unknown) {
   return {
@@ -98,6 +165,7 @@ describe("AdminDashboard", () => {
       if (path === "/api/diagnostics") {
         return { gitStatus: "dashboard implementation (b3b632b)", logs: [] };
       }
+      if (path === "/api/admin/models") return { models: [managedModel] };
       throw new Error("unexpected admin path");
     });
 
@@ -168,6 +236,22 @@ describe("AdminDashboard", () => {
     expect(await screen.findByText("termux.system.info")).toBeInTheDocument();
   });
 
+  it("opens the compact Accounting AI card directly into its model home", async () => {
+    render(<AdminDashboard />);
+    await screen.findByText(/Your ORBIS\. Visible\./i);
+    fireEvent.click(
+      screen.getByRole("button", { name: /ORBiS Accounting AI/i }),
+    );
+    expect(
+      await screen.findByRole("region", {
+        name: "ORBiS Accounting AI model home",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Lottery Accounting/i }),
+    ).toBeInTheDocument();
+  });
+
   it("opens the existing ORBIS chat surface from the bottom navigation", async () => {
     render(<AdminDashboard />);
     await screen.findByText(/Your ORBIS\. Visible\./i);
@@ -180,9 +264,7 @@ describe("AdminDashboard", () => {
   it("keeps the permanent public preview read-only", async () => {
     render(<AdminDashboard previewMode />);
 
-    expect(
-      screen.getByText(/Public read-only preview/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Public read-only preview/i)).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText(/System ONLINE/i)).toBeInTheDocument();
@@ -242,5 +324,4 @@ describe("AdminDashboard", () => {
       "sm:grid-cols-2",
     );
   });
-
 });

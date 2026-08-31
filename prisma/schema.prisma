@@ -129,20 +129,210 @@ model FoundationManagedProductModel {
 }
 
 model FoundationManagedProductModelVersion {
-  id          String    @id @default(uuid())
-  modelId     String
-  sequence    Int
-  lifecycle   String    @default("DRAFT")
-  definition  Json
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  publishedAt DateTime?
+  id                String    @id @default(uuid())
+  modelId           String
+  sequence          Int
+  lifecycle         String    @default("DRAFT")
+  definition        Json
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  publishedAt       DateTime?
+  reviewStatus      String    @default("NOT_RUN")
+  reviewReport      Json?
+  reviewedAt        DateTime?
+  reviewedByAdminId String?
 
   model  FoundationManagedProductModel        @relation(fields: [modelId], references: [id], onDelete: Cascade)
   events FoundationManagedProductModelEvent[]
 
   @@unique([modelId, sequence])
   @@index([modelId, lifecycle])
+}
+
+// ==========================================
+// LOTTERY ACCOUNTING CORE
+// ==========================================
+// Financial amounts are integer paise and percentage rates are basis points.
+// Browser clients never access these server-owned tables directly.
+model FoundationAccountingOrganization {
+  id        String   @id @default(uuid())
+  name      String
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parties       FoundationAccountingParty[]
+  periods       FoundationLotteryAccountingPeriod[]
+  stockMovement FoundationLotteryStockMovement[]
+  sales         FoundationLotterySale[]
+  payments      FoundationLotteryPayment[]
+  settlements   FoundationLotterySettlement[]
+  ledgerEntries FoundationLotteryLedgerEntry[]
+  auditEvents   FoundationLotteryAuditEvent[]
+}
+
+model FoundationAccountingParty {
+  id             String   @id @default(uuid())
+  organizationId String
+  partyType      String
+  name           String
+  phone          String?
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sales        FoundationLotterySale[]
+  payments     FoundationLotteryPayment[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+}
+
+model FoundationLotteryAccountingPeriod {
+  id             String   @id @default(uuid())
+  organizationId String
+  label          String
+  startsAt       DateTime
+  endsAt         DateTime
+  status         String   @default("OPEN")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sales        FoundationLotterySale[]
+  payments     FoundationLotteryPayment[]
+
+  @@unique([organizationId, label])
+  @@index([organizationId, startsAt, endsAt])
+}
+
+model FoundationLotteryStockMovement {
+  id               String   @id @default(uuid())
+  organizationId   String
+  movementType     String
+  quantity         BigInt
+  reference        String
+  occurredAt       DateTime
+  createdByAdminId String
+  createdAt        DateTime @default(now())
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, reference, movementType])
+  @@index([organizationId, occurredAt])
+}
+
+model FoundationLotterySale {
+  id                String   @id @default(uuid())
+  organizationId    String
+  partyId           String
+  periodId          String?
+  reference         String
+  dispatchQuantity  Int
+  returnQuantity    Int
+  netTickets        Int
+  ticketRatePaise   BigInt
+  grossSalesPaise   BigInt
+  commissionRateBps Int
+  commissionPaise   BigInt
+  tdsRateBps        Int
+  tdsPaise          BigInt
+  netPayablePaise   BigInt
+  status            String   @default("POSTED")
+  occurredAt        DateTime
+  createdByAdminId  String
+  createdAt         DateTime @default(now())
+
+  organization FoundationAccountingOrganization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  party        FoundationAccountingParty          @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  period       FoundationLotteryAccountingPeriod? @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  settlements  FoundationLotterySettlement[]
+
+  @@unique([organizationId, reference])
+  @@index([organizationId, occurredAt])
+  @@index([partyId, occurredAt])
+  @@index([periodId])
+}
+
+model FoundationLotteryPayment {
+  id               String   @id @default(uuid())
+  organizationId   String
+  partyId          String
+  periodId         String?
+  direction        String
+  totalAmountPaise BigInt
+  methodSplit      Json
+  reference        String
+  status           String   @default("POSTED")
+  occurredAt       DateTime
+  createdByAdminId String
+  createdAt        DateTime @default(now())
+
+  organization FoundationAccountingOrganization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  party        FoundationAccountingParty          @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  period       FoundationLotteryAccountingPeriod? @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  settlements  FoundationLotterySettlement[]
+
+  @@unique([organizationId, reference])
+  @@index([organizationId, occurredAt])
+  @@index([partyId, occurredAt])
+  @@index([periodId])
+}
+
+model FoundationLotterySettlement {
+  id               String   @id @default(uuid())
+  organizationId   String
+  saleId           String
+  paymentId        String
+  amountPaise      BigInt
+  createdByAdminId String
+  createdAt        DateTime @default(now())
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sale         FoundationLotterySale            @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  payment      FoundationLotteryPayment         @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([saleId, paymentId])
+  @@index([organizationId, createdAt])
+  @@index([paymentId])
+}
+
+model FoundationLotteryLedgerEntry {
+  id               String   @id @default(uuid())
+  organizationId   String
+  transactionId    String
+  sourceType       String
+  sourceId         String
+  lineNumber       Int
+  accountCode      String
+  side             String
+  amountPaise      BigInt
+  occurredAt       DateTime
+  createdByAdminId String
+  createdAt        DateTime @default(now())
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([transactionId, lineNumber])
+  @@index([organizationId, occurredAt])
+  @@index([sourceType, sourceId])
+}
+
+model FoundationLotteryAuditEvent {
+  id             String   @id @default(uuid())
+  organizationId String
+  eventType      String
+  entityType     String
+  entityId       String
+  actorAdminId   String
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
 }
 
 // Audit events contain only release metadata. They never contain financial

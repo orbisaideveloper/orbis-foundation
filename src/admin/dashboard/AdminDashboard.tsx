@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Activity,
   ArrowLeft,
+  Bot,
   Boxes,
   Brain,
   CheckCircle2,
@@ -32,6 +33,7 @@ type DashboardView =
   | "overview"
   | "market"
   | "modules"
+  | "accounting"
   | "runtime"
   | "brain"
   | "diagnostics"
@@ -213,6 +215,7 @@ const VIEW_TITLES: Record<DashboardView, string> = {
   overview: "Overview",
   market: "Market Intelligence",
   modules: "Modules",
+  accounting: "ORBiS Accounting AI",
   runtime: "Runtime",
   brain: "Brain",
   diagnostics: "Diagnostics",
@@ -382,7 +385,7 @@ const HomeCard: React.FC<HomeCardProps> = ({
   <button
     type="button"
     onClick={onClick}
-    className={`group relative min-h-[116px] overflow-hidden rounded-[22px] border border-emerald-100/70 bg-white/85 p-4 text-left shadow-[0_12px_32px_rgba(50,90,58,0.08)] transition active:scale-[0.985] ${className}`}
+    className={`group relative min-h-[100px] overflow-hidden rounded-[20px] border border-emerald-100/70 bg-white/85 p-3 text-left shadow-[0_10px_26px_rgba(50,90,58,0.07)] transition active:scale-[0.985] ${className}`}
   >
     <span className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-emerald-300 via-white to-orange-200" />
     <div className="flex items-start justify-between gap-3">
@@ -393,7 +396,7 @@ const HomeCard: React.FC<HomeCardProps> = ({
         {icon}
       </span>
     </div>
-    <h3 className="mt-5 text-[16px] font-black text-slate-900">{title}</h3>
+    <h3 className="mt-3 text-[15px] font-black text-slate-900">{title}</h3>
     <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{subtitle}</p>
     <div className="mt-3 flex items-center justify-between gap-2">
       <div>{status}</div>
@@ -762,6 +765,15 @@ export function AdminDashboard({
         />
         <HomeCard
           eyebrow="04"
+          title="ORBiS Accounting AI"
+          subtitle="Lottery Accounting model, review gate and version workspace."
+          icon={<Bot className="h-5 w-5" />}
+          onClick={() => openView("accounting")}
+          className="col-span-2 md:col-span-2"
+          status={<StatusPill state="AVAILABLE" label="Draft model" />}
+        />
+        <HomeCard
+          eyebrow="05"
           title="Runtime"
           subtitle={`${systemStats.platform} · ${systemStats.arch} · ${systemStats.cpuCores} cores`}
           icon={<Cpu className="h-5 w-5" />}
@@ -770,7 +782,7 @@ export function AdminDashboard({
           status={<StatusPill state={systemAvailability} label={systemStats.uptime} />}
         />
         <HomeCard
-          eyebrow="05"
+          eyebrow="06"
           title="Brain"
           subtitle="Gateway artifact, provider health and authorization surface."
           icon={<Brain className="h-5 w-5" />}
@@ -779,7 +791,7 @@ export function AdminDashboard({
           status={<StatusPill state={brainAvailability} />}
         />
         <HomeCard
-          eyebrow="06"
+          eyebrow="07"
           title="Diagnostics"
           subtitle={`${diagnosticExport?.telemetry.summary.records ?? 0} redacted recent telemetry records.`}
           icon={<Activity className="h-5 w-5" />}
@@ -788,7 +800,7 @@ export function AdminDashboard({
           status={<StatusPill state={normalizeAvailability(diagnosticExport?.telemetry.status)} label={diagnosticExport?.telemetry.status || "Unknown"} />}
         />
         <HomeCard
-          eyebrow="07"
+          eyebrow="08"
           title="Data & Privacy"
           subtitle="Foundation table counts, storage state and redaction policy."
           icon={<Database className="h-5 w-5" />}
@@ -797,7 +809,7 @@ export function AdminDashboard({
           status={<StatusPill state={databaseAvailability} label={diagnosticExport?.database.state || "Unknown"} />}
         />
         <HomeCard
-          eyebrow="08"
+          eyebrow="09"
           title="Releases"
           subtitle={`Commit ${diagnosticExport?.version.commit || "Unavailable"}`}
           icon={<GitBranch className="h-5 w-5" />}
@@ -831,6 +843,7 @@ export function AdminDashboard({
 
   const renderModules = () => (
     <div className="space-y-3">
+      <ManagedProductModels previewMode={previewMode} />
       <div className={DETAIL_GRID_CLASS}>
         <MetricTile label="Registered capabilities" value={diagnosticExport?.capabilities.length ?? "Unavailable"} source="Admin diagnostic capability registry" />
         <MetricTile label="Callable + configured" value={configuredCapabilities.length} source="Admin diagnostic capability registry" />
@@ -852,8 +865,11 @@ export function AdminDashboard({
           {!diagnosticExport && <p className="py-4 text-xs text-slate-400">Capability registry unavailable.</p>}
         </div>
       </section>
-      <ManagedProductModels previewMode={previewMode} />
     </div>
+  );
+
+  const renderAccounting = () => (
+    <ManagedProductModels previewMode={previewMode} initialScreen="model" />
   );
 
   const renderRuntime = () => (
@@ -1111,6 +1127,8 @@ export function AdminDashboard({
         return renderMarket();
       case "modules":
         return renderModules();
+      case "accounting":
+        return renderAccounting();
       case "runtime":
         return renderRuntime();
       case "brain":
@@ -1173,7 +1191,7 @@ export function AdminDashboard({
         <button type="button" onClick={openOverview} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "overview" && !chatOpen ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Home className="mx-auto mb-1 h-5 w-5" />Home</button>
         <button type="button" onClick={openChat} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${chatOpen ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><MessageCircle className="mx-auto mb-1 h-5 w-5" />Chat</button>
         <button type="button" onClick={() => openView("market")} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "market" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><TrendingUp className="mx-auto mb-1 h-5 w-5" />Market</button>
-        <button type="button" onClick={() => openView("modules")} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "modules" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Boxes className="mx-auto mb-1 h-5 w-5" />Modules</button>
+        <button type="button" onClick={() => openView("modules")} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "modules" || activeView === "accounting" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Boxes className="mx-auto mb-1 h-5 w-5" />Modules</button>
         <button type="button" onClick={() => setMoreOpen(true)} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${moreIsActive ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><MoreHorizontal className="mx-auto mb-1 h-5 w-5" />More</button>
       </nav>
 
