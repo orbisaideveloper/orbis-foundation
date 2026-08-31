@@ -161,25 +161,29 @@ model FoundationAccountingOrganization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  parties       FoundationAccountingParty[]
-  periods       FoundationLotteryAccountingPeriod[]
-  stockMovement FoundationLotteryStockMovement[]
-  sales         FoundationLotterySale[]
-  payments      FoundationLotteryPayment[]
-  settlements   FoundationLotterySettlement[]
-  ledgerEntries FoundationLotteryLedgerEntry[]
-  auditEvents   FoundationLotteryAuditEvent[]
+  parties           FoundationAccountingParty[]
+  periods           FoundationLotteryAccountingPeriod[]
+  documentSequences FoundationLotteryDocumentSequence[]
+  stockMovement     FoundationLotteryStockMovement[]
+  sales             FoundationLotterySale[]
+  payments          FoundationLotteryPayment[]
+  settlements       FoundationLotterySettlement[]
+  ledgerEntries     FoundationLotteryLedgerEntry[]
+  auditEvents       FoundationLotteryAuditEvent[]
 }
 
 model FoundationAccountingParty {
-  id             String   @id @default(uuid())
-  organizationId String
-  partyType      String
-  name           String
-  phone          String?
-  status         String   @default("ACTIVE")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                String   @id @default(uuid())
+  organizationId    String
+  partyType         String
+  name              String
+  phone             String?
+  ticketRatePaise   BigInt   @default(0)
+  commissionRateBps Int      @default(0)
+  tdsRateBps        Int      @default(0)
+  status            String   @default("ACTIVE")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   sales        FoundationLotterySale[]
@@ -207,6 +211,21 @@ model FoundationLotteryAccountingPeriod {
   @@index([organizationId, startsAt, endsAt])
 }
 
+model FoundationLotteryDocumentSequence {
+  id             String   @id @default(uuid())
+  organizationId String
+  financialYear  String
+  documentType   String
+  nextValue      Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, financialYear, documentType])
+  @@index([organizationId, financialYear])
+}
+
 model FoundationLotteryStockMovement {
   id               String   @id @default(uuid())
   organizationId   String
@@ -224,25 +243,29 @@ model FoundationLotteryStockMovement {
 }
 
 model FoundationLotterySale {
-  id                String   @id @default(uuid())
-  organizationId    String
-  partyId           String
-  periodId          String?
-  reference         String
-  dispatchQuantity  Int
-  returnQuantity    Int
-  netTickets        Int
-  ticketRatePaise   BigInt
-  grossSalesPaise   BigInt
-  commissionRateBps Int
-  commissionPaise   BigInt
-  tdsRateBps        Int
-  tdsPaise          BigInt
-  netPayablePaise   BigInt
-  status            String   @default("POSTED")
-  occurredAt        DateTime
-  createdByAdminId  String
-  createdAt         DateTime @default(now())
+  id                    String   @id @default(uuid())
+  organizationId        String
+  partyId               String
+  periodId              String?
+  reference             String
+  dispatchQuantity      Int
+  morningReturnQuantity Int      @default(0)
+  dayReturnQuantity     Int      @default(0)
+  eveningReturnQuantity Int      @default(0)
+  returnQuantity        Int
+  netTickets            Int
+  ticketRatePaise       BigInt
+  grossSalesPaise       BigInt
+  commissionRateBps     Int
+  commissionPaise       BigInt
+  tdsRateBps            Int
+  tdsPaise              BigInt
+  netPayablePaise       BigInt
+  status                String   @default("DRAFT")
+  correctionOfSaleId    String?
+  occurredAt            DateTime
+  createdByAdminId      String
+  createdAt             DateTime @default(now())
 
   organization FoundationAccountingOrganization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   party        FoundationAccountingParty          @relation(fields: [partyId], references: [id], onDelete: Restrict)
@@ -251,8 +274,10 @@ model FoundationLotterySale {
 
   @@unique([organizationId, reference])
   @@index([organizationId, occurredAt])
+  @@index([organizationId, status, occurredAt])
   @@index([partyId, occurredAt])
   @@index([periodId])
+  @@index([correctionOfSaleId])
 }
 
 model FoundationLotteryPayment {

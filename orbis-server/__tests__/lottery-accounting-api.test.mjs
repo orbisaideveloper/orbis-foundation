@@ -32,11 +32,26 @@ function serviceMock() {
     createOrganization: vi.fn().mockResolvedValue({ id: "org-1" }),
     listOrganizations: vi.fn().mockResolvedValue([{ id: "org-1" }]),
     createParty: vi.fn().mockResolvedValue({ id: "party-1" }),
+    updatePartyProfile: vi.fn().mockResolvedValue({ id: "party-1" }),
     createPeriod: vi.fn().mockResolvedValue({ id: "period-1" }),
+    createFinancialYearPeriod: vi.fn().mockResolvedValue({ id: "period-1" }),
     recordStockMovement: vi.fn().mockResolvedValue({ id: "stock-1" }),
     recordSale: vi
       .fn()
       .mockResolvedValue({ sale: { id: "sale-1" }, ledger: [] }),
+    createDailySellerDraft: vi
+      .fn()
+      .mockResolvedValue({ sale: { id: "sale-1", status: "DRAFT" } }),
+    updateDailySellerDraft: vi
+      .fn()
+      .mockResolvedValue({ sale: { id: "sale-1", status: "DRAFT" } }),
+    deleteDailySellerDraft: vi.fn().mockResolvedValue({ id: "sale-1" }),
+    postDailySellerDraft: vi
+      .fn()
+      .mockResolvedValue({ sale: { id: "sale-1", status: "POSTED" } }),
+    correctPostedSale: vi
+      .fn()
+      .mockResolvedValue({ draft: { id: "sale-2", status: "DRAFT" } }),
     recordPayment: vi.fn().mockResolvedValue({ payment: { id: "payment-1" } }),
     recordSettlement: vi.fn().mockResolvedValue({ id: "settlement-1" }),
     previewSale: vi.fn().mockReturnValue({ calculated: {}, ledger: [] }),
@@ -66,11 +81,20 @@ describe("Lottery Accounting Admin API", () => {
       .post("/lottery/sales/preview")
       .send({ dispatchQuantity: 1 })
       .expect(401);
+    await request(app)
+      .post("/lottery/daily-seller-drafts")
+      .send({})
+      .expect(401);
+    await request(app)
+      .post("/lottery/daily-seller-drafts/sale-1/post")
+      .send({})
+      .expect(401);
     expect(service.recordSale).not.toHaveBeenCalled();
     expect(service.analyzeVerifiedAccounting).not.toHaveBeenCalled();
     expect(service.listOrganizations).not.toHaveBeenCalled();
     expect(service.getWorkspace).not.toHaveBeenCalled();
     expect(service.previewSale).not.toHaveBeenCalled();
+    expect(service.createDailySellerDraft).not.toHaveBeenCalled();
   });
 
   it("exposes stock, sale, payment and settlement writes with the verified Admin id", async () => {
@@ -85,14 +109,42 @@ describe("Lottery Accounting Admin API", () => {
       .send({ name: "Party" })
       .expect(201);
     await request(app)
+      .patch("/lottery/parties/party-1/profile")
+      .send({ organizationId: "org-1" })
+      .expect(200);
+    await request(app)
       .post("/lottery/periods")
       .send({ label: "Period" })
+      .expect(201);
+    await request(app)
+      .post("/lottery/periods/financial-year")
+      .send({ organizationId: "org-1", financialYearStart: 2026 })
       .expect(201);
     await request(app)
       .post("/lottery/stock-movements")
       .send({ reference: "S" })
       .expect(201);
     await request(app).post(SALES_ROUTE).send({ reference: "A" }).expect(201);
+    await request(app)
+      .post("/lottery/daily-seller-drafts")
+      .send({ organizationId: "org-1" })
+      .expect(201);
+    await request(app)
+      .patch("/lottery/daily-seller-drafts/sale-1")
+      .send({ organizationId: "org-1" })
+      .expect(200);
+    await request(app)
+      .post("/lottery/daily-seller-drafts/sale-1/post")
+      .send({ organizationId: "org-1" })
+      .expect(200);
+    await request(app)
+      .delete("/lottery/daily-seller-drafts/sale-1")
+      .send({ organizationId: "org-1" })
+      .expect(200);
+    await request(app)
+      .post("/lottery/sales/sale-1/correct")
+      .send({ organizationId: "org-1" })
+      .expect(201);
     await request(app)
       .post("/lottery/payments")
       .send({ reference: "P" })
@@ -104,9 +156,16 @@ describe("Lottery Accounting Admin API", () => {
     for (const call of [
       service.createOrganization,
       service.createParty,
+      service.updatePartyProfile,
       service.createPeriod,
+      service.createFinancialYearPeriod,
       service.recordStockMovement,
       service.recordSale,
+      service.createDailySellerDraft,
+      service.updateDailySellerDraft,
+      service.postDailySellerDraft,
+      service.deleteDailySellerDraft,
+      service.correctPostedSale,
       service.recordPayment,
       service.recordSettlement,
     ]) {

@@ -7,6 +7,7 @@ import type { LotteryWorkspace } from "../../../models/lotteryAccountingTypes";
 
 const ORGANIZATION_NAME = "Demo Lottery";
 const ORGANIZATION_OVERVIEW = `${ORGANIZATION_NAME} overview`;
+const SELLER_DISPATCH_LABEL = "Seller A dispatch";
 const AUGUST_2026 = "August 2026";
 const RECORDED_AT = "2026-08-30T00:00:00.000Z";
 
@@ -26,6 +27,9 @@ const workspace: LotteryWorkspace = {
       partyType: "SELLER",
       name: "Seller A",
       phone: null,
+      ticketRatePaise: "1000",
+      commissionRateBps: 500,
+      tdsRateBps: 1000,
       status: "ACTIVE",
     },
   ],
@@ -57,6 +61,9 @@ const workspace: LotteryWorkspace = {
       periodLabel: AUGUST_2026,
       reference: "SALE-1",
       dispatchQuantity: 100,
+      morningReturnQuantity: 5,
+      dayReturnQuantity: 10,
+      eveningReturnQuantity: 5,
       returnQuantity: 20,
       netTickets: 80,
       ticketRatePaise: "1000",
@@ -65,12 +72,14 @@ const workspace: LotteryWorkspace = {
       commissionPaise: "4000",
       tdsRateBps: 1000,
       tdsPaise: "400",
-      netPayablePaise: "75600",
+      netPayablePaise: "76400",
       settledPaise: "40000",
-      outstandingPaise: "35600",
+      outstandingPaise: "36400",
+      status: "POSTED",
       occurredAt: RECORDED_AT,
     },
   ],
+  draftSales: [],
   payments: [
     {
       id: "payment-1",
@@ -96,7 +105,7 @@ const workspace: LotteryWorkspace = {
       lineNumber: 1,
       accountCode: "PARTY_RECEIVABLE",
       side: "DEBIT",
-      amountPaise: "75600",
+      amountPaise: "76400",
       occurredAt: RECORDED_AT,
     },
   ],
@@ -117,12 +126,12 @@ const workspace: LotteryWorkspace = {
     grossSalesPaise: "80000",
     commissionPaise: "4000",
     tdsPaise: "400",
-    netPayablePaise: "75600",
+    netPayablePaise: "76400",
     collectedPaise: "50000",
     outgoingPaise: "0",
     expensePaise: "0",
-    outstandingPaise: "25600",
-    operatingResultPaise: "75600",
+    outstandingPaise: "26400",
+    operatingResultPaise: "76400",
     netCashFlowPaise: "50000",
     stock: {
       received: "120",
@@ -137,7 +146,7 @@ const workspace: LotteryWorkspace = {
     {
       skill: "profit-loss",
       status: "POSITIVE",
-      amountPaise: "75600",
+      amountPaise: "76400",
       sourceFields: ["netPayablePaise", "expensePaise"],
     },
   ],
@@ -149,7 +158,9 @@ function createApi(): LotteryAccountingClient {
     loadWorkspace: vi.fn().mockResolvedValue(workspace),
     createOrganization: vi.fn().mockResolvedValue(organization),
     createParty: vi.fn().mockResolvedValue(undefined),
+    updatePartyProfile: vi.fn().mockResolvedValue(undefined),
     createPeriod: vi.fn().mockResolvedValue(undefined),
+    createFinancialYearPeriod: vi.fn().mockResolvedValue(undefined),
     recordStockMovement: vi.fn().mockResolvedValue(undefined),
     previewSale: vi.fn().mockResolvedValue({
       calculated: {
@@ -157,18 +168,23 @@ function createApi(): LotteryAccountingClient {
         grossSalesPaise: "80000",
         commissionPaise: "4000",
         tdsPaise: "400",
-        netPayablePaise: "75600",
+        netPayablePaise: "76400",
       },
       ledger: [
         {
           lineNumber: 1,
           accountCode: "PARTY_RECEIVABLE",
           side: "DEBIT",
-          amountPaise: "75600",
+          amountPaise: "76400",
         },
       ],
     }),
     recordSale: vi.fn().mockResolvedValue(undefined),
+    saveDailySellerDraft: vi.fn().mockResolvedValue(undefined),
+    updateDailySellerDraft: vi.fn().mockResolvedValue(undefined),
+    deleteDailySellerDraft: vi.fn().mockResolvedValue(undefined),
+    postDailySellerDraft: vi.fn().mockResolvedValue(undefined),
+    correctPostedSale: vi.fn().mockResolvedValue(undefined),
     recordPayment: vi.fn().mockResolvedValue(undefined),
     recordSettlement: vi.fn().mockResolvedValue(undefined),
   };
@@ -195,72 +211,64 @@ describe("LotteryAccountingWorkspace", () => {
     ).toBeInTheDocument();
   });
 
-  it("previews exact sale calculation before it posts an Admin entry", async () => {
+  it("shows the mobile seller table with shared date, three returns and daily totals", async () => {
     const api = createApi();
     render(<LotteryAccountingWorkspace api={api} />);
     await screen.findByText(ORGANIZATION_OVERVIEW);
-    fireEvent.click(screen.getByRole("button", { name: "Data entry" }));
-    fireEvent.click(screen.getByRole("button", { name: "Sale" }));
+    fireEvent.click(screen.getByRole("button", { name: "Daily sellers" }));
 
-    fireEvent.change(screen.getByLabelText("Party"), {
-      target: { value: "party-1" },
-    });
-    fireEvent.change(screen.getByLabelText("Reference"), {
-      target: { value: "SALE-2" },
-    });
-    fireEvent.change(screen.getByLabelText("Dispatch tickets"), {
+    expect(await screen.findByText("Daily seller entry")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Table view" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Daily posted total/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(SELLER_DISPATCH_LABEL), {
       target: { value: "100" },
     });
-    fireEvent.change(screen.getByLabelText("Returned tickets"), {
+    fireEvent.change(screen.getByLabelText("Seller A morning return"), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByLabelText("Seller A day return"), {
       target: { value: "20" },
     });
-    fireEvent.change(screen.getByLabelText("Ticket rate (₹)"), {
-      target: { value: "10" },
-    });
-    fireEvent.change(screen.getByLabelText("Commission (%)"), {
+    fireEvent.change(screen.getByLabelText("Seller A evening return"), {
       target: { value: "5" },
     });
-    fireEvent.change(screen.getByLabelText("TDS (%)"), {
-      target: { value: "10" },
-    });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Preview exact calculation" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
 
-    await waitFor(() => expect(api.previewSale).toHaveBeenCalled());
-    expect(
-      await screen.findByText("Server-calculated preview"),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("₹756.00")).toHaveLength(2);
+    await waitFor(() => expect(api.saveDailySellerDraft).toHaveBeenCalled());
+    expect(api.saveDailySellerDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        partyId: "party-1",
+        periodId: "period-1",
+        dispatchQuantity: "100",
+        morningReturnQuantity: "10",
+        dayReturnQuantity: "20",
+        eveningReturnQuantity: "5",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Grid view" }));
+    expect(await screen.findByText(/Fixed rate ₹10\.00/)).toBeInTheDocument();
   });
 
-  it("keeps an entry on screen when the Admin server rejects it", async () => {
+  it("keeps a seller row on screen when the Admin server rejects its draft", async () => {
     const api = createApi();
-    vi.mocked(api.recordSale).mockRejectedValueOnce(
-      new Error("REFERENCE_CONFLICT"),
+    vi.mocked(api.saveDailySellerDraft).mockRejectedValueOnce(
+      new Error("PARTY_PROFILE_REQUIRED"),
     );
     render(<LotteryAccountingWorkspace api={api} />);
     await screen.findByText(ORGANIZATION_OVERVIEW);
-    fireEvent.click(screen.getByRole("button", { name: "Data entry" }));
-    fireEvent.click(screen.getByRole("button", { name: "Sale" }));
-
-    fireEvent.change(screen.getByLabelText("Party"), {
-      target: { value: "party-1" },
-    });
-    fireEvent.change(screen.getByLabelText("Reference"), {
-      target: { value: "SALE-RETRY" },
-    });
-    fireEvent.change(screen.getByLabelText("Dispatch tickets"), {
+    fireEvent.click(screen.getByRole("button", { name: "Daily sellers" }));
+    await screen.findByText("Daily seller entry");
+    fireEvent.change(screen.getByLabelText(SELLER_DISPATCH_LABEL), {
       target: { value: "10" },
     });
-    fireEvent.change(screen.getByLabelText("Ticket rate (₹)"), {
-      target: { value: "10" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Post sale" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "REFERENCE_CONFLICT",
+      "PARTY_PROFILE_REQUIRED",
     );
-    expect(screen.getByLabelText("Reference")).toHaveValue("SALE-RETRY");
+    expect(screen.getByLabelText(SELLER_DISPATCH_LABEL)).toHaveValue("10");
   });
 });

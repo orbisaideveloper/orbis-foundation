@@ -6,6 +6,7 @@ import {
   ShieldCheck,
   WalletCards,
 } from "lucide-react";
+import { DailySellerEntry } from "./DailySellerEntry";
 import {
   lotteryAccountingClient,
   type LotteryAccountingClient,
@@ -20,16 +21,17 @@ import {
 import type {
   LotteryOrganization,
   LotteryPartyType,
-  LotterySalePreview,
   LotteryWorkspace,
 } from "../../models/lotteryAccountingTypes";
 
-type WorkspaceTab = "dashboard" | "setup" | "entry" | "records" | "analysis";
-type EntryKind = "stock" | "sale" | "payment" | "settlement";
+type WorkspaceTab =
+  "dashboard" | "setup" | "seller" | "entry" | "records" | "analysis";
+type EntryKind = "stock" | "payment" | "settlement";
 
 const WORKSPACE_TABS: Array<[WorkspaceTab, string]> = [
   ["dashboard", "Dashboard"],
   ["setup", "Setup"],
+  ["seller", "Daily sellers"],
   ["entry", "Data entry"],
   ["records", "Records"],
   ["analysis", "AI analysis"],
@@ -37,7 +39,6 @@ const WORKSPACE_TABS: Array<[WorkspaceTab, string]> = [
 
 const ENTRY_KINDS: Array<[EntryKind, string]> = [
   ["stock", "Stock"],
-  ["sale", "Sale"],
   ["payment", "Payment"],
   ["settlement", "Settlement"],
 ];
@@ -59,6 +60,36 @@ const PAYMENT_METHODS = [
 
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function currentFinancialYearStart() {
+  const today = new Date();
+  return today.getUTCMonth() >= 3
+    ? today.getUTCFullYear()
+    : today.getUTCFullYear() - 1;
+}
+
+function financialYearLabel(startYear: string) {
+  const start = Number(startYear);
+  return Number.isInteger(start)
+    ? `FY${String(start).slice(-2)}-${String(start + 1).slice(-2)}`
+    : "Financial year";
+}
+
+function paiseToRupeesInput(value: string) {
+  const paise = BigInt(value);
+  return `${paise / 100n}.${(paise % 100n).toString().padStart(2, "0")}`;
+}
+
+function partyListLabel(party: LotteryWorkspace["parties"][number]) {
+  const identity = `${party.name} · ${party.partyType.replace(/_/g, " ")}`;
+  if (party.partyType !== "SELLER") return identity;
+  return [
+    identity,
+    `${formatPaise(party.ticketRatePaise)} / ticket`,
+    `${formatPercentFromBasisPoints(party.commissionRateBps)} commission`,
+    `${formatPercentFromBasisPoints(party.tdsRateBps)} TDS`,
+  ].join(" · ");
 }
 
 function friendlyError(error: unknown) {
@@ -386,7 +417,8 @@ export function LotteryAccountingWorkspace({
           workspace={null}
           onCreateOrganization={createOrganization}
           onCreateParty={() => Promise.resolve(false)}
-          onCreatePeriod={() => Promise.resolve(false)}
+          onUpdatePartyProfile={() => Promise.resolve(false)}
+          onCreateFinancialYearPeriod={() => Promise.resolve(false)}
           workingAction={workingAction}
           organizationId=""
         />
@@ -405,14 +437,63 @@ export function LotteryAccountingWorkspace({
                   "Party saved in the private accounting workspace.",
                 )
               }
-              onCreatePeriod={(payload) =>
+              onUpdatePartyProfile={(payload) =>
                 runAction(
-                  "period",
-                  () => api.createPeriod(payload),
-                  "Accounting period created.",
+                  "party-profile",
+                  () => api.updatePartyProfile(payload),
+                  "Party rate, commission and TDS profile updated.",
+                )
+              }
+              onCreateFinancialYearPeriod={(payload) =>
+                runAction(
+                  "financial-year",
+                  () => api.createFinancialYearPeriod(payload),
+                  "Financial year created or selected.",
                 )
               }
               workingAction={workingAction}
+            />
+          )}
+          {tab === "seller" && (
+            <DailySellerEntry
+              organizationId={organizationId}
+              workspace={workspace}
+              busy={Boolean(workingAction)}
+              onSaveDraft={(payload) =>
+                runAction(
+                  "daily-seller-draft",
+                  () => api.saveDailySellerDraft(payload),
+                  "Daily seller draft saved. You can still edit or delete it.",
+                )
+              }
+              onUpdateDraft={(saleId, payload) =>
+                runAction(
+                  `daily-seller-draft-${saleId}`,
+                  () => api.updateDailySellerDraft(saleId, payload),
+                  "Daily seller draft updated.",
+                )
+              }
+              onPostDraft={(saleId) =>
+                runAction(
+                  `daily-seller-post-${saleId}`,
+                  () => api.postDailySellerDraft(saleId, { organizationId }),
+                  "Daily seller entry posted with stock and ledger audit rows.",
+                )
+              }
+              onDeleteDraft={(saleId) =>
+                runAction(
+                  `daily-seller-delete-${saleId}`,
+                  () => api.deleteDailySellerDraft(saleId, { organizationId }),
+                  "Daily seller draft deleted before posting.",
+                )
+              }
+              onCorrectPosted={(saleId) =>
+                runAction(
+                  `daily-seller-correct-${saleId}`,
+                  () => api.correctPostedSale(saleId, { organizationId }),
+                  "Posted entry reversed safely; a replacement draft is ready to edit.",
+                )
+              }
             />
           )}
           {tab === "entry" && (
@@ -427,14 +508,6 @@ export function LotteryAccountingWorkspace({
                   "stock",
                   () => api.recordStockMovement(payload),
                   "Stock movement posted. The audit trail is updated.",
-                )
-              }
-              onPreviewSale={(payload) => api.previewSale(payload)}
-              onSale={(payload) =>
-                runAction(
-                  "sale",
-                  () => api.recordSale(payload),
-                  "Sale posted with a balanced ledger entry.",
                 )
               }
               onPayment={(payload) =>
@@ -499,7 +572,9 @@ function DashboardPanel({
             <strong>1.</strong> Setup party and accounting period.
           </li>
           <li>
-            <strong>2.</strong> Enter stock, sale, payment and settlement.
+            <strong>2.</strong> Use Daily sellers for dispatch, three return
+            times and draft review; use Data entry for stock, payment and
+            settlement.
           </li>
           <li>
             <strong>3.</strong> Check Records and AI analysis from verified
@@ -520,23 +595,31 @@ function SetupPanel({
   organizationId,
   onCreateOrganization,
   onCreateParty,
-  onCreatePeriod,
+  onUpdatePartyProfile,
+  onCreateFinancialYearPeriod,
   workingAction,
 }: Readonly<{
   workspace: LotteryWorkspace | null;
   organizationId: string;
   onCreateOrganization: (name: string) => Promise<boolean>;
   onCreateParty: (payload: Record<string, unknown>) => Promise<boolean>;
-  onCreatePeriod: (payload: Record<string, unknown>) => Promise<boolean>;
+  onUpdatePartyProfile: (payload: Record<string, unknown>) => Promise<boolean>;
+  onCreateFinancialYearPeriod: (
+    payload: Record<string, unknown>,
+  ) => Promise<boolean>;
   workingAction: string | null;
 }>) {
   const [organizationName, setOrganizationName] = useState("");
   const [partyName, setPartyName] = useState("");
   const [partyType, setPartyType] = useState<LotteryPartyType>("SELLER");
   const [phone, setPhone] = useState("");
-  const [periodLabel, setPeriodLabel] = useState("");
-  const [startsAt, setStartsAt] = useState(todayInputValue());
-  const [endsAt, setEndsAt] = useState(todayInputValue());
+  const [ticketRate, setTicketRate] = useState("");
+  const [commissionPercent, setCommissionPercent] = useState("0");
+  const [tdsPercent, setTdsPercent] = useState("0");
+  const [profilePartyId, setProfilePartyId] = useState("");
+  const [financialYearStart, setFinancialYearStart] = useState(
+    String(currentFinancialYearStart()),
+  );
   const [localError, setLocalError] = useState<string | null>(null);
 
   const submitOrganization = async (
@@ -559,6 +642,21 @@ function SetupPanel({
       setLocalError("Enter the party name.");
       return;
     }
+    const ticketRatePaise = rupeesToPaise(ticketRate);
+    const commissionRateBps = percentToBasisPoints(commissionPercent);
+    const tdsRateBps = percentToBasisPoints(tdsPercent);
+    if (
+      partyType === "SELLER" &&
+      (!ticketRatePaise ||
+        ticketRatePaise === "0" ||
+        !commissionRateBps ||
+        !tdsRateBps)
+    ) {
+      setLocalError(
+        "Seller needs a fixed ticket rate, commission percentage and TDS percentage.",
+      );
+      return;
+    }
     setLocalError(null);
     if (
       await onCreateParty({
@@ -566,30 +664,59 @@ function SetupPanel({
         name: partyName.trim(),
         partyType,
         phone: phone.trim() || undefined,
+        ...(partyType === "SELLER"
+          ? { ticketRatePaise, commissionRateBps, tdsRateBps }
+          : {}),
       })
     ) {
       setPartyName("");
       setPhone("");
+      setTicketRate("");
+      setCommissionPercent("0");
+      setTdsPercent("0");
     }
   };
 
   const submitPeriod = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!periodLabel.trim()) {
-      setLocalError("Enter a period label, such as August 2026.");
+    if (!/^\d{4}$/.test(financialYearStart)) {
+      setLocalError("Choose a valid financial year.");
       return;
     }
     setLocalError(null);
+    await onCreateFinancialYearPeriod({
+      organizationId,
+      financialYearStart,
+    });
+  };
+
+  const submitPartyProfile = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    const ticketRatePaise = rupeesToPaise(ticketRate);
+    const commissionRateBps = percentToBasisPoints(commissionPercent);
+    const tdsRateBps = percentToBasisPoints(tdsPercent);
     if (
-      await onCreatePeriod({
-        organizationId,
-        label: periodLabel.trim(),
-        startsAt,
-        endsAt,
-      })
+      !profilePartyId ||
+      !ticketRatePaise ||
+      ticketRatePaise === "0" ||
+      !commissionRateBps ||
+      !tdsRateBps
     ) {
-      setPeriodLabel("");
+      setLocalError(
+        "Select a party and enter its rate, commission percentage and TDS percentage.",
+      );
+      return;
     }
+    setLocalError(null);
+    await onUpdatePartyProfile({
+      organizationId,
+      partyId: profilePartyId,
+      ticketRatePaise,
+      commissionRateBps,
+      tdsRateBps,
+    });
   };
 
   return (
@@ -671,59 +798,168 @@ function SetupPanel({
                     className={CONTROL_CLASS}
                   />
                 </div>
+                {partyType === "SELLER" && (
+                  <>
+                    <div>
+                      <Label htmlFor="lottery-party-ticket-rate">
+                        Fixed ticket rate (₹)
+                      </Label>
+                      <input
+                        id="lottery-party-ticket-rate"
+                        inputMode="decimal"
+                        value={ticketRate}
+                        onChange={(event) => setTicketRate(event.target.value)}
+                        placeholder="10.00"
+                        className={CONTROL_CLASS}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="lottery-party-commission">
+                        Commission (%)
+                      </Label>
+                      <input
+                        id="lottery-party-commission"
+                        inputMode="decimal"
+                        value={commissionPercent}
+                        onChange={(event) =>
+                          setCommissionPercent(event.target.value)
+                        }
+                        className={CONTROL_CLASS}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="lottery-party-tds">TDS (%)</Label>
+                      <input
+                        id="lottery-party-tds"
+                        inputMode="decimal"
+                        value={tdsPercent}
+                        onChange={(event) => setTdsPercent(event.target.value)}
+                        className={CONTROL_CLASS}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               <SubmitButton busy={workingAction === "party"}>
                 Save party
               </SubmitButton>
             </form>
             <EntityList
-              items={workspace.parties.map(
-                (party) =>
-                  `${party.name} · ${party.partyType.replace(/_/g, " ")}`,
-              )}
+              items={workspace.parties.map(partyListLabel)}
               empty="No party added yet."
             />
           </WorkspaceCard>
 
-          <WorkspaceCard title="Accounting periods">
+          <WorkspaceCard title="Update a seller pricing profile">
+            <form
+              className="space-y-3"
+              onSubmit={(event) => void submitPartyProfile(event)}
+            >
+              <div>
+                <Label htmlFor="lottery-party-profile">Seller</Label>
+                <select
+                  id="lottery-party-profile"
+                  value={profilePartyId}
+                  onChange={(event) => {
+                    const party = workspace.parties.find(
+                      (item) => item.id === event.target.value,
+                    );
+                    setProfilePartyId(event.target.value);
+                    if (party) {
+                      setTicketRate(paiseToRupeesInput(party.ticketRatePaise));
+                      setCommissionPercent(
+                        (party.commissionRateBps / 100).toFixed(2),
+                      );
+                      setTdsPercent((party.tdsRateBps / 100).toFixed(2));
+                    }
+                  }}
+                  className={CONTROL_CLASS}
+                >
+                  <option value="">Select seller</option>
+                  {workspace.parties
+                    .filter((party) => party.partyType === "SELLER")
+                    .map((party) => (
+                      <option key={party.id} value={party.id}>
+                        {party.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div>
+                  <Label htmlFor="lottery-profile-ticket-rate">Rate (₹)</Label>
+                  <input
+                    id="lottery-profile-ticket-rate"
+                    inputMode="decimal"
+                    value={ticketRate}
+                    onChange={(event) => setTicketRate(event.target.value)}
+                    className={CONTROL_CLASS}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="lottery-profile-commission">
+                    Commission (%)
+                  </Label>
+                  <input
+                    id="lottery-profile-commission"
+                    inputMode="decimal"
+                    value={commissionPercent}
+                    onChange={(event) =>
+                      setCommissionPercent(event.target.value)
+                    }
+                    className={CONTROL_CLASS}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="lottery-profile-tds">TDS (%)</Label>
+                  <input
+                    id="lottery-profile-tds"
+                    inputMode="decimal"
+                    value={tdsPercent}
+                    onChange={(event) => setTdsPercent(event.target.value)}
+                    className={CONTROL_CLASS}
+                  />
+                </div>
+              </div>
+              <p className="text-[9px] leading-relaxed text-slate-500">
+                TDS is calculated only on the commission. The party payable is
+                gross amount − commission + TDS withheld from commission.
+              </p>
+              <SubmitButton busy={workingAction === "party-profile"}>
+                Save pricing profile
+              </SubmitButton>
+            </form>
+          </WorkspaceCard>
+
+          <WorkspaceCard title="Financial year periods">
             <form
               className="space-y-3"
               onSubmit={(event) => void submitPeriod(event)}
             >
               <div>
-                <Label htmlFor="lottery-period-label">Period label</Label>
-                <input
-                  id="lottery-period-label"
-                  value={periodLabel}
-                  onChange={(event) => setPeriodLabel(event.target.value)}
-                  placeholder="August 2026"
+                <Label htmlFor="lottery-financial-year">Financial year</Label>
+                <select
+                  id="lottery-financial-year"
+                  value={financialYearStart}
+                  onChange={(event) =>
+                    setFinancialYearStart(event.target.value)
+                  }
                   className={CONTROL_CLASS}
-                />
+                >
+                  {[
+                    currentFinancialYearStart() - 1,
+                    currentFinancialYearStart(),
+                    currentFinancialYearStart() + 1,
+                  ].map((year) => (
+                    <option key={year} value={String(year)}>
+                      {financialYearLabel(String(year))} · 01 Apr {year} – 31
+                      Mar {year + 1}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label htmlFor="lottery-period-start">Starts</Label>
-                  <input
-                    id="lottery-period-start"
-                    type="date"
-                    value={startsAt}
-                    onChange={(event) => setStartsAt(event.target.value)}
-                    className={CONTROL_CLASS}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="lottery-period-end">Ends</Label>
-                  <input
-                    id="lottery-period-end"
-                    type="date"
-                    value={endsAt}
-                    onChange={(event) => setEndsAt(event.target.value)}
-                    className={CONTROL_CLASS}
-                  />
-                </div>
-              </div>
-              <SubmitButton busy={workingAction === "period"}>
-                Create period
+              <SubmitButton busy={workingAction === "financial-year"}>
+                Create / select financial year
               </SubmitButton>
             </form>
             <EntityList
@@ -763,8 +999,6 @@ function EntryPanel({
   setEntryKind,
   workingAction,
   onStock,
-  onPreviewSale,
-  onSale,
   onPayment,
   onSettlement,
 }: Readonly<{
@@ -774,10 +1008,6 @@ function EntryPanel({
   setEntryKind: (value: EntryKind) => void;
   workingAction: string | null;
   onStock: (payload: Record<string, unknown>) => Promise<boolean>;
-  onPreviewSale: (
-    payload: Record<string, unknown>,
-  ) => Promise<LotterySalePreview>;
-  onSale: (payload: Record<string, unknown>) => Promise<boolean>;
   onPayment: (payload: Record<string, unknown>) => Promise<boolean>;
   onSettlement: (payload: Record<string, unknown>) => Promise<boolean>;
 }>) {
@@ -805,15 +1035,6 @@ function EntryPanel({
           organizationId={organizationId}
           busy={workingAction === "stock"}
           onSubmit={onStock}
-        />
-      )}
-      {entryKind === "sale" && (
-        <SaleForm
-          organizationId={organizationId}
-          workspace={workspace}
-          busy={workingAction === "sale"}
-          onPreview={onPreviewSale}
-          onSubmit={onSale}
         />
       )}
       {entryKind === "payment" && (
@@ -847,17 +1068,12 @@ function StockForm({
 }>) {
   const [type, setType] = useState("RECEIPT");
   const [quantity, setQuantity] = useState("");
-  const [reference, setReference] = useState("");
   const [occurredAt, setOccurredAt] = useState(todayInputValue());
   const [error, setError] = useState<string | null>(null);
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (
-      !/^-?\d+$/.test(quantity) ||
-      Number(quantity) === 0 ||
-      !reference.trim()
-    ) {
-      setError("Enter a non-zero quantity and a unique reference.");
+    if (!/^-?\d+$/.test(quantity) || Number(quantity) === 0) {
+      setError("Enter a non-zero quantity.");
       return;
     }
     setError(null);
@@ -866,12 +1082,10 @@ function StockForm({
         organizationId,
         type,
         quantity,
-        reference: reference.trim(),
         occurredAt,
       })
     ) {
       setQuantity("");
-      setReference("");
     }
   };
   return (
@@ -902,288 +1116,25 @@ function StockForm({
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label htmlFor="lottery-stock-reference">Reference</Label>
-            <input
-              id="lottery-stock-reference"
-              value={reference}
-              onChange={(event) => setReference(event.target.value)}
-              placeholder="STK-001"
-              className={CONTROL_CLASS}
-            />
-          </div>
-          <div>
-            <Label htmlFor="lottery-stock-date">Date</Label>
-            <input
-              id="lottery-stock-date"
-              type="date"
-              value={occurredAt}
-              onChange={(event) => setOccurredAt(event.target.value)}
-              className={CONTROL_CLASS}
-            />
-          </div>
+        <div>
+          <Label htmlFor="lottery-stock-date">Date</Label>
+          <input
+            id="lottery-stock-date"
+            type="date"
+            value={occurredAt}
+            onChange={(event) => setOccurredAt(event.target.value)}
+            className={CONTROL_CLASS}
+          />
         </div>
         <p className="text-[9px] leading-relaxed text-slate-500">
-          Posted stock is immutable. Use a new <strong>ADJUSTMENT</strong> entry
-          with its own reference to correct stock; never overwrite history.
+          The server creates the stock bill reference automatically. Posted
+          stock is immutable. Use a new <strong>ADJUSTMENT</strong> entry with
+          its own reference to correct stock; never overwrite history.
         </p>
         <InlineError message={error} />
         <SubmitButton busy={busy}>Post stock movement</SubmitButton>
       </form>
     </WorkspaceCard>
-  );
-}
-
-function SaleForm({
-  organizationId,
-  workspace,
-  busy,
-  onPreview,
-  onSubmit,
-}: Readonly<{
-  organizationId: string;
-  workspace: LotteryWorkspace;
-  busy: boolean;
-  onPreview: (payload: Record<string, unknown>) => Promise<LotterySalePreview>;
-  onSubmit: (payload: Record<string, unknown>) => Promise<boolean>;
-}>) {
-  const [partyId, setPartyId] = useState("");
-  const [periodId, setPeriodId] = useState("");
-  const [reference, setReference] = useState("");
-  const [occurredAt, setOccurredAt] = useState(todayInputValue());
-  const [dispatchQuantity, setDispatchQuantity] = useState("");
-  const [returnQuantity, setReturnQuantity] = useState("0");
-  const [ticketRate, setTicketRate] = useState("");
-  const [commissionPercent, setCommissionPercent] = useState("0");
-  const [tdsPercent, setTdsPercent] = useState("0");
-  const [preview, setPreview] = useState<LotterySalePreview | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const payload = () => {
-    const ticketRatePaise = rupeesToPaise(ticketRate);
-    const commissionRateBps = percentToBasisPoints(commissionPercent);
-    const tdsRateBps = percentToBasisPoints(tdsPercent);
-    if (
-      !partyId ||
-      !reference.trim() ||
-      !/^\d+$/.test(dispatchQuantity) ||
-      !/^\d+$/.test(returnQuantity) ||
-      !ticketRatePaise ||
-      !commissionRateBps ||
-      !tdsRateBps
-    ) {
-      throw new Error(
-        "Complete the party, reference, quantities, rate and percentages.",
-      );
-    }
-    return {
-      organizationId,
-      partyId,
-      periodId: periodId || null,
-      reference: reference.trim(),
-      occurredAt,
-      dispatchQuantity,
-      returnQuantity,
-      ticketRatePaise,
-      commissionRateBps,
-      tdsRateBps,
-    };
-  };
-  const previewSale = async () => {
-    try {
-      setError(null);
-      setPreview(await onPreview(payload()));
-    } catch (previewError) {
-      setError(friendlyError(previewError));
-    }
-  };
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    try {
-      setError(null);
-      if (await onSubmit(payload())) {
-        setReference("");
-        setDispatchQuantity("");
-        setReturnQuantity("0");
-        setTicketRate("");
-        setPreview(null);
-      }
-    } catch (submitError) {
-      setError(friendlyError(submitError));
-    }
-  };
-  if (!workspace.parties.length)
-    return (
-      <WorkspaceCard title="Post a sale">
-        <EmptyState>
-          Create a party in Setup before recording a sale.
-        </EmptyState>
-      </WorkspaceCard>
-    );
-  return (
-    <WorkspaceCard title="Sale, commission and TDS">
-      <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label htmlFor="lottery-sale-party">Party</Label>
-            <select
-              id="lottery-sale-party"
-              value={partyId}
-              onChange={(event) => setPartyId(event.target.value)}
-              className={CONTROL_CLASS}
-            >
-              <option value="">Select party</option>
-              {workspace.parties.map((party) => (
-                <option key={party.id} value={party.id}>
-                  {party.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="lottery-sale-period">Period</Label>
-            <select
-              id="lottery-sale-period"
-              value={periodId}
-              onChange={(event) => setPeriodId(event.target.value)}
-              className={CONTROL_CLASS}
-            >
-              <option value="">No period</option>
-              {workspace.periods.map((period) => (
-                <option key={period.id} value={period.id}>
-                  {period.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="lottery-sale-reference">Reference</Label>
-            <input
-              id="lottery-sale-reference"
-              value={reference}
-              onChange={(event) => setReference(event.target.value)}
-              placeholder="SALE-001"
-              className={CONTROL_CLASS}
-            />
-          </div>
-          <div>
-            <Label htmlFor="lottery-sale-date">Date</Label>
-            <input
-              id="lottery-sale-date"
-              type="date"
-              value={occurredAt}
-              onChange={(event) => setOccurredAt(event.target.value)}
-              className={CONTROL_CLASS}
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label htmlFor="lottery-dispatch-quantity">Dispatch tickets</Label>
-            <input
-              id="lottery-dispatch-quantity"
-              inputMode="numeric"
-              value={dispatchQuantity}
-              onChange={(event) => setDispatchQuantity(event.target.value)}
-              className={CONTROL_CLASS}
-            />
-          </div>
-          <div>
-            <Label htmlFor="lottery-return-quantity">Returned tickets</Label>
-            <input
-              id="lottery-return-quantity"
-              inputMode="numeric"
-              value={returnQuantity}
-              onChange={(event) => setReturnQuantity(event.target.value)}
-              className={CONTROL_CLASS}
-            />
-          </div>
-          <div>
-            <Label htmlFor="lottery-ticket-rate">Ticket rate (₹)</Label>
-            <input
-              id="lottery-ticket-rate"
-              inputMode="decimal"
-              value={ticketRate}
-              onChange={(event) => setTicketRate(event.target.value)}
-              placeholder="10.00"
-              className={CONTROL_CLASS}
-            />
-          </div>
-          <div>
-            <Label htmlFor="lottery-commission-rate">Commission (%)</Label>
-            <input
-              id="lottery-commission-rate"
-              inputMode="decimal"
-              value={commissionPercent}
-              onChange={(event) => setCommissionPercent(event.target.value)}
-              className={CONTROL_CLASS}
-            />
-          </div>
-          <div>
-            <Label htmlFor="lottery-tds-rate">TDS (%)</Label>
-            <input
-              id="lottery-tds-rate"
-              inputMode="decimal"
-              value={tdsPercent}
-              onChange={(event) => setTdsPercent(event.target.value)}
-              className={CONTROL_CLASS}
-            />
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void previewSale()}
-            className="min-h-[42px] rounded-xl border border-emerald-100 bg-emerald-50 px-4 text-[10px] font-bold text-emerald-800"
-          >
-            Preview exact calculation
-          </button>
-          <SubmitButton busy={busy}>Post sale</SubmitButton>
-        </div>
-      </form>
-      <InlineError message={error} />
-      {preview && <SalePreview preview={preview} />}
-    </WorkspaceCard>
-  );
-}
-
-function SalePreview({ preview }: Readonly<{ preview: LotterySalePreview }>) {
-  return (
-    <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
-      <p className="text-[10px] font-black text-emerald-800">
-        Server-calculated preview
-      </p>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <Metric label="Net tickets" value={preview.calculated.netTickets} />
-        <Metric
-          label="Gross sales"
-          value={formatPaise(preview.calculated.grossSalesPaise)}
-        />
-        <Metric
-          label="Commission"
-          value={formatPaise(preview.calculated.commissionPaise)}
-        />
-        <Metric label="TDS" value={formatPaise(preview.calculated.tdsPaise)} />
-        <Metric
-          label="Net payable"
-          value={formatPaise(preview.calculated.netPayablePaise)}
-        />
-      </div>
-      <p className="mt-3 text-[9px] font-bold text-slate-600">
-        Balanced ledger preview
-      </p>
-      <ul className="mt-1 space-y-1 text-[9px] text-slate-600">
-        {preview.ledger.map((entry) => (
-          <li key={entry.lineNumber} className="flex justify-between gap-2">
-            <span>
-              {entry.accountCode.replace(/_/g, " ")} · {entry.side}
-            </span>
-            <strong>{formatPaise(entry.amountPaise)}</strong>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 
@@ -1201,7 +1152,6 @@ function PaymentForm({
   const [partyId, setPartyId] = useState("");
   const [periodId, setPeriodId] = useState("");
   const [direction, setDirection] = useState("RECEIPT");
-  const [reference, setReference] = useState("");
   const [occurredAt, setOccurredAt] = useState(todayInputValue());
   const [splits, setSplits] = useState<Record<string, string>>({
     cashPaise: "",
@@ -1219,12 +1169,8 @@ function PaymentForm({
         splits[key].trim() ? rupeesToPaise(splits[key]) : "0",
       ]),
     );
-    if (
-      !partyId ||
-      !reference.trim() ||
-      Object.values(parsed).some((value) => !value)
-    ) {
-      setError("Select party, reference and valid payment amounts.");
+    if (!partyId || Object.values(parsed).some((value) => !value)) {
+      setError("Select party and enter valid payment amounts.");
       return;
     }
     const totalAmountPaise = sumPaise(Object.values(parsed) as string[]);
@@ -1239,13 +1185,11 @@ function PaymentForm({
         partyId,
         periodId: periodId || null,
         direction,
-        reference: reference.trim(),
         occurredAt,
         totalAmountPaise,
         methodSplit: parsed,
       })
     ) {
-      setReference("");
       setSplits({
         cashPaise: "",
         bankPaise: "",
@@ -1319,16 +1263,6 @@ function PaymentForm({
             </select>
           </div>
           <div>
-            <Label htmlFor="lottery-payment-reference">Reference</Label>
-            <input
-              id="lottery-payment-reference"
-              value={reference}
-              onChange={(event) => setReference(event.target.value)}
-              placeholder="RCPT-001"
-              className={CONTROL_CLASS}
-            />
-          </div>
-          <div>
             <Label htmlFor="lottery-payment-date">Date</Label>
             <input
               id="lottery-payment-date"
@@ -1359,6 +1293,7 @@ function PaymentForm({
           ))}
         </div>
         <p className="rounded-xl bg-slate-50 p-3 text-[10px] text-slate-600">
+          The server creates the payment reference automatically. <br />
           Method split total:{" "}
           <strong>{total ? formatPaise(total) : "Enter valid ₹ values"}</strong>
         </p>
@@ -1476,8 +1411,8 @@ function RecordsPanel({
       <WorkspaceCard title="Posted records are immutable">
         <p className="text-[10px] leading-relaxed text-slate-600">
           There are no edit or delete controls for posted financial rows. Keep
-          the audit trail intact: correct stock with a new adjustment and record
-          financial correction as a separate, referenced entry.
+          the audit trail intact: use <strong>Correct</strong> in Daily sellers
+          to create the reversal and a replacement draft safely.
         </p>
       </WorkspaceCard>
       <WorkspaceCard title="Sales">
@@ -1486,7 +1421,7 @@ function RecordsPanel({
             rows={workspace.sales.map((sale) => ({
               key: sale.id,
               title: `${sale.reference} · ${sale.partyName}`,
-              subtitle: `${displayDate(sale.occurredAt)} · due ${formatPaise(sale.outstandingPaise)} · commission ${formatPercentFromBasisPoints(sale.commissionRateBps)} · TDS ${formatPercentFromBasisPoints(sale.tdsRateBps)}`,
+              subtitle: `${displayDate(sale.occurredAt)} · return M/D/E ${sale.morningReturnQuantity}/${sale.dayReturnQuantity}/${sale.eveningReturnQuantity} · net ${sale.netTickets} · due ${formatPaise(sale.outstandingPaise)}`,
               amount: formatPaise(sale.netPayablePaise),
             }))}
           />

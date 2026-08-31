@@ -5,6 +5,8 @@ const {
 
 const CLIENT_ERROR_CODES = new Set([
   "DATA_INTEGRITY_ERROR",
+  "DRAFT_SALE_NOT_FOUND",
+  "INVALID_FINANCIAL_YEAR",
   "INVALID_DATE",
   "INVALID_INTEGER",
   "INVALID_PAYMENT",
@@ -12,6 +14,8 @@ const CLIENT_ERROR_CODES = new Set([
   "INVALID_PARTY_TYPE",
   "INVALID_PERIOD_RANGE",
   "INVALID_SALE",
+  "INVALID_SALE_PARTY",
+  "INVALID_SALE_QUANTITY",
   "INVALID_SETTLEMENT",
   "INVALID_STOCK_QUANTITY",
   "INVALID_STOCK_TYPE",
@@ -19,11 +23,14 @@ const CLIENT_ERROR_CODES = new Set([
   "NEGATIVE_VALUE",
   "ORGANIZATION_NOT_FOUND",
   "PARTY_NOT_FOUND",
+  "PARTY_PROFILE_REQUIRED",
   "PAYMENT_NOT_FOUND",
   "PAYMENT_SPLIT_MISMATCH",
   "RATE_OUT_OF_RANGE",
   "REQUIRED_FIELD",
   "RETURN_EXCEEDS_DISPATCH",
+  "RETURN_TOTAL_MISMATCH",
+  "SALE_HAS_SETTLEMENTS",
   "SALE_NOT_FOUND",
   "SETTLEMENT_EXCEEDS_BALANCE",
   "UNBALANCED_LEDGER",
@@ -33,6 +40,7 @@ const CLIENT_ERROR_CODES = new Set([
 
 const NOT_FOUND_CODES = new Set([
   "PARTY_NOT_FOUND",
+  "DRAFT_SALE_NOT_FOUND",
   "PAYMENT_NOT_FOUND",
   "SALE_NOT_FOUND",
   "ORGANIZATION_NOT_FOUND",
@@ -44,7 +52,7 @@ function sendAccountingError(res, error) {
     : "LOTTERY_ACCOUNTING_UNAVAILABLE";
   const status = NOT_FOUND_CODES.has(code)
     ? 404
-    : code === "SETTLEMENT_EXCEEDS_BALANCE"
+    : code === "SETTLEMENT_EXCEEDS_BALANCE" || code === "SALE_HAS_SETTLEMENTS"
       ? 409
       : code === "LOTTERY_ACCOUNTING_UNAVAILABLE"
         ? 503
@@ -67,6 +75,20 @@ function createLotteryAccountingRouter({
   const router = express.Router();
   const service = suppliedService || createLotteryAccountingService({ prisma });
   router.use(authMiddleware);
+
+  function saleAction(handler, successStatus = 200) {
+    return async (req, res) => {
+      try {
+        const result = await handler(
+          { ...req.body, saleId: req.params.saleId },
+          req.adminUser?.id,
+        );
+        return res.status(successStatus).json(result);
+      } catch (error) {
+        return sendAccountingError(res, error);
+      }
+    };
+  }
 
   router.get("/organizations", async (_req, res) => {
     try {
@@ -99,9 +121,33 @@ function createLotteryAccountingRouter({
     }
   });
 
+  router.patch("/parties/:partyId/profile", async (req, res) => {
+    try {
+      const party = await service.updatePartyProfile(
+        { ...req.body, partyId: req.params.partyId },
+        req.adminUser?.id,
+      );
+      return res.json({ party });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
   router.post("/periods", async (req, res) => {
     try {
       const period = await service.createPeriod(req.body, req.adminUser?.id);
+      return res.status(201).json({ period });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.post("/periods/financial-year", async (req, res) => {
+    try {
+      const period = await service.createFinancialYearPeriod(
+        req.body,
+        req.adminUser?.id,
+      );
       return res.status(201).json({ period });
     } catch (error) {
       return sendAccountingError(res, error);
@@ -129,9 +175,41 @@ function createLotteryAccountingRouter({
     }
   });
 
+  router.post("/daily-seller-drafts", async (req, res) => {
+    try {
+      const result = await service.createDailySellerDraft(
+        req.body,
+        req.adminUser?.id,
+      );
+      return res.status(201).json(result);
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.patch(
+    "/daily-seller-drafts/:saleId",
+    saleAction(service.updateDailySellerDraft),
+  );
+
+  router.delete(
+    "/daily-seller-drafts/:saleId",
+    saleAction(service.deleteDailySellerDraft),
+  );
+
+  router.post(
+    "/daily-seller-drafts/:saleId/post",
+    saleAction(service.postDailySellerDraft),
+  );
+
+  router.post(
+    "/sales/:saleId/correct",
+    saleAction(service.correctPostedSale, 201),
+  );
+
   router.post("/sales/preview", async (req, res) => {
     try {
-      const preview = service.previewSale(req.body);
+      const preview = await service.previewSale(req.body);
       res.setHeader("Cache-Control", "no-store");
       return res.json(preview);
     } catch (error) {

@@ -47,6 +47,20 @@ function postLottery<T>(path: string, payload: unknown): Promise<T> {
   });
 }
 
+function patchLottery<T>(path: string, payload: unknown): Promise<T> {
+  return readLotteryResponse<T>(path, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+function deleteLottery<T>(path: string, payload: unknown): Promise<T> {
+  return readLotteryResponse<T>(path, {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+}
+
 export interface LotteryAccountingClient {
   listOrganizations: () => Promise<LotteryOrganization[]>;
   loadWorkspace: (organizationId: string) => Promise<LotteryWorkspace>;
@@ -54,12 +68,33 @@ export interface LotteryAccountingClient {
     name: string;
   }) => Promise<LotteryOrganization>;
   createParty: (payload: Record<string, unknown>) => Promise<void>;
+  updatePartyProfile: (payload: Record<string, unknown>) => Promise<void>;
   createPeriod: (payload: Record<string, unknown>) => Promise<void>;
+  createFinancialYearPeriod: (
+    payload: Record<string, unknown>,
+  ) => Promise<void>;
   recordStockMovement: (payload: Record<string, unknown>) => Promise<void>;
   previewSale: (
     payload: Record<string, unknown>,
   ) => Promise<LotterySalePreview>;
   recordSale: (payload: Record<string, unknown>) => Promise<void>;
+  saveDailySellerDraft: (payload: Record<string, unknown>) => Promise<void>;
+  updateDailySellerDraft: (
+    saleId: string,
+    payload: Record<string, unknown>,
+  ) => Promise<void>;
+  deleteDailySellerDraft: (
+    saleId: string,
+    payload: Record<string, unknown>,
+  ) => Promise<void>;
+  postDailySellerDraft: (
+    saleId: string,
+    payload: Record<string, unknown>,
+  ) => Promise<void>;
+  correctPostedSale: (
+    saleId: string,
+    payload: Record<string, unknown>,
+  ) => Promise<void>;
   recordPayment: (payload: Record<string, unknown>) => Promise<void>;
   recordSettlement: (payload: Record<string, unknown>) => Promise<void>;
 }
@@ -87,8 +122,18 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
   async createParty(payload) {
     await postLottery("/parties", payload);
   },
+  async updatePartyProfile(payload) {
+    const partyId = String(payload.partyId || "");
+    await patchLottery(
+      `/parties/${encodeURIComponent(partyId)}/profile`,
+      payload,
+    );
+  },
   async createPeriod(payload) {
     await postLottery("/periods", payload);
+  },
+  async createFinancialYearPeriod(payload) {
+    await postLottery("/periods/financial-year", payload);
   },
   async recordStockMovement(payload) {
     await postLottery("/stock-movements", payload);
@@ -98,6 +143,30 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
   },
   async recordSale(payload) {
     await postLottery("/sales", payload);
+  },
+  async saveDailySellerDraft(payload) {
+    await postLottery("/daily-seller-drafts", payload);
+  },
+  async updateDailySellerDraft(saleId, payload) {
+    await patchLottery(
+      `/daily-seller-drafts/${encodeURIComponent(saleId)}`,
+      payload,
+    );
+  },
+  async deleteDailySellerDraft(saleId, payload) {
+    await deleteLottery(
+      `/daily-seller-drafts/${encodeURIComponent(saleId)}`,
+      payload,
+    );
+  },
+  async postDailySellerDraft(saleId, payload) {
+    await postLottery(
+      `/daily-seller-drafts/${encodeURIComponent(saleId)}/post`,
+      payload,
+    );
+  },
+  async correctPostedSale(saleId, payload) {
+    await postLottery(`/sales/${encodeURIComponent(saleId)}/correct`, payload);
   },
   async recordPayment(payload) {
     await postLottery("/payments", payload);

@@ -2,7 +2,7 @@ services:
   - type: web
     name: orbis-foundation
     runtime: node
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci && ./node_modules/.bin/prisma generate && npm run build
     startCommand: node orbis-server/bridge.cjs
     healthCheckPath: /api/system-stats
     autoDeploy: true

@@ -39,15 +39,62 @@ function roundedBasisPoints(amount, basisPoints) {
   return (amount * basisPoints + 5_000n) / 10_000n;
 }
 
+function returnBreakdown(input, dispatchQuantity) {
+  const hasTimedReturn = [
+    "morningReturnQuantity",
+    "dayReturnQuantity",
+    "eveningReturnQuantity",
+  ].some((field) => input[field] !== undefined);
+  if (!hasTimedReturn) {
+    const returnQuantity = integer(input.returnQuantity ?? 0, "returnQuantity");
+    if (returnQuantity > dispatchQuantity) {
+      throw accountingError("RETURN_EXCEEDS_DISPATCH", "returnQuantity");
+    }
+    return {
+      morningReturnQuantity: 0n,
+      dayReturnQuantity: returnQuantity,
+      eveningReturnQuantity: 0n,
+      returnQuantity,
+    };
+  }
+
+  const morningReturnQuantity = integer(
+    input.morningReturnQuantity ?? 0,
+    "morningReturnQuantity",
+  );
+  const dayReturnQuantity = integer(
+    input.dayReturnQuantity ?? 0,
+    "dayReturnQuantity",
+  );
+  const eveningReturnQuantity = integer(
+    input.eveningReturnQuantity ?? 0,
+    "eveningReturnQuantity",
+  );
+  const returnQuantity =
+    morningReturnQuantity + dayReturnQuantity + eveningReturnQuantity;
+  if (returnQuantity > dispatchQuantity) {
+    throw accountingError("RETURN_EXCEEDS_DISPATCH", "returnQuantity");
+  }
+  if (
+    input.returnQuantity !== undefined &&
+    integer(input.returnQuantity, "returnQuantity") !== returnQuantity
+  ) {
+    throw accountingError("RETURN_TOTAL_MISMATCH", "returnQuantity");
+  }
+  return {
+    morningReturnQuantity,
+    dayReturnQuantity,
+    eveningReturnQuantity,
+    returnQuantity,
+  };
+}
+
 function calculateLotterySale(input) {
   if (!input || typeof input !== "object") {
     throw accountingError("INVALID_SALE", "sale");
   }
   const dispatchQuantity = integer(input.dispatchQuantity, "dispatchQuantity");
-  const returnQuantity = integer(input.returnQuantity, "returnQuantity");
-  if (returnQuantity > dispatchQuantity) {
-    throw accountingError("RETURN_EXCEEDS_DISPATCH", "returnQuantity");
-  }
+  const returns = returnBreakdown(input, dispatchQuantity);
   const ticketRatePaise = integer(input.ticketRatePaise, "ticketRatePaise");
   const commissionRateBps = rate(input.commissionRateBps, "commissionRateBps");
   const tdsRateBps = rate(input.tdsRateBps, "tdsRateBps");
@@ -56,21 +103,26 @@ function calculateLotterySale(input) {
     "previousOutstandingPaise",
     { allowNegative: true },
   );
-  const netTickets = dispatchQuantity - returnQuantity;
+  const netTickets = dispatchQuantity - returns.returnQuantity;
   const grossSalesPaise = netTickets * ticketRatePaise;
   const commissionPaise = roundedBasisPoints(
     grossSalesPaise,
     commissionRateBps,
   );
   const tdsPaise = roundedBasisPoints(commissionPaise, tdsRateBps);
-  const netPayablePaise = grossSalesPaise - commissionPaise - tdsPaise;
+  // TDS is withheld from the commission, not charged again on top of it.
+  // Example: ₹1,000 gross − ₹100 commission + ₹2 TDS = ₹902 payable.
+  const netPayablePaise = grossSalesPaise - commissionPaise + tdsPaise;
   const currentOutstandingPaise = previousOutstandingPaise + netPayablePaise;
 
   return Object.freeze({
     moneyUnit: MONEY_UNIT,
     rateUnit: RATE_UNIT,
     dispatchQuantity: dispatchQuantity.toString(),
-    returnQuantity: returnQuantity.toString(),
+    morningReturnQuantity: returns.morningReturnQuantity.toString(),
+    dayReturnQuantity: returns.dayReturnQuantity.toString(),
+    eveningReturnQuantity: returns.eveningReturnQuantity.toString(),
+    returnQuantity: returns.returnQuantity.toString(),
     netTickets: netTickets.toString(),
     ticketRatePaise: ticketRatePaise.toString(),
     commissionRateBps: commissionRateBps.toString(),
@@ -96,7 +148,7 @@ function buildLotterySaleLedger(calculatedSale) {
       side: "DEBIT",
       amountPaise: commission,
     },
-    { accountCode: "TDS_RECEIVABLE", side: "DEBIT", amountPaise: tds },
+    { accountCode: "TDS_PAYABLE", side: "CREDIT", amountPaise: tds },
     { accountCode: "LOTTERY_SALES", side: "CREDIT", amountPaise: gross },
   ].filter((entry) => entry.amountPaise > 0n);
   const debit = entries
@@ -269,7 +321,9 @@ function runLotteryCoreVerification() {
   try {
     const sale = calculateLotterySale({
       dispatchQuantity: 100,
-      returnQuantity: 20,
+      morningReturnQuantity: 5,
+      dayReturnQuantity: 10,
+      eveningReturnQuantity: 5,
       ticketRatePaise: 1_000,
       commissionRateBps: 500,
       tdsRateBps: 1_000,
@@ -279,7 +333,9 @@ function runLotteryCoreVerification() {
       sales: [
         {
           dispatchQuantity: 100,
-          returnQuantity: 20,
+          morningReturnQuantity: 5,
+          dayReturnQuantity: 10,
+          eveningReturnQuantity: 5,
           ticketRatePaise: 1_000,
           commissionRateBps: 500,
           tdsRateBps: 1_000,
@@ -303,9 +359,10 @@ function runLotteryCoreVerification() {
       ["gross sales", sale.grossSalesPaise === "80000"],
       ["commission", sale.commissionPaise === "4000"],
       ["TDS", sale.tdsPaise === "400"],
-      ["net payable", sale.netPayablePaise === "75600"],
+      ["timed returns", sale.returnQuantity === "20"],
+      ["net payable", sale.netPayablePaise === "76400"],
       ["balanced ledger", ledger.length === 4],
-      ["outstanding", summary.outstandingPaise === "25600"],
+      ["outstanding", summary.outstandingPaise === "26400"],
       ["closing stock", summary.stock.closing === "40"],
       ["read-only AI skills", analyzeLotterySummary(summary).length === 4],
     ].map(([name, passed]) => ({ name, passed }));

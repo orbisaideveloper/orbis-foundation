@@ -16,7 +16,9 @@ const {
 
 const saleInput = {
   dispatchQuantity: 100,
-  returnQuantity: 20,
+  morningReturnQuantity: 5,
+  dayReturnQuantity: 10,
+  eveningReturnQuantity: 5,
   ticketRatePaise: 1_000,
   commissionRateBps: 500,
   tdsRateBps: 1_000,
@@ -30,11 +32,15 @@ describe("Lottery Accounting Core", () => {
     });
     expect(sale).toMatchObject({
       netTickets: "80",
+      morningReturnQuantity: "5",
+      dayReturnQuantity: "10",
+      eveningReturnQuantity: "5",
+      returnQuantity: "20",
       grossSalesPaise: "80000",
       commissionPaise: "4000",
       tdsPaise: "400",
-      netPayablePaise: "75600",
-      currentOutstandingPaise: "75700",
+      netPayablePaise: "76400",
+      currentOutstandingPaise: "76500",
     });
     expect(Object.isFrozen(sale)).toBe(true);
     const ledger = buildLotterySaleLedger(sale);
@@ -42,7 +48,7 @@ describe("Lottery Accounting Core", () => {
       expect.objectContaining({
         accountCode: "PARTY_RECEIVABLE",
         side: "DEBIT",
-        amountPaise: "75600",
+        amountPaise: "76400",
       }),
       expect.objectContaining({
         accountCode: "COMMISSION_EXPENSE",
@@ -50,8 +56,8 @@ describe("Lottery Accounting Core", () => {
         amountPaise: "4000",
       }),
       expect.objectContaining({
-        accountCode: "TDS_RECEIVABLE",
-        side: "DEBIT",
+        accountCode: "TDS_PAYABLE",
+        side: "CREDIT",
         amountPaise: "400",
       }),
       expect.objectContaining({
@@ -63,10 +69,38 @@ describe("Lottery Accounting Core", () => {
     expect(Object.isFrozen(ledger)).toBe(true);
   });
 
+  it("withholds TDS only from commission before calculating party payable", () => {
+    const sale = calculateLotterySale({
+      dispatchQuantity: 1,
+      morningReturnQuantity: 0,
+      dayReturnQuantity: 0,
+      eveningReturnQuantity: 0,
+      ticketRatePaise: 100_000,
+      commissionRateBps: 1_000,
+      tdsRateBps: 200,
+    });
+    expect(sale).toMatchObject({
+      grossSalesPaise: "100000",
+      commissionPaise: "10000",
+      tdsPaise: "200",
+      netPayablePaise: "90200",
+    });
+    expect(buildLotterySaleLedger(sale)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountCode: "TDS_PAYABLE",
+          side: "CREDIT",
+          amountPaise: "200",
+        }),
+      ]),
+    );
+  });
+
   it.each([
     [null, "INVALID_SALE"],
     [{ ...saleInput, dispatchQuantity: 1.5 }, "INVALID_INTEGER"],
-    [{ ...saleInput, returnQuantity: 101 }, "RETURN_EXCEEDS_DISPATCH"],
+    [{ ...saleInput, morningReturnQuantity: 101 }, "RETURN_EXCEEDS_DISPATCH"],
+    [{ ...saleInput, returnQuantity: 99 }, "RETURN_TOTAL_MISMATCH"],
     [{ ...saleInput, commissionRateBps: 10_001 }, "RATE_OUT_OF_RANGE"],
     [{ ...saleInput, ticketRatePaise: -1 }, "NEGATIVE_VALUE"],
   ])("rejects invalid sale input %#", (input, code) => {
@@ -125,8 +159,8 @@ describe("Lottery Accounting Core", () => {
     });
     expect(summary).toMatchObject({
       verified: true,
-      outstandingPaise: "25600",
-      operatingResultPaise: "69600",
+      outstandingPaise: "26400",
+      operatingResultPaise: "70400",
       netCashFlowPaise: "44000",
       stock: { closing: "39" },
     });

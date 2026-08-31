@@ -12,8 +12,19 @@ function createPrismaMock() {
   let id = 1;
   const state = {
     organizations: [],
-    parties: [{ id: "party-1", organizationId: "org-1", status: "ACTIVE" }],
+    parties: [
+      {
+        id: "party-1",
+        organizationId: "org-1",
+        status: "ACTIVE",
+        partyType: "SELLER",
+        ticketRatePaise: 1_000n,
+        commissionRateBps: 500,
+        tdsRateBps: 1_000,
+      },
+    ],
     periods: [],
+    sequences: [],
     stocks: [],
     sales: [],
     payments: [],
@@ -56,6 +67,11 @@ function createPrismaMock() {
         state.parties.push(row);
         return row;
       },
+      update: async ({ where, data }) => {
+        const row = state.parties.find((item) => item.id === where.id);
+        Object.assign(row, data);
+        return row;
+      },
       findMany: async ({ where = {} }) =>
         state.parties.filter((row) => within(row, where)),
     },
@@ -67,6 +83,26 @@ function createPrismaMock() {
       },
       findMany: async ({ where = {} }) =>
         state.periods.filter((row) => within(row, where)),
+      findFirst: async ({ where }) =>
+        state.periods.find((row) => within(row, where)) || null,
+    },
+    foundationLotteryDocumentSequence: {
+      upsert: async ({ where, create, update }) => {
+        const key = where.organizationId_financialYear_documentType;
+        const existing = state.sequences.find(
+          (row) =>
+            row.organizationId === key.organizationId &&
+            row.financialYear === key.financialYear &&
+            row.documentType === key.documentType,
+        );
+        if (existing) {
+          existing.nextValue += update.nextValue.increment;
+          return existing;
+        }
+        const row = created("sequence", create);
+        state.sequences.push(row);
+        return row;
+      },
     },
     foundationLotteryStockMovement: {
       create: async ({ data }) => {
@@ -76,6 +112,10 @@ function createPrismaMock() {
       },
       findMany: async ({ where }) =>
         state.stocks.filter((row) => within(row, where)),
+      createMany: async ({ data }) => {
+        state.stocks.push(...data.map((row) => created("stock", row)));
+        return { count: data.length };
+      },
     },
     foundationLotterySale: {
       create: async ({ data }) => {
@@ -87,6 +127,15 @@ function createPrismaMock() {
         state.sales.find((row) => within(row, where)) || null,
       findMany: async ({ where }) =>
         state.sales.filter((row) => within(row, where)),
+      update: async ({ where, data }) => {
+        const row = state.sales.find((item) => item.id === where.id);
+        Object.assign(row, data);
+        return row;
+      },
+      delete: async ({ where }) => {
+        const index = state.sales.findIndex((item) => item.id === where.id);
+        return state.sales.splice(index, 1)[0];
+      },
     },
     foundationLotteryPayment: {
       create: async ({ data }) => {
@@ -114,6 +163,8 @@ function createPrismaMock() {
       }),
       findMany: async ({ where = {} }) =>
         state.settlements.filter((row) => within(row, where)),
+      count: async ({ where = {} }) =>
+        state.settlements.filter((row) => within(row, where)).length,
     },
     foundationLotteryLedgerEntry: {
       createMany: async ({ data }) => {
@@ -143,12 +194,10 @@ function createPrismaMock() {
 const sale = {
   organizationId: "org-1",
   partyId: "party-1",
-  reference: "SALE-1",
   dispatchQuantity: 100,
-  returnQuantity: 20,
-  ticketRatePaise: 1_000,
-  commissionRateBps: 500,
-  tdsRateBps: 1_000,
+  morningReturnQuantity: 5,
+  dayReturnQuantity: 10,
+  eveningReturnQuantity: 5,
 };
 
 describe("Lottery Accounting Service", () => {
@@ -164,6 +213,9 @@ describe("Lottery Accounting Service", () => {
         organizationId: organization.id,
         name: "Seller A",
         partyType: "seller",
+        ticketRatePaise: 1_000,
+        commissionRateBps: 500,
+        tdsRateBps: 1_000,
       },
       "admin-1",
     );
@@ -176,15 +228,21 @@ describe("Lottery Accounting Service", () => {
       },
       "admin-1",
     );
+    const financialYear = await service.createFinancialYearPeriod(
+      { organizationId: organization.id, financialYearStart: 2026 },
+      "admin-1",
+    );
     expect(party).toMatchObject({
       partyType: "SELLER",
       organizationId: organization.id,
     });
     expect(period).toMatchObject({ label: "2026-08", status: "OPEN" });
+    expect(financialYear).toMatchObject({ label: "FY26-27", status: "OPEN" });
     expect(prisma.state.audits.map((event) => event.eventType)).toEqual([
       "ORGANIZATION_CREATED",
       "PARTY_CREATED",
       "ACCOUNTING_PERIOD_CREATED",
+      "FINANCIAL_YEAR_PERIOD_CREATED",
     ]);
     await expect(
       service.createParty(
@@ -205,18 +263,30 @@ describe("Lottery Accounting Service", () => {
     ).rejects.toMatchObject({ code: "INVALID_PERIOD_RANGE" });
   });
 
-  it("posts a verified sale, balanced immutable ledger rows and audit metadata", async () => {
+  it("posts a profile-calculated timed-return sale, stock rows and balanced ledger", async () => {
     const prisma = createPrismaMock();
     const service = createLotteryAccountingService({
       prisma,
       now: () => new Date("2026-08-30T01:00:00Z"),
     });
+    await service.recordStockMovement(
+      { organizationId: "org-1", type: "RECEIPT", quantity: 120 },
+      "admin-1",
+    );
     const result = await service.recordSale(sale, "admin-1");
-    expect(result.calculated.netPayablePaise).toBe("75600");
+    expect(result.sale.reference).toBe("SAL-FY26-27-0001");
+    expect(result.calculated).toMatchObject({
+      morningReturnQuantity: "5",
+      dayReturnQuantity: "10",
+      eveningReturnQuantity: "5",
+      returnQuantity: "20",
+      netPayablePaise: "76400",
+    });
     expect(result.ledger).toHaveLength(4);
     expect(prisma.state.sales).toHaveLength(1);
     expect(prisma.state.ledger).toHaveLength(4);
-    expect(prisma.state.audits[0]).toMatchObject({
+    expect(prisma.state.stocks).toHaveLength(3);
+    expect(prisma.state.audits.at(-1)).toMatchObject({
       eventType: "SALE_POSTED",
       actorAdminId: "admin-1",
     });
@@ -224,6 +294,97 @@ describe("Lottery Accounting Service", () => {
     await expect(
       service.recordSale({ ...sale, partyId: "missing" }, "admin-1"),
     ).rejects.toMatchObject({ code: "PARTY_NOT_FOUND" });
+  });
+
+  it("keeps seller rows editable only as drafts, then posts or corrects them safely", async () => {
+    const prisma = createPrismaMock();
+    const service = createLotteryAccountingService({
+      prisma,
+      now: () => new Date("2026-08-30T01:00:00Z"),
+    });
+    await service.recordStockMovement(
+      { organizationId: "org-1", type: "RECEIPT", quantity: 200 },
+      "admin-1",
+    );
+    const saved = await service.createDailySellerDraft(
+      {
+        organizationId: "org-1",
+        partyId: "party-1",
+        dispatchQuantity: 100,
+        morningReturnQuantity: 10,
+        dayReturnQuantity: 20,
+        eveningReturnQuantity: 5,
+        ticketRatePaise: 1,
+        commissionRateBps: 1,
+        tdsRateBps: 1,
+      },
+      "admin-1",
+    );
+    expect(saved.sale).toMatchObject({
+      reference: "SAL-FY26-27-0001",
+      status: "DRAFT",
+      ticketRatePaise: "1000",
+      commissionRateBps: 500,
+      tdsRateBps: 1000,
+      returnQuantity: 35,
+      netPayablePaise: "62075",
+    });
+    const updated = await service.updateDailySellerDraft(
+      {
+        saleId: saved.sale.id,
+        organizationId: "org-1",
+        partyId: "party-1",
+        dispatchQuantity: 100,
+        morningReturnQuantity: 10,
+        dayReturnQuantity: 10,
+        eveningReturnQuantity: 5,
+      },
+      "admin-1",
+    );
+    expect(updated.calculated).toMatchObject({
+      returnQuantity: "25",
+      netTickets: "75",
+      netPayablePaise: "71625",
+    });
+    const posted = await service.postDailySellerDraft(
+      { organizationId: "org-1", saleId: saved.sale.id },
+      "admin-1",
+    );
+    expect(posted.sale.status).toBe("POSTED");
+    expect(prisma.state.stocks).toHaveLength(3);
+    expect(prisma.state.ledger).toHaveLength(4);
+
+    const corrected = await service.correctPostedSale(
+      { organizationId: "org-1", saleId: posted.sale.id },
+      "admin-1",
+    );
+    expect(
+      prisma.state.sales.find((row) => row.id === posted.sale.id),
+    ).toMatchObject({
+      status: "REVERSED",
+    });
+    expect(corrected.draft).toMatchObject({
+      status: "DRAFT",
+      correctionOfSaleId: posted.sale.id,
+      reference: "SAL-FY26-27-0002",
+    });
+    expect(prisma.state.stocks.at(-1)).toMatchObject({
+      movementType: "ADJUSTMENT",
+      quantity: 75n,
+    });
+  });
+
+  it("deletes a daily seller draft before posting without changing ledger or stock", async () => {
+    const prisma = createPrismaMock();
+    const service = createLotteryAccountingService({ prisma });
+    const saved = await service.createDailySellerDraft(sale, "admin-1");
+    await service.deleteDailySellerDraft(
+      { organizationId: "org-1", saleId: saved.sale.id },
+      "admin-1",
+    );
+    expect(prisma.state.sales).toHaveLength(0);
+    expect(prisma.state.stocks).toHaveLength(0);
+    expect(prisma.state.ledger).toHaveLength(0);
   });
 
   it("records stock and split payments with balanced ledger lines", async () => {
@@ -263,6 +424,10 @@ describe("Lottery Accounting Service", () => {
   it("allocates receipts without exceeding the sale or payment balance", async () => {
     const prisma = createPrismaMock();
     const service = createLotteryAccountingService({ prisma });
+    await service.recordStockMovement(
+      { organizationId: "org-1", type: "RECEIPT", quantity: 120 },
+      "admin-1",
+    );
     const postedSale = await service.recordSale(sale, "admin-1");
     const postedPayment = await service.recordPayment(
       {
@@ -285,6 +450,12 @@ describe("Lottery Accounting Service", () => {
       "admin-1",
     );
     expect(settlement.amountPaise).toBe("40000");
+    await expect(
+      service.correctPostedSale(
+        { organizationId: "org-1", saleId: postedSale.sale.id },
+        "admin-1",
+      ),
+    ).rejects.toMatchObject({ code: "SALE_HAS_SETTLEMENTS" });
     await expect(
       service.recordSettlement(
         {
@@ -312,6 +483,10 @@ describe("Lottery Accounting Service", () => {
   it("recalculates stored rows before returning verified summaries and AI insights", async () => {
     const prisma = createPrismaMock();
     const service = createLotteryAccountingService({ prisma });
+    await service.recordStockMovement(
+      { organizationId: "org-1", type: "RECEIPT", quantity: 120 },
+      "admin-1",
+    );
     await service.recordSale(sale, "admin-1");
     await service.recordPayment(
       {
@@ -327,7 +502,7 @@ describe("Lottery Accounting Service", () => {
     const result = await service.analyzeVerifiedAccounting({
       organizationId: "org-1",
     });
-    expect(result.summary.outstandingPaise).toBe("25600");
+    expect(result.summary.outstandingPaise).toBe("26400");
     expect(result.insights).toHaveLength(4);
 
     prisma.state.sales[0].grossSalesPaise = 1n;
@@ -351,6 +526,17 @@ describe("Lottery Accounting Service", () => {
         organizationId: organization.id,
         name: "Seller A",
         partyType: "SELLER",
+        ticketRatePaise: 1_000,
+        commissionRateBps: 500,
+        tdsRateBps: 1_000,
+      },
+      "admin-1",
+    );
+    await service.recordStockMovement(
+      {
+        organizationId: organization.id,
+        type: "RECEIPT",
+        quantity: 120,
       },
       "admin-1",
     );
@@ -379,22 +565,26 @@ describe("Lottery Accounting Service", () => {
       "admin-1",
     );
 
-    const preview = service.previewSale(sale);
+    const preview = await service.previewSale({
+      ...sale,
+      organizationId: organization.id,
+      partyId: party.id,
+    });
     const workspace = await service.getWorkspace({
       organizationId: organization.id,
     });
 
-    expect(preview.calculated.netPayablePaise).toBe("75600");
+    expect(preview.calculated.netPayablePaise).toBe("76400");
     expect(preview.ledger).toHaveLength(4);
     expect(workspace.organization.name).toBe("Demo Lottery");
     expect(workspace.sales[0]).toMatchObject({
       partyName: "Seller A",
       settledPaise: "40000",
-      outstandingPaise: "35600",
+      outstandingPaise: "36400",
     });
     expect(workspace.payments[0].availablePaise).toBe("10000");
     expect(workspace.ledgerEntries).toHaveLength(6);
-    expect(workspace.auditEvents).toHaveLength(5);
+    expect(workspace.auditEvents).toHaveLength(6);
     expect(workspace.insights).toHaveLength(4);
   });
 });

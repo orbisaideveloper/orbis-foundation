@@ -19,6 +19,9 @@ export interface LotteryParty {
   partyType: LotteryPartyType;
   name: string;
   phone: string | null;
+  ticketRatePaise: string;
+  commissionRateBps: number;
+  tdsRateBps: number;
   status: string;
 }
 
@@ -39,7 +42,7 @@ export interface LotteryStockMovement {
   occurredAt: string;
 }
 
-export interface LotterySale {
+interface LotterySaleFields {
   id: string;
   partyId: string;
   partyName: string;
@@ -47,6 +50,9 @@ export interface LotterySale {
   periodLabel: string | null;
   reference: string;
   dispatchQuantity: number;
+  morningReturnQuantity: number;
+  dayReturnQuantity: number;
+  eveningReturnQuantity: number;
   returnQuantity: number;
   netTickets: number;
   ticketRatePaise: string;
@@ -56,9 +62,18 @@ export interface LotterySale {
   tdsRateBps: number;
   tdsPaise: string;
   netPayablePaise: string;
+  occurredAt: string;
+}
+
+export interface LotterySale extends LotterySaleFields {
   settledPaise: string;
   outstandingPaise: string;
-  occurredAt: string;
+  status: "POSTED";
+}
+
+export interface LotteryDraftSale extends LotterySaleFields {
+  status: "DRAFT";
+  correctionOfSaleId: string | null;
 }
 
 export interface LotteryPayment {
@@ -146,6 +161,7 @@ export interface LotteryWorkspace {
   periods: LotteryPeriod[];
   stockMovements: LotteryStockMovement[];
   sales: LotterySale[];
+  draftSales: LotteryDraftSale[];
   payments: LotteryPayment[];
   settlements: LotterySettlement[];
   ledgerEntries: LotteryLedgerEntry[];
