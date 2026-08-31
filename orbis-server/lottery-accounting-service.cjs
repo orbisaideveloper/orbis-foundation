@@ -49,6 +49,15 @@ function serialize(value) {
 function createLotteryAccountingService({ prisma, now = () => new Date() }) {
   if (!prisma) throw new Error("A Prisma client is required.");
 
+  async function listOrganizations() {
+    const organizations =
+      await prisma.foundationAccountingOrganization.findMany({
+        where: { status: "ACTIVE" },
+        orderBy: { createdAt: "asc" },
+      });
+    return serialize(organizations);
+  }
+
   async function ensureParty(client, organizationId, partyId) {
     const party = await client.foundationAccountingParty.findFirst({
       where: { id: partyId, organizationId, status: "ACTIVE" },
@@ -392,6 +401,137 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     });
   }
 
+  function previewSale(input) {
+    const calculated = calculateLotterySale(input);
+    return {
+      calculated,
+      ledger: buildLotterySaleLedger(calculated),
+    };
+  }
+
+  async function getWorkspace({ organizationId }) {
+    const scopedOrganizationId = requiredText(organizationId, "organizationId");
+    const organization =
+      await prisma.foundationAccountingOrganization.findFirst({
+        where: { id: scopedOrganizationId, status: "ACTIVE" },
+      });
+    if (!organization) {
+      throw accountingError("ORGANIZATION_NOT_FOUND", "organizationId");
+    }
+
+    const [
+      parties,
+      periods,
+      stockMovements,
+      sales,
+      payments,
+      settlements,
+      ledgerEntries,
+      auditEvents,
+      summary,
+    ] = await Promise.all([
+      prisma.foundationAccountingParty.findMany({
+        where: { organizationId: scopedOrganizationId, status: "ACTIVE" },
+        orderBy: { name: "asc" },
+      }),
+      prisma.foundationLotteryAccountingPeriod.findMany({
+        where: { organizationId: scopedOrganizationId },
+        orderBy: { startsAt: "desc" },
+      }),
+      prisma.foundationLotteryStockMovement.findMany({
+        where: { organizationId: scopedOrganizationId },
+        orderBy: { occurredAt: "desc" },
+      }),
+      prisma.foundationLotterySale.findMany({
+        where: { organizationId: scopedOrganizationId, status: "POSTED" },
+        orderBy: { occurredAt: "desc" },
+      }),
+      prisma.foundationLotteryPayment.findMany({
+        where: { organizationId: scopedOrganizationId, status: "POSTED" },
+        orderBy: { occurredAt: "desc" },
+      }),
+      prisma.foundationLotterySettlement.findMany({
+        where: { organizationId: scopedOrganizationId },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.foundationLotteryLedgerEntry.findMany({
+        where: { organizationId: scopedOrganizationId },
+        orderBy: [{ occurredAt: "desc" }, { lineNumber: "asc" }],
+      }),
+      prisma.foundationLotteryAuditEvent.findMany({
+        where: { organizationId: scopedOrganizationId },
+        orderBy: { createdAt: "desc" },
+      }),
+      getVerifiedSummary({ organizationId: scopedOrganizationId }),
+    ]);
+
+    const partyNames = new Map(parties.map((party) => [party.id, party.name]));
+    const periodLabels = new Map(
+      periods.map((period) => [period.id, period.label]),
+    );
+    const saleSettled = new Map();
+    const paymentSettled = new Map();
+    for (const settlement of settlements) {
+      saleSettled.set(
+        settlement.saleId,
+        (saleSettled.get(settlement.saleId) || 0n) +
+          BigInt(settlement.amountPaise),
+      );
+      paymentSettled.set(
+        settlement.paymentId,
+        (paymentSettled.get(settlement.paymentId) || 0n) +
+          BigInt(settlement.amountPaise),
+      );
+    }
+    const salesById = new Map(sales.map((sale) => [sale.id, sale]));
+    const paymentsById = new Map(
+      payments.map((payment) => [payment.id, payment]),
+    );
+
+    return serialize({
+      organization,
+      parties,
+      periods,
+      stockMovements,
+      sales: sales.map((sale) => {
+        const settledPaise = saleSettled.get(sale.id) || 0n;
+        return {
+          ...sale,
+          partyName: partyNames.get(sale.partyId) || "Unknown party",
+          periodLabel: sale.periodId
+            ? periodLabels.get(sale.periodId) || null
+            : null,
+          settledPaise,
+          outstandingPaise: BigInt(sale.netPayablePaise) - settledPaise,
+        };
+      }),
+      payments: payments.map((payment) => {
+        const settledPaise = paymentSettled.get(payment.id) || 0n;
+        return {
+          ...payment,
+          partyName: partyNames.get(payment.partyId) || "Unknown party",
+          periodLabel: payment.periodId
+            ? periodLabels.get(payment.periodId) || null
+            : null,
+          settledPaise,
+          availablePaise: BigInt(payment.totalAmountPaise) - settledPaise,
+        };
+      }),
+      settlements: settlements.map((settlement) => ({
+        ...settlement,
+        saleReference:
+          salesById.get(settlement.saleId)?.reference || "Unknown sale",
+        paymentReference:
+          paymentsById.get(settlement.paymentId)?.reference ||
+          "Unknown payment",
+      })),
+      ledgerEntries,
+      auditEvents,
+      summary,
+      insights: analyzeLotterySummary(summary),
+    });
+  }
+
   async function getVerifiedSummary({ organizationId, from, to }) {
     const scopedOrganizationId = requiredText(organizationId, "organizationId");
     const occurredAt = {};
@@ -466,7 +606,10 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     createOrganization,
     createParty,
     createPeriod,
+    getWorkspace,
     getVerifiedSummary,
+    listOrganizations,
+    previewSale,
     recordPayment,
     recordSale,
     recordSettlement,

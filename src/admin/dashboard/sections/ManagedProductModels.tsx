@@ -19,10 +19,18 @@ import type {
   ManagedProductModelVersion,
   ManagedProductModule,
 } from "../../models/types";
+import { LotteryAccountingWorkspace } from "./LotteryAccountingWorkspace";
+import type { LotteryAccountingClient } from "../../models/lotteryAccountingClient";
 
 type WorkspaceScreen = "catalog" | "model" | "module";
 type ModuleTab =
-  "overview" | "data" | "workflow" | "skills" | "review" | "versions";
+  | "accounting"
+  | "overview"
+  | "data"
+  | "workflow"
+  | "skills"
+  | "review"
+  | "versions";
 
 interface ManagedProductModelsProps {
   previewMode?: boolean;
@@ -30,6 +38,7 @@ interface ManagedProductModelsProps {
   loadModels?: () => Promise<ManagedProductModel[]>;
   publishModel?: (slug: string) => Promise<ManagedProductModel>;
   reviewModel?: (slug: string) => Promise<ManagedProductModel>;
+  lotteryAccountingApi?: LotteryAccountingClient;
 }
 
 function versionLabel(version: number | null | undefined): string {
@@ -117,6 +126,7 @@ export function ManagedProductModels({
   loadModels = loadManagedProductModels,
   publishModel = publishManagedProductModel,
   reviewModel = reviewManagedProductModel,
+  lotteryAccountingApi,
 }: Readonly<ManagedProductModelsProps>) {
   const [models, setModels] = useState<ManagedProductModel[]>([]);
   const [screen, setScreen] = useState<WorkspaceScreen>(initialScreen);
@@ -287,10 +297,10 @@ export function ManagedProductModels({
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <NavigationCard
             title={lottery?.name || "Lottery Accounting"}
-            subtitle="Stock, return, sales, commission, TDS, payment, settlement and ledger."
+            subtitle="Open the real private data-entry workspace before deciding to publish."
             icon={<Sparkles className="h-5 w-5" />}
             onClick={() => {
-              setTab("overview");
+              setTab("accounting");
               setScreen("module");
             }}
           />
@@ -350,6 +360,7 @@ export function ManagedProductModels({
       >
         {(
           [
+            ["accounting", "Accounting"],
             ["overview", "Overview"],
             ["data", "Data"],
             ["workflow", "Workflow"],
@@ -368,6 +379,9 @@ export function ManagedProductModels({
           </button>
         ))}
       </div>
+      {tab === "accounting" && (
+        <LotteryAccountingWorkspace api={lotteryAccountingApi} />
+      )}
       {tab === "overview" && <Overview module={lottery} />}
       {tab === "data" && <DataContract module={lottery} />}
       {tab === "workflow" && <Workflow module={lottery} />}

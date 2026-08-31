@@ -17,6 +17,7 @@ const CLIENT_ERROR_CODES = new Set([
   "INVALID_STOCK_TYPE",
   "NEGATIVE_STOCK",
   "NEGATIVE_VALUE",
+  "ORGANIZATION_NOT_FOUND",
   "PARTY_NOT_FOUND",
   "PAYMENT_NOT_FOUND",
   "PAYMENT_SPLIT_MISMATCH",
@@ -34,6 +35,7 @@ const NOT_FOUND_CODES = new Set([
   "PARTY_NOT_FOUND",
   "PAYMENT_NOT_FOUND",
   "SALE_NOT_FOUND",
+  "ORGANIZATION_NOT_FOUND",
 ]);
 
 function sendAccountingError(res, error) {
@@ -65,6 +67,16 @@ function createLotteryAccountingRouter({
   const router = express.Router();
   const service = suppliedService || createLotteryAccountingService({ prisma });
   router.use(authMiddleware);
+
+  router.get("/organizations", async (_req, res) => {
+    try {
+      const organizations = await service.listOrganizations();
+      res.setHeader("Cache-Control", "no-store");
+      return res.json({ organizations });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
 
   router.post("/organizations", async (req, res) => {
     try {
@@ -117,6 +129,16 @@ function createLotteryAccountingRouter({
     }
   });
 
+  router.post("/sales/preview", async (req, res) => {
+    try {
+      const preview = service.previewSale(req.body);
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(preview);
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
   router.post("/payments", async (req, res) => {
     try {
       const result = await service.recordPayment(req.body, req.adminUser?.id);
@@ -143,6 +165,16 @@ function createLotteryAccountingRouter({
       const summary = await service.getVerifiedSummary(req.query);
       res.setHeader("Cache-Control", "no-store");
       return res.json({ summary });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.get("/workspace", async (req, res) => {
+    try {
+      const workspace = await service.getWorkspace(req.query);
+      res.setHeader("Cache-Control", "no-store");
+      return res.json({ workspace });
     } catch (error) {
       return sendAccountingError(res, error);
     }

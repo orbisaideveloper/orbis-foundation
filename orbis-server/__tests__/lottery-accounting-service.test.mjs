@@ -43,6 +43,10 @@ function createPrismaMock() {
         state.organizations.push(row);
         return row;
       },
+      findFirst: async ({ where }) =>
+        state.organizations.find((row) => within(row, where)) || null,
+      findMany: async ({ where = {} }) =>
+        state.organizations.filter((row) => within(row, where)),
     },
     foundationAccountingParty: {
       findFirst: async ({ where }) =>
@@ -52,6 +56,8 @@ function createPrismaMock() {
         state.parties.push(row);
         return row;
       },
+      findMany: async ({ where = {} }) =>
+        state.parties.filter((row) => within(row, where)),
     },
     foundationLotteryAccountingPeriod: {
       create: async ({ data }) => {
@@ -59,6 +65,8 @@ function createPrismaMock() {
         state.periods.push(row);
         return row;
       },
+      findMany: async ({ where = {} }) =>
+        state.periods.filter((row) => within(row, where)),
     },
     foundationLotteryStockMovement: {
       create: async ({ data }) => {
@@ -104,12 +112,16 @@ function createPrismaMock() {
             .reduce((sum, row) => sum + row.amountPaise, 0n),
         },
       }),
+      findMany: async ({ where = {} }) =>
+        state.settlements.filter((row) => within(row, where)),
     },
     foundationLotteryLedgerEntry: {
       createMany: async ({ data }) => {
         state.ledger.push(...data.map((row) => created("ledger", row)));
         return { count: data.length };
       },
+      findMany: async ({ where = {} }) =>
+        state.ledger.filter((row) => within(row, where)),
     },
     foundationLotteryAuditEvent: {
       create: async ({ data }) => {
@@ -117,6 +129,8 @@ function createPrismaMock() {
         state.audits.push(row);
         return row;
       },
+      findMany: async ({ where = {} }) =>
+        state.audits.filter((row) => within(row, where)),
     },
   };
   return {
@@ -323,5 +337,64 @@ describe("Lottery Accounting Service", () => {
     await expect(
       service.getVerifiedSummary({ organizationId: "org-1", from: "bad-date" }),
     ).rejects.toMatchObject({ code: "INVALID_DATE" });
+  });
+
+  it("returns an Admin workspace with live records, ledger and verified insight inputs", async () => {
+    const prisma = createPrismaMock();
+    const service = createLotteryAccountingService({ prisma });
+    const organization = await service.createOrganization(
+      { name: "Demo Lottery" },
+      "admin-1",
+    );
+    const party = await service.createParty(
+      {
+        organizationId: organization.id,
+        name: "Seller A",
+        partyType: "SELLER",
+      },
+      "admin-1",
+    );
+    const saleResult = await service.recordSale(
+      { ...sale, organizationId: organization.id, partyId: party.id },
+      "admin-1",
+    );
+    const paymentResult = await service.recordPayment(
+      {
+        organizationId: organization.id,
+        partyId: party.id,
+        reference: "PAY-WORKSPACE-1",
+        direction: "RECEIPT",
+        totalAmountPaise: 50_000,
+        methodSplit: { cashPaise: 50_000 },
+      },
+      "admin-1",
+    );
+    await service.recordSettlement(
+      {
+        organizationId: organization.id,
+        saleId: saleResult.sale.id,
+        paymentId: paymentResult.payment.id,
+        amountPaise: 40_000,
+      },
+      "admin-1",
+    );
+
+    const preview = service.previewSale(sale);
+    const workspace = await service.getWorkspace({
+      organizationId: organization.id,
+    });
+
+    expect(preview.calculated.netPayablePaise).toBe("75600");
+    expect(preview.ledger).toHaveLength(4);
+    expect(workspace.organization.name).toBe("Demo Lottery");
+    expect(workspace.sales[0]).toMatchObject({
+      partyName: "Seller A",
+      settledPaise: "40000",
+      outstandingPaise: "35600",
+    });
+    expect(workspace.payments[0].availablePaise).toBe("10000");
+    expect(workspace.ledgerEntries).toHaveLength(6);
+    expect(workspace.auditEvents).toHaveLength(5);
+    expect(workspace.insights).toHaveLength(4);
   });
 });

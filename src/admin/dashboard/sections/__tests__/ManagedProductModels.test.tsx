@@ -150,6 +150,10 @@ describe("ManagedProductModels", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /Lottery Accounting/i }),
     );
+    expect(
+      screen.getByRole("button", { name: "Accounting" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Overview" }));
     expect(screen.getByText("Accounting Core")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Data" }));

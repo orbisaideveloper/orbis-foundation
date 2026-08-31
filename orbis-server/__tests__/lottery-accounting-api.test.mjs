@@ -30,6 +30,7 @@ function appWith(
 function serviceMock() {
   return {
     createOrganization: vi.fn().mockResolvedValue({ id: "org-1" }),
+    listOrganizations: vi.fn().mockResolvedValue([{ id: "org-1" }]),
     createParty: vi.fn().mockResolvedValue({ id: "party-1" }),
     createPeriod: vi.fn().mockResolvedValue({ id: "period-1" }),
     recordStockMovement: vi.fn().mockResolvedValue({ id: "stock-1" }),
@@ -38,6 +39,8 @@ function serviceMock() {
       .mockResolvedValue({ sale: { id: "sale-1" }, ledger: [] }),
     recordPayment: vi.fn().mockResolvedValue({ payment: { id: "payment-1" } }),
     recordSettlement: vi.fn().mockResolvedValue({ id: "settlement-1" }),
+    previewSale: vi.fn().mockReturnValue({ calculated: {}, ledger: [] }),
+    getWorkspace: vi.fn().mockResolvedValue({ organization: { id: "org-1" } }),
     getVerifiedSummary: vi.fn().mockResolvedValue({ verified: true }),
     analyzeVerifiedAccounting: vi
       .fn()
@@ -55,8 +58,19 @@ describe("Lottery Accounting Admin API", () => {
     await request(app)
       .get("/lottery/analysis?organizationId=org-1")
       .expect(401);
+    await request(app).get("/lottery/organizations").expect(401);
+    await request(app)
+      .get("/lottery/workspace?organizationId=org-1")
+      .expect(401);
+    await request(app)
+      .post("/lottery/sales/preview")
+      .send({ dispatchQuantity: 1 })
+      .expect(401);
     expect(service.recordSale).not.toHaveBeenCalled();
     expect(service.analyzeVerifiedAccounting).not.toHaveBeenCalled();
+    expect(service.listOrganizations).not.toHaveBeenCalled();
+    expect(service.getWorkspace).not.toHaveBeenCalled();
+    expect(service.previewSale).not.toHaveBeenCalled();
   });
 
   it("exposes stock, sale, payment and settlement writes with the verified Admin id", async () => {
@@ -113,6 +127,31 @@ describe("Lottery Accounting Admin API", () => {
     expect(analysis.headers["cache-control"]).toBe("no-store");
     expect(service.getVerifiedSummary).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: "org-1" }),
+    );
+  });
+
+  it("returns private Admin-only workspace reads and non-persistent sale previews", async () => {
+    const service = serviceMock();
+    const app = appWith(service);
+    const organizations = await request(app)
+      .get("/lottery/organizations")
+      .expect(200);
+    const workspace = await request(app)
+      .get("/lottery/workspace?organizationId=org-1")
+      .expect(200);
+    const preview = await request(app)
+      .post("/lottery/sales/preview")
+      .send({ dispatchQuantity: 1 })
+      .expect(200);
+
+    expect(organizations.headers["cache-control"]).toBe("no-store");
+    expect(workspace.headers["cache-control"]).toBe("no-store");
+    expect(preview.headers["cache-control"]).toBe("no-store");
+    expect(service.getWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: "org-1" }),
+    );
+    expect(service.previewSale).toHaveBeenCalledWith(
+      expect.objectContaining({ dispatchQuantity: 1 }),
     );
   });
 
