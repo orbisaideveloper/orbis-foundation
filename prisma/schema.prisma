@@ -167,6 +167,7 @@ model FoundationAccountingOrganization {
   periods           FoundationLotteryAccountingPeriod[]
   documentSequences FoundationLotteryDocumentSequence[]
   stockMovement     FoundationLotteryStockMovement[]
+  stockistEntries   FoundationLotteryStockistEntry[]
   sales             FoundationLotterySale[]
   payments          FoundationLotteryPayment[]
   settlements       FoundationLotterySettlement[]
@@ -192,6 +193,7 @@ model FoundationAccountingParty {
   sales        FoundationLotterySale[]
   payments     FoundationLotteryPayment[]
   stockMovements FoundationLotteryStockMovement[]
+  stockistEntries FoundationLotteryStockistEntry[]
 
   @@unique([organizationId, name])
   @@index([organizationId, status])
@@ -256,6 +258,38 @@ model FoundationLotteryStockMovement {
   @@index([organizationId, occurredAt])
   @@index([partyId, occurredAt])
   @@index([sourceReceiptId])
+}
+
+model FoundationLotteryStockistEntry {
+  id                      String   @id @default(uuid())
+  organizationId          String
+  partyId                 String
+  reference               String
+  purchaseQuantity        BigInt   @default(0)
+  morningReturnQuantity   BigInt   @default(0)
+  dayReturnQuantity       BigInt   @default(0)
+  eveningReturnQuantity   BigInt   @default(0)
+  totalReturnQuantity     BigInt   @default(0)
+  netPurchaseQuantity     BigInt   @default(0)
+  unitRatePaise           BigInt   @default(0)
+  grossPurchasePaise      BigInt   @default(0)
+  commissionPaise         BigInt   @default(0)
+  tdsRateBps              Int      @default(0)
+  tdsPaise                BigInt   @default(0)
+  netPayablePaise         BigInt   @default(0)
+  occurredAt              DateTime
+  createdByAdminId        String
+  updatedByAdminId        String
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  party        FoundationAccountingParty @relation(fields: [partyId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, partyId, occurredAt])
+  @@unique([organizationId, reference])
+  @@index([organizationId, occurredAt])
+  @@index([partyId, occurredAt])
 }
 
 model FoundationLotterySale {

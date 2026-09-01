@@ -7,6 +7,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { DailySellerEntry } from "./DailySellerEntry";
+import { DailyStockistEntry } from "./DailyStockistEntry";
 import { WorkspaceSectionTabs } from "./WorkspaceSectionTabs";
 import {
   lotteryAccountingClient,
@@ -32,7 +33,6 @@ type WorkspaceTab =
   | "setup"
   | "seller"
   | "entry"
-  | "records"
   | "statements"
   | "analysis";
 type EntryKind = "payment" | "settlement";
@@ -43,8 +43,7 @@ const WORKSPACE_TABS: Array<[WorkspaceTab, string]> = [
   ["setup", "Setup"],
   ["seller", "Daily entry"],
   ["entry", "Payment"],
-  ["records", "Records"],
-  ["statements", "Statements"],
+  ["statements", "Ledger"],
   ["analysis", "AI analysis"],
 ];
 
@@ -383,8 +382,8 @@ export function LotteryAccountingWorkspace({
               Lottery Accounting
             </h4>
             <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-              Enter real records, inspect the immutable ledger, then review the
-              model before any public publish.
+              Record what you bought, what you gave, what came back and what
+              you paid or received.
             </p>
           </div>
           <span className="rounded-xl bg-emerald-600 p-2.5 text-white">
@@ -501,7 +500,7 @@ export function LotteryAccountingWorkspace({
           {tab === "seller" && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2 rounded-xl border border-emerald-100 bg-white p-2">
-                {(["SALE", "PURCHASE"] as const).map((operation) => <button key={operation} type="button" onClick={() => setDailyOperation(operation)} className={`rounded-lg px-3 py-2 text-[10px] font-bold ${dailyOperation === operation ? "bg-emerald-600 text-white" : "text-slate-600"}`}>{operation === "SALE" ? "Sale entry" : "Purchase / return"}</button>)}
+                {(["SALE", "PURCHASE"] as const).map((operation) => <button key={operation} type="button" onClick={() => setDailyOperation(operation)} className={`rounded-lg px-3 py-2 text-[10px] font-bold ${dailyOperation === operation ? "bg-emerald-600 text-white" : "text-slate-600"}`}>{operation === "SALE" ? "Seller sale" : "Stockist purchase"}</button>)}
               </div>
               {dailyOperation === "SALE" ? <DailySellerEntry
               organizationId={organizationId}
@@ -536,7 +535,13 @@ export function LotteryAccountingWorkspace({
                   "Global TDS rate updated for new and draft seller entries.",
                 )
               }
-              /> : <StockForm organizationId={organizationId} workspace={workspace} busy={workingAction === "stock"} onSubmit={(payload) => runAction("stock", () => api.recordStockMovement(payload), "Purchase or stockist return posted.")} />}
+              /> : <DailyStockistEntry
+                organizationId={organizationId}
+                workspace={workspace}
+                onSave={(payload) =>
+                  runDailyDraftAction(() => api.saveDailyStockistEntry(payload))
+                }
+              />}
             </div>
           )}
           {tab === "entry" && (
@@ -562,7 +567,6 @@ export function LotteryAccountingWorkspace({
               }
             />
           )}
-          {tab === "records" && <RecordsPanel workspace={workspace} />}
           {tab === "statements" && <StatementPanel workspace={workspace} />}
           {tab === "analysis" && <AnalysisPanel workspace={workspace} />}
         </>
@@ -602,6 +606,9 @@ function DashboardPanel({
   const visibleDraftSales = workspace.draftSales.filter((sale) => inRange(sale.occurredAt) && allowedPartyIds.has(sale.partyId));
   const visiblePayments = workspace.payments.filter((payment) => inRange(payment.occurredAt) && allowedPartyIds.has(payment.partyId));
   const visibleStock = workspace.stockMovements.filter((movement) => inRange(movement.occurredAt) && (!movement.partyId || allowedPartyIds.has(movement.partyId)));
+  const visibleStockistEntries = workspace.stockistEntries.filter(
+    (entry) => inRange(entry.occurredAt) && allowedPartyIds.has(entry.partyId),
+  );
   const sum = (values: Iterable<string | number | bigint>) => {
     let total = 0n;
     for (const value of values) total += BigInt(value);
@@ -613,26 +620,59 @@ function DashboardPanel({
   const received = sum(visiblePayments.filter((payment) => payment.direction === "RECEIPT").map((payment) => payment.totalAmountPaise));
   const outgoing = sum(visiblePayments.filter((payment) => payment.direction === "PAYMENT").map((payment) => payment.totalAmountPaise));
   const expenses = sum(visiblePayments.filter((payment) => payment.direction === "EXPENSE").map((payment) => payment.totalAmountPaise));
-  const purchase = sum(visibleStock.filter((movement) => movement.movementType === "RECEIPT").map((movement) => movement.quantity));
-  const stockDispatch = sum(visibleStock.filter((movement) => movement.movementType === "DISPATCH").map((movement) => movement.quantity));
-  const stockEffectAtRangeEnd = sum(
-    workspace.stockMovements
-      .filter((movement) => new Date(movement.occurredAt) < bounds.to)
-      .map((movement) => {
-        const quantity = BigInt(movement.quantity);
-        if (movement.movementType === "DISPATCH") return -quantity;
-        if (movement.movementType === "ADJUSTMENT") return quantity;
-        return quantity;
-      }),
+  const purchase = sum(
+    [
+      ...visibleStockistEntries.map((entry) => entry.purchaseQuantity),
+      ...visibleStock
+        .filter(
+          (movement) =>
+            movement.movementType === "RECEIPT" && !movement.partyId,
+        )
+        .map((movement) => movement.quantity),
+    ],
   );
-  const draftStockEffectAtRangeEnd = sum(
-    workspace.draftSales
-      .filter((sale) => new Date(sale.occurredAt) < bounds.to)
-      .map((sale) => -BigInt(sale.netTickets)),
+  const returnedToStockist = sum(
+    visibleStockistEntries.map((entry) => entry.totalReturnQuantity),
   );
-  const operationalClosingStock =
-    stockEffectAtRangeEnd + draftStockEffectAtRangeEnd;
-  const hasUnclearedStock = operationalClosingStock !== 0n;
+  const netSold = dispatch - returns;
+  const salesAtRangeEnd = [...workspace.sales, ...workspace.draftSales].filter(
+    (sale) => new Date(sale.occurredAt) < bounds.to,
+  );
+  const stockAtRangeEnd = workspace.stockMovements.filter(
+    (movement) => new Date(movement.occurredAt) < bounds.to,
+  );
+  const stockistEntriesAtRangeEnd = workspace.stockistEntries.filter(
+    (entry) => new Date(entry.occurredAt) < bounds.to,
+  );
+  const purchasedAtRangeEnd = sum(
+    [
+      ...stockistEntriesAtRangeEnd.map((entry) => entry.purchaseQuantity),
+      ...stockAtRangeEnd
+        .filter(
+          (movement) =>
+            movement.movementType === "RECEIPT" && !movement.partyId,
+        )
+        .map((movement) => movement.quantity),
+    ],
+  );
+  const dispatchedAtRangeEnd = sum(
+    salesAtRangeEnd.map((sale) => sale.dispatchQuantity),
+  );
+  const sellerReturnsAtRangeEnd = sum(
+    salesAtRangeEnd.map((sale) => sale.returnQuantity),
+  );
+  const stockistReturnsAtRangeEnd = sum(
+    stockistEntriesAtRangeEnd.map((entry) => entry.totalReturnQuantity),
+  );
+  const adjustmentAtRangeEnd = sum(
+    stockAtRangeEnd
+      .filter((movement) => movement.movementType === "ADJUSTMENT")
+      .map((movement) => movement.quantity),
+  );
+  const newStockInHand =
+    purchasedAtRangeEnd - dispatchedAtRangeEnd + adjustmentAtRangeEnd;
+  const returnWaiting = sellerReturnsAtRangeEnd - stockistReturnsAtRangeEnd;
+  const totalStockInHand = newStockInHand + returnWaiting;
   return (
     <div className="space-y-3">
       <WorkspaceCard title={`${workspace.organization.name} dashboard`}>
@@ -649,47 +689,33 @@ function DashboardPanel({
           {PARTY_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
         <div className="grid grid-cols-2 gap-2">
-          <Metric label="Purchased stock" value={purchase.toString()} />
-          <Metric label="Dispatched" value={dispatch.toString()} />
-          <Metric label="Stock dispatch" value={stockDispatch.toString()} />
-          <Metric label="Returns" value={returns.toString()} />
-          <Metric label="Gross sales" value={formatPaise(grossSales)} />
-          <Metric label="Payments received" value={formatPaise(received)} />
-          <Metric label="Outgoing" value={formatPaise(outgoing)} tone="orange" />
-          <Metric label="Expenses" value={formatPaise(expenses)} tone="orange" />
-          <Metric label="Net cash" value={formatPaise(received - outgoing - expenses)} />
-          <Metric
-            label="Operational closing stock"
-            value={operationalClosingStock.toString()}
-            tone={hasUnclearedStock ? "orange" : "emerald"}
-          />
+          <Metric label="Bought" value={purchase.toString()} />
+          <Metric label="Given to sellers" value={dispatch.toString()} />
+          <Metric label="Seller return" value={returns.toString()} />
+          <Metric label="Returned to stockist" value={returnedToStockist.toString()} />
+          <Metric label="Net sold" value={netSold.toString()} />
+          <Metric label="Sale amount" value={formatPaise(grossSales)} />
+          <Metric label="Money received" value={formatPaise(received)} />
+          <Metric label="Paid / expense" value={formatPaise(outgoing + expenses)} tone="orange" />
         </div>
-        <p
-          className={`mt-3 rounded-xl border p-3 text-[10px] font-bold ${hasUnclearedStock ? "border-orange-200 bg-orange-50 text-orange-800" : "border-emerald-100 bg-emerald-50 text-emerald-800"}`}
-        >
-          {hasUnclearedStock
-            ? `Stock clearance alert: ${operationalClosingStock.toString()} ticket(s) remain after this selected period. Check stock receipt, seller dispatch and return entries before play starts.`
-            : "Stock clearance: zero tickets remain after this selected period."}
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <Metric label="New stock in hand" value={newStockInHand.toString()} tone={newStockInHand === 0n ? "emerald" : "orange"} />
+          <Metric label="Return waiting" value={returnWaiting.toString()} tone={returnWaiting === 0n ? "emerald" : "orange"} />
+          <Metric label="Total stock in hand" value={totalStockInHand.toString()} tone={totalStockInHand === 0n ? "emerald" : "orange"} />
+        </div>
+        <p className="mt-2 text-[9px] leading-relaxed text-slate-500">
+          These three stock balances are carried forward up to the end of the selected date, so they include earlier dates even when Today has no new entry.
         </p>
-      </WorkspaceCard>
-      <WorkspaceCard title="Before you publish the model">
-        <ol className="space-y-2 text-[10px] text-slate-600">
-          <li>
-            <strong>1.</strong> Setup party and accounting period.
-          </li>
-          <li>
-            <strong>2.</strong> Use Daily entry for sellers. Use Purchase &amp;
-            payment to receive stock, return it to a stockist and settle money.
-          </li>
-          <li>
-            <strong>3.</strong> Check Records and AI analysis from verified
-            totals.
-          </li>
-          <li>
-            <strong>4.</strong> Go back to Test & Review, then decide whether to
-            publish.
-          </li>
-        </ol>
+        {newStockInHand < 0n && (
+          <p className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-[10px] font-bold text-orange-800">
+            Purchase mismatch: {(-newStockInHand).toString()} ticket(s) were given to sellers without a matching purchase/opening entry.
+          </p>
+        )}
+        <p className={`mt-3 rounded-xl border p-3 text-[10px] font-bold ${returnWaiting === 0n ? "border-emerald-100 bg-emerald-50 text-emerald-800" : "border-orange-200 bg-orange-50 text-orange-800"}`}>
+          {returnWaiting === 0n
+            ? "Seller return is clear: nothing is waiting to go back to a stockist."
+            : `${returnWaiting.toString()} returned ticket(s) are still waiting to be sent back to a stockist.`}
+        </p>
       </WorkspaceCard>
     </div>
   );
@@ -1117,127 +1143,6 @@ function EntryPanel({
   );
 }
 
-function StockForm({
-  organizationId,
-  workspace,
-  busy,
-  onSubmit,
-}: Readonly<{
-  organizationId: string;
-  workspace: LotteryWorkspace;
-  busy: boolean;
-  onSubmit: (payload: Record<string, unknown>) => Promise<boolean>;
-}>) {
-  const [type, setType] = useState("RECEIPT");
-  const [quantity, setQuantity] = useState("");
-  const [partyId, setPartyId] = useState("");
-  const [commission, setCommission] = useState("");
-  const [sourceReceiptId, setSourceReceiptId] = useState("");
-  const [returnSession, setReturnSession] = useState("MORNING");
-  const [occurredAt, setOccurredAt] = useState(todayInputValue());
-  const [error, setError] = useState<string | null>(null);
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!/^-?\d+$/.test(quantity) || Number(quantity) === 0) {
-      setError("Enter a non-zero quantity.");
-      return;
-    }
-    setError(null);
-    if (
-      await onSubmit({
-        organizationId,
-        type,
-        quantity,
-        occurredAt,
-        ...(partyId ? { partyId } : {}),
-        ...(sourceReceiptId ? { sourceReceiptId } : {}),
-        ...(type === "STOCKIST_RETURN" ? { returnSession } : {}),
-        ...(commission.trim() ? { commissionPaise: rupeesToPaise(commission) } : {}),
-      })
-    ) {
-      setQuantity("");
-      setCommission("");
-    }
-  };
-  return (
-    <WorkspaceCard title="Purchase and stockist return">
-      <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label htmlFor="lottery-stock-type">Movement</Label>
-            <select
-              id="lottery-stock-type"
-              value={type}
-              onChange={(event) => setType(event.target.value)}
-              className={CONTROL_CLASS}
-            >
-              {["RECEIPT", "STOCKIST_RETURN", "ADJUSTMENT"].map((value) => (
-                <option key={value}>{value}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="lottery-stock-quantity">Quantity</Label>
-            <input
-              id="lottery-stock-quantity"
-              inputMode="numeric"
-              value={quantity}
-              onChange={(event) => setQuantity(event.target.value)}
-              className={CONTROL_CLASS}
-            />
-          </div>
-        </div>
-        <div>
-          <Label htmlFor="lottery-stock-date">Date</Label>
-          <input
-            id="lottery-stock-date"
-            type="date"
-            value={occurredAt}
-            onChange={(event) => setOccurredAt(event.target.value)}
-            className={CONTROL_CLASS}
-          />
-        </div>
-        {(type === "RECEIPT" || type === "STOCKIST_RETURN") && (
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label htmlFor="lottery-stock-party">Stockist</Label>
-              <select id="lottery-stock-party" value={partyId} onChange={(event) => setPartyId(event.target.value)} className={CONTROL_CLASS}>
-                <option value="">Select stockist</option>
-                {workspace.parties.filter((party) => party.partyType === "STOCKIST" || party.partyType === "SERVICE_STOCKIST").map((party) => <option key={party.id} value={party.id}>{party.name} · {formatPaise(party.ticketRatePaise)}</option>)}
-              </select>
-            </div>
-            {type === "RECEIPT" && <div>
-              <Label htmlFor="lottery-stock-commission">Commission (₹)</Label>
-              <input id="lottery-stock-commission" inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} placeholder="0.00" className={CONTROL_CLASS} />
-            </div>}
-          </div>
-        )}
-        {type === "STOCKIST_RETURN" && (
-          <div className="space-y-2 rounded-xl border border-orange-200 bg-orange-50 p-3">
-            <p className="text-[10px] font-bold text-orange-900">Available return stock: {warehouseReturnBalance(workspace).toString()} tickets</p>
-            <select value={sourceReceiptId} onChange={(event) => setSourceReceiptId(event.target.value)} className={CONTROL_CLASS} aria-label="Original purchase receipt">
-              <option value="">Choose original purchase</option>
-              {workspace.stockMovements.filter((movement) => movement.movementType === "RECEIPT" && movement.partyId === partyId).map((movement) => <option key={movement.id} value={movement.id}>{displayDate(movement.occurredAt)} · {movement.reference} · {movement.quantity} tickets</option>)}
-            </select>
-            <select value={returnSession} onChange={(event) => setReturnSession(event.target.value)} className={CONTROL_CLASS} aria-label="Return session">
-              <option value="MORNING">Morning return</option><option value="DAY">Day return</option><option value="EVENING">Evening return</option>
-            </select>
-            <p className="text-[9px] text-orange-800">Seller return reaches your stock first. Ticket return reduces stock; record cash, bank or UPI settlement separately.</p>
-          </div>
-        )}
-        <p className="text-[9px] leading-relaxed text-slate-500">
-          The server creates the stock bill reference automatically. For a
-          stockist receipt it uses that party's fixed rate, the receipt
-          commission and the common TDS rate automatically. A stockist return
-          uses the selected original purchase rate.
-        </p>
-        <InlineError message={error} />
-        <SubmitButton busy={busy}>Post stock movement</SubmitButton>
-      </form>
-    </WorkspaceCard>
-  );
-}
-
 type AccountingFormProps = {
   organizationId: string;
   workspace: LotteryWorkspace;
@@ -1500,104 +1405,17 @@ function SettlementForm({
   );
 }
 
-function RecordsPanel({
-  workspace,
-}: Readonly<{ workspace: LotteryWorkspace }>) {
-  return (
-    <div className="space-y-3">
-      <WorkspaceCard title="Posted records are immutable">
-        <p className="text-[10px] leading-relaxed text-slate-600">
-          There are no edit or delete controls for posted financial rows. Keep
-          the audit trail intact: use <strong>Correct</strong> in Daily sellers
-          to create the reversal and a replacement draft safely.
-        </p>
-      </WorkspaceCard>
-      <WorkspaceCard title="Sales">
-        {workspace.sales.length ? (
-          <RecordList
-            rows={workspace.sales.map((sale) => ({
-              key: sale.id,
-              title: `${sale.reference} · ${sale.partyName}`,
-              subtitle: `${displayDate(sale.occurredAt)} · return M/D/E ${sale.morningReturnQuantity}/${sale.dayReturnQuantity}/${sale.eveningReturnQuantity} · net ${sale.netTickets} · due ${formatPaise(sale.outstandingPaise)}`,
-              amount: formatPaise(sale.netPayablePaise),
-            }))}
-          />
-        ) : (
-          <EmptyState>No sale posted yet.</EmptyState>
-        )}
-      </WorkspaceCard>
-      <WorkspaceCard title="Payments">
-        {workspace.payments.length ? (
-          <RecordList
-            rows={workspace.payments.map((payment) => ({
-              key: payment.id,
-              title: `${payment.reference} · ${payment.direction}`,
-              subtitle: `${payment.partyName} · available ${formatPaise(payment.availablePaise)}`,
-              amount: formatPaise(payment.totalAmountPaise),
-            }))}
-          />
-        ) : (
-          <EmptyState>No payment posted yet.</EmptyState>
-        )}
-      </WorkspaceCard>
-      <WorkspaceCard title="Stock movements">
-        {workspace.stockMovements.length ? (
-          <RecordList
-            rows={workspace.stockMovements.map((movement) => ({
-              key: movement.id,
-              title: `${movement.reference} · ${movement.movementType}`,
-              subtitle: displayDate(movement.occurredAt),
-              amount: movement.quantity,
-            }))}
-          />
-        ) : (
-          <EmptyState>No stock movement posted yet.</EmptyState>
-        )}
-      </WorkspaceCard>
-      <WorkspaceCard title="Balanced ledger">
-        {workspace.ledgerEntries.length ? (
-          <RecordList
-            rows={workspace.ledgerEntries.map((entry) => ({
-              key: entry.id,
-              title: `${entry.accountCode.replace(/_/g, " ")} · ${entry.side}`,
-              subtitle: `${entry.sourceType.replace(/_/g, " ")} · line ${entry.lineNumber}`,
-              amount: formatPaise(entry.amountPaise),
-            }))}
-          />
-        ) : (
-          <EmptyState>
-            Ledger entries appear after sale or payment posting.
-          </EmptyState>
-        )}
-      </WorkspaceCard>
-      <WorkspaceCard title="Audit trail">
-        {workspace.auditEvents.length ? (
-          <RecordList
-            rows={workspace.auditEvents.map((event) => ({
-              key: event.id,
-              title: friendlyEvent(event.eventType),
-              subtitle: `${event.entityType.toLowerCase()} · ${displayDate(event.createdAt)}`,
-              amount: "Recorded",
-            }))}
-          />
-        ) : (
-          <EmptyState>No audit events yet.</EmptyState>
-        )}
-      </WorkspaceCard>
-    </div>
-  );
-}
-
 type StatementRow = {
   id: string;
   occurredAt: string;
   category: string;
   party: string;
-  reference: string;
   quantity: string;
+  returnQuantity: string;
   netQuantity: string;
   amountPaise: string;
-  status: string;
+  paymentPaise: string;
+  balancePaise: string | null;
 };
 
 type DailyStockClearanceRow = {
@@ -1606,9 +1424,10 @@ type DailyStockClearanceRow = {
   dispatched: bigint;
   returned: bigint;
   stockistReturned: bigint;
-  draftNetSale: bigint;
   adjustment: bigint;
-  closing: bigint;
+  newStock: bigint;
+  returnWaiting: bigint;
+  totalStock: bigint;
 };
 
 function inputDateKey(value: string) {
@@ -1627,24 +1446,6 @@ function nextInputDate(day: string) {
   return date.toISOString().slice(0, 10);
 }
 
-function stockMovementEffect(
-  movement: LotteryWorkspace["stockMovements"][number],
-) {
-  const quantity = BigInt(movement.quantity);
-  if (movement.movementType === "DISPATCH") return -quantity;
-  if (movement.movementType === "STOCKIST_RETURN") return -quantity;
-  return quantity;
-}
-
-function warehouseReturnBalance(workspace: LotteryWorkspace) {
-  return workspace.stockMovements.reduce((total, movement) => {
-    const quantity = BigInt(movement.quantity);
-    if (movement.movementType === "RETURN") return total + quantity;
-    if (movement.movementType === "STOCKIST_RETURN") return total - quantity;
-    return total;
-  }, 0n);
-}
-
 function dailyStockClearanceRows(
   workspace: LotteryWorkspace,
   fromDate: string,
@@ -1654,47 +1455,92 @@ function dailyStockClearanceRows(
   const to = inputDateKey(toDate);
   if (!from || !to || to < from) return [];
 
-  const earlierStock = workspace.stockMovements
-    .filter((movement) => occurredDateKey(movement.occurredAt) < from)
-    .reduce((total, movement) => total + stockMovementEffect(movement), 0n);
-  const earlierDrafts = workspace.draftSales
-    .filter((sale) => occurredDateKey(sale.occurredAt) < from)
-    .reduce((total, sale) => total - BigInt(sale.netTickets), 0n);
-  let closing = earlierStock + earlierDrafts;
+  const earlierMovements = workspace.stockMovements.filter(
+    (movement) => occurredDateKey(movement.occurredAt) < from,
+  );
+  const earlierSales = [...workspace.sales, ...workspace.draftSales].filter(
+    (sale) => occurredDateKey(sale.occurredAt) < from,
+  );
+  const earlierStockistEntries = workspace.stockistEntries.filter(
+    (entry) => occurredDateKey(entry.occurredAt) < from,
+  );
+  let newStock =
+    earlierMovements
+      .filter(
+        (movement) =>
+          movement.movementType === "RECEIPT" && !movement.partyId,
+      )
+      .reduce((total, movement) => total + BigInt(movement.quantity), 0n) -
+    earlierSales.reduce(
+      (total, sale) => total + BigInt(sale.dispatchQuantity),
+      0n,
+    ) +
+    earlierMovements
+      .filter((movement) => movement.movementType === "ADJUSTMENT")
+      .reduce((total, movement) => total + BigInt(movement.quantity), 0n) +
+    earlierStockistEntries.reduce(
+      (total, entry) => total + BigInt(entry.purchaseQuantity),
+      0n,
+    );
+  let returnWaiting =
+    earlierSales.reduce(
+      (total, sale) => total + BigInt(sale.returnQuantity),
+      0n,
+    ) -
+    earlierStockistEntries.reduce(
+      (total, entry) => total + BigInt(entry.totalReturnQuantity),
+      0n,
+    );
   const rows: DailyStockClearanceRow[] = [];
 
   for (let day = from; day <= to; day = nextInputDate(day)) {
     const movements = workspace.stockMovements.filter(
       (movement) => occurredDateKey(movement.occurredAt) === day,
     );
-    const purchased = movements
-      .filter((movement) => movement.movementType === "RECEIPT")
-      .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
-    const dispatched = movements
-      .filter((movement) => movement.movementType === "DISPATCH")
-      .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
-    const returned = movements
-      .filter((movement) => movement.movementType === "RETURN")
-      .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
-    const stockistReturned = movements
-      .filter((movement) => movement.movementType === "STOCKIST_RETURN")
-      .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
+    const dayStockistEntries = workspace.stockistEntries.filter(
+      (entry) => occurredDateKey(entry.occurredAt) === day,
+    );
+    const purchased =
+      movements
+        .filter(
+          (movement) =>
+            movement.movementType === "RECEIPT" && !movement.partyId,
+        )
+        .reduce((total, movement) => total + BigInt(movement.quantity), 0n) +
+      dayStockistEntries.reduce(
+        (total, entry) => total + BigInt(entry.purchaseQuantity),
+        0n,
+      );
+    const daySales = [...workspace.sales, ...workspace.draftSales].filter(
+      (sale) => occurredDateKey(sale.occurredAt) === day,
+    );
+    const dispatched = daySales.reduce(
+      (total, sale) => total + BigInt(sale.dispatchQuantity),
+      0n,
+    );
+    const returned = daySales.reduce(
+      (total, sale) => total + BigInt(sale.returnQuantity),
+      0n,
+    );
+    const stockistReturned = dayStockistEntries.reduce(
+      (total, entry) => total + BigInt(entry.totalReturnQuantity),
+      0n,
+    );
     const adjustment = movements
       .filter((movement) => movement.movementType === "ADJUSTMENT")
       .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
-    const draftNetSale = workspace.draftSales
-      .filter((sale) => occurredDateKey(sale.occurredAt) === day)
-      .reduce((total, sale) => total + BigInt(sale.netTickets), 0n);
-    closing += purchased - dispatched + returned - stockistReturned + adjustment - draftNetSale;
+    newStock += purchased - dispatched + adjustment;
+    returnWaiting += returned - stockistReturned;
     rows.push({
       day,
       purchased,
       dispatched,
       returned,
       stockistReturned,
-      draftNetSale,
       adjustment,
-      closing,
+      newStock,
+      returnWaiting,
+      totalStock: newStock + returnWaiting,
     });
   }
   return rows;
@@ -1718,12 +1564,11 @@ function StatementPanel({
   };
   const includesParty = (entryPartyId: string | null) =>
     partyId === "ALL" || entryPartyId === partyId;
-  const partyName = (entryPartyId: string | null, fallback: string | null) =>
-    fallback ||
-    workspace.parties.find((party) => party.id === entryPartyId)?.name ||
-    "General stock / expense";
   const visibleStock = workspace.stockMovements.filter(
     (movement) => inRange(movement.occurredAt) && includesParty(movement.partyId),
+  );
+  const visibleStockistEntries = workspace.stockistEntries.filter(
+    (entry) => inRange(entry.occurredAt) && includesParty(entry.partyId),
   );
   const visibleSales = [...workspace.sales, ...workspace.draftSales].filter(
     (sale) => inRange(sale.occurredAt) && includesParty(sale.partyId),
@@ -1731,50 +1576,69 @@ function StatementPanel({
   const visiblePayments = workspace.payments.filter(
     (payment) => inRange(payment.occurredAt) && includesParty(payment.partyId),
   );
-  const rows = useMemo<StatementRow[]>(
-    () => [
-      ...visibleStock.map((movement) => ({
-        id: `stock-${movement.id}`,
-        occurredAt: movement.occurredAt,
-        category: `Stock ${movement.movementType.toLowerCase()}`,
-        party: partyName(movement.partyId, movement.partyName),
-        reference: movement.reference,
-        quantity: movement.quantity,
-        netQuantity: "—",
-        amountPaise:
-          movement.movementType === "RECEIPT"
-            ? movement.netPayablePaise
-            : "0",
-        status: "Posted",
-      })),
-      ...visibleSales.map((sale) => ({
-        id: `sale-${sale.id}`,
-        occurredAt: sale.occurredAt,
-        category: "Seller sale",
-        party: sale.partyName,
-        reference: sale.reference,
-        quantity: String(sale.dispatchQuantity),
-        netQuantity: String(sale.netTickets),
-        amountPaise: sale.grossSalesPaise,
-        status: sale.status === "DRAFT" ? "Saved draft" : "Final",
-      })),
-      ...visiblePayments.map((payment) => ({
-        id: `payment-${payment.id}`,
-        occurredAt: payment.occurredAt,
-        category: payment.direction.toLowerCase(),
-        party: payment.partyName,
-        reference: payment.reference,
-        quantity: "—",
-        netQuantity: "—",
-        amountPaise: payment.totalAmountPaise,
-        status: "Posted",
-      })),
-    ].sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)),
-    [visiblePayments, visibleSales, visibleStock],
+  const rawRows = [
+    ...visibleStockistEntries.map((entry) => ({
+      id: `stockist-${entry.id}`,
+      occurredAt: entry.occurredAt,
+      category: BigInt(entry.purchaseQuantity) > 0n ? "Stockist purchase" : "Stockist return",
+      party: entry.partyName,
+      quantity: entry.purchaseQuantity,
+      returnQuantity: entry.totalReturnQuantity,
+      netQuantity: entry.netPurchaseQuantity,
+      amountPaise: entry.netPayablePaise,
+      paymentPaise: "0",
+      balanceEffectPaise: BigInt(entry.netPayablePaise),
+    })),
+    ...visibleSales.map((sale) => ({
+      id: `sale-${sale.id}`,
+      occurredAt: sale.occurredAt,
+      category: "Seller sale",
+      party: sale.partyName,
+      quantity: String(sale.dispatchQuantity),
+      returnQuantity: String(sale.returnQuantity),
+      netQuantity: String(sale.netTickets),
+      amountPaise: sale.netPayablePaise,
+      paymentPaise: "0",
+      balanceEffectPaise: BigInt(sale.netPayablePaise),
+    })),
+    ...visiblePayments.map((payment) => ({
+      id: `payment-${payment.id}`,
+      occurredAt: payment.occurredAt,
+      category:
+        payment.direction === "RECEIPT"
+          ? "Money received"
+          : payment.direction === "PAYMENT"
+            ? "Money paid"
+            : "Expense",
+      party: payment.partyName,
+      quantity: "—",
+      returnQuantity: "—",
+      netQuantity: "—",
+      amountPaise: "0",
+      paymentPaise: payment.totalAmountPaise,
+      balanceEffectPaise:
+        payment.direction === "EXPENSE"
+          ? 0n
+          : -BigInt(payment.totalAmountPaise),
+    })),
+  ].sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+  let runningBalance = 0n;
+  const rows: StatementRow[] = rawRows.map((row) => {
+    runningBalance += row.balanceEffectPaise;
+    return {
+      ...row,
+      balancePaise: partyId === "ALL" ? null : runningBalance.toString(),
+    };
+  });
+  const purchased = visibleStockistEntries.reduce(
+    (total, entry) => total + BigInt(entry.purchaseQuantity),
+    visibleStock
+      .filter(
+        (movement) =>
+          movement.movementType === "RECEIPT" && !movement.partyId,
+      )
+      .reduce((total, movement) => total + BigInt(movement.quantity), 0n),
   );
-  const purchased = visibleStock
-    .filter((movement) => movement.movementType === "RECEIPT")
-    .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
   const dispatched = visibleSales.reduce(
     (total, sale) => total + BigInt(sale.dispatchQuantity),
     0n,
@@ -1807,11 +1671,10 @@ function StatementPanel({
 
   return (
     <div className="space-y-3">
-      <WorkspaceCard title="Accounting statement">
+      <WorkspaceCard title="Party ledger">
         <p className="text-[10px] leading-relaxed text-slate-600">
-          A date-and-party-wise statement of saved drafts, final seller sales,
-          stock, payments and expenses. PDF/Excel export is intentionally not
-          included in this screen yet.
+          Choose a party and date. Its purchase or sale, return, payment and
+          running balance appear together in one day-wise ledger.
         </p>
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label>
@@ -1842,7 +1705,7 @@ function StatementPanel({
               onChange={(event) => setPartyId(event.target.value)}
               className={CONTROL_CLASS}
             >
-              <option value="ALL">All parties and general stock</option>
+              <option value="ALL">All parties</option>
               {workspace.parties.map((party) => (
                 <option key={party.id} value={party.id}>
                   {party.name} · {party.partyType.toLowerCase()}
@@ -1854,12 +1717,12 @@ function StatementPanel({
       </WorkspaceCard>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Metric label="Purchased" value={purchased.toString()} />
-        <Metric label="Dispatch" value={dispatched.toString()} />
-        <Metric label="Return" value={returned.toString()} />
-        <Metric label="Net sale" value={netSale.toString()} />
-        <Metric label="Gross sales" value={formatPaise(grossSales)} />
-        <Metric label="Payment received" value={formatPaise(received)} />
+        <Metric label="Bought" value={purchased.toString()} />
+        <Metric label="Given" value={dispatched.toString()} />
+        <Metric label="Returned" value={returned.toString()} />
+        <Metric label="Net" value={netSale.toString()} />
+        <Metric label="Sale amount" value={formatPaise(grossSales)} />
+        <Metric label="Received" value={formatPaise(received)} />
         <Metric label="Expenses" value={formatPaise(expenses)} tone="orange" />
         <Metric
           label="Net cash"
@@ -1867,11 +1730,10 @@ function StatementPanel({
         />
       </div>
 
-      <WorkspaceCard title="Daily stock-clearance control">
+      <WorkspaceCard title="Daily stock check">
         <p className="text-[10px] leading-relaxed text-slate-600">
-          Every date in the selected range is shown, including days with no
-          purchase. A non-zero closing stock is highlighted because lottery
-          stock should be cleared before that day&apos;s play begins.
+          New stock and seller-return stock are shown separately. Orange means
+          something is still in hand or a purchase entry is missing.
         </p>
         <div className="mt-3 overflow-x-auto rounded-xl border border-emerald-100">
           <table className="min-w-[820px] border-collapse text-left text-[10px]">
@@ -1883,10 +1745,11 @@ function StatementPanel({
                   "Dispatch",
                   "Return",
                   "To stockist",
-                  "Draft net sale",
                   "Adjustment",
-                  "Closing stock",
-                  "Clearance",
+                  "New stock",
+                  "Return waiting",
+                  "Total in hand",
+                  "Status",
                 ].map((heading) => (
                   <th
                     key={heading}
@@ -1899,7 +1762,7 @@ function StatementPanel({
             </thead>
             <tbody>
               {stockClearanceRows.map((row) => {
-                const clear = row.closing === 0n;
+                const clear = row.totalStock === 0n;
                 return (
                   <tr
                     key={row.day}
@@ -1912,13 +1775,14 @@ function StatementPanel({
                     <td className="px-2 py-2">{row.dispatched.toString()}</td>
                     <td className="px-2 py-2">{row.returned.toString()}</td>
                     <td className="px-2 py-2">{row.stockistReturned.toString()}</td>
-                    <td className="px-2 py-2">{row.draftNetSale.toString()}</td>
                     <td className="px-2 py-2">{row.adjustment.toString()}</td>
-                    <td className="px-2 py-2 font-black">{row.closing.toString()}</td>
+                    <td className="px-2 py-2 font-black">{row.newStock.toString()}</td>
+                    <td className="px-2 py-2 font-black">{row.returnWaiting.toString()}</td>
+                    <td className="px-2 py-2 font-black">{row.totalStock.toString()}</td>
                     <td className="px-2 py-2 font-bold">
                       {clear
                         ? "Clear"
-                        : `Not clear: ${row.closing.toString()} remain`}
+                        : `${row.totalStock.toString()} in hand`}
                     </td>
                   </tr>
                 );
@@ -1928,7 +1792,7 @@ function StatementPanel({
         </div>
       </WorkspaceCard>
 
-      <WorkspaceCard title="Statement rows">
+      <WorkspaceCard title="Day-wise ledger">
         {rows.length ? (
           <div className="overflow-x-auto rounded-xl border border-emerald-100">
             <table className="min-w-[920px] border-collapse text-left text-[10px]">
@@ -1938,11 +1802,12 @@ function StatementPanel({
                     "Date",
                     "Category",
                     "Party",
-                    "Reference",
-                    "Quantity",
-                    "Net sale",
+                    "Bought / given",
+                    "Return",
+                    "Net",
                     "Amount",
-                    "Status",
+                    "Payment",
+                    "Balance",
                   ].map((heading) => (
                     <th
                       key={heading}
@@ -1959,11 +1824,14 @@ function StatementPanel({
                     <td className="px-2 py-2">{displayDate(row.occurredAt)}</td>
                     <td className="px-2 py-2 capitalize">{row.category}</td>
                     <td className="px-2 py-2 font-bold">{row.party}</td>
-                    <td className="px-2 py-2">{row.reference}</td>
                     <td className="px-2 py-2">{row.quantity}</td>
+                    <td className="px-2 py-2">{row.returnQuantity}</td>
                     <td className="px-2 py-2">{row.netQuantity}</td>
                     <td className="px-2 py-2">{formatPaise(row.amountPaise)}</td>
-                    <td className="px-2 py-2">{row.status}</td>
+                    <td className="px-2 py-2">{formatPaise(row.paymentPaise)}</td>
+                    <td className="px-2 py-2 font-black">
+                      {row.balancePaise === null ? "Choose one party" : formatPaise(row.balancePaise)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1974,35 +1842,6 @@ function StatementPanel({
         )}
       </WorkspaceCard>
     </div>
-  );
-}
-
-function RecordList({
-  rows,
-}: Readonly<{
-  rows: Array<{ key: string; title: string; subtitle: string; amount: string }>;
-}>) {
-  return (
-    <ul className="space-y-2">
-      {rows.map((row) => (
-        <li
-          key={row.key}
-          className="flex items-start justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3"
-        >
-          <span className="min-w-0">
-            <strong className="block text-[10px] capitalize text-slate-800">
-              {row.title}
-            </strong>
-            <span className="mt-1 block text-[9px] text-slate-500">
-              {row.subtitle}
-            </span>
-          </span>
-          <strong className="shrink-0 text-[10px] text-slate-800">
-            {row.amount}
-          </strong>
-        </li>
-      ))}
-    </ul>
   );
 }
 

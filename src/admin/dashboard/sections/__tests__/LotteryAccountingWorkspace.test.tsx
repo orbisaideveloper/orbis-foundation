@@ -17,6 +17,8 @@ const COMMISSION_LABEL = "Seller A commission amount";
 const BACKDATED_ENTRY_DATE = "2026-08-29";
 const FINANCIAL_YEAR_2026 = "FY26-27";
 const RECORDED_AT = "2026-08-30T00:00:00.000Z";
+const STOCKIST_ID = "stockist-1";
+const SAVE_TABLE_BUTTON = "Save table";
 
 const organization = {
   id: "org-1",
@@ -40,6 +42,16 @@ const workspace: LotteryWorkspace = {
       ticketRatePaise: "1000",
       commissionRateBps: 500,
       tdsRateBps: 1000,
+      status: "ACTIVE",
+    },
+    {
+      id: STOCKIST_ID,
+      organizationId: "org-1",
+      partyType: "STOCKIST",
+      name: "Stockist A",
+      phone: null,
+      uniqueCode: "stockist-code-1",
+      ticketRatePaise: "800",
       status: "ACTIVE",
     },
   ],
@@ -100,6 +112,7 @@ const workspace: LotteryWorkspace = {
       occurredAt: RECORDED_AT,
     },
   ],
+  stockistEntries: [],
   sales: [
     {
       id: "sale-1",
@@ -185,6 +198,7 @@ const workspace: LotteryWorkspace = {
       received: "120",
       dispatched: "100",
       returned: "20",
+      stockistReturned: "0",
       adjustment: "0",
       closing: "40",
     },
@@ -212,6 +226,10 @@ function createApi(): LotteryAccountingClient {
     createPeriod: vi.fn().mockResolvedValue(undefined),
     createFinancialYearPeriod: vi.fn().mockResolvedValue(undefined),
     recordStockMovement: vi.fn().mockResolvedValue(undefined),
+    saveDailyStockistEntry: vi.fn().mockResolvedValue({
+      partyId: STOCKIST_ID,
+      occurredAt: "2026-09-01T00:00:00.000Z",
+    }),
     previewSale: vi.fn().mockResolvedValue({
       calculated: {
         netTickets: "80",
@@ -253,17 +271,12 @@ function createApi(): LotteryAccountingClient {
 }
 
 describe("LotteryAccountingWorkspace", () => {
-  it("shows real private dashboard, records and read-only AI insights", async () => {
+  it("shows a simple dashboard, party ledger and read-only AI insights", async () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
     expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Today" })).toBeInTheDocument();
-    expect(screen.getByText(/Stock clearance alert/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Records" }));
-    expect(
-      await screen.findByText("Posted records are immutable"),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/SALE-1 · Seller A/)).toBeInTheDocument();
+    expect(screen.getByText("Return waiting")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Records" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "AI analysis" }));
     expect(
@@ -273,18 +286,53 @@ describe("LotteryAccountingWorkspace", () => {
       screen.getByText(/This AI cannot write records/i),
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Statements" }));
-    expect(await screen.findByText("Accounting statement")).toBeInTheDocument();
-    expect(screen.getByText("Statement rows")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
+    expect(await screen.findByText("Party ledger")).toBeInTheDocument();
+    expect(screen.getByText("Day-wise ledger")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("From date"), {
       target: { value: "2026-08-29" },
     });
     fireEvent.change(screen.getByLabelText("To date"), {
       target: { value: "2026-08-30" },
     });
-    expect(screen.getByText("Daily stock-clearance control")).toBeInTheDocument();
-    expect(screen.getByText("Not clear: 40 remain")).toBeInTheDocument();
+    expect(screen.getByText("Daily stock check")).toBeInTheDocument();
+    expect(screen.getByText("40 in hand")).toBeInTheDocument();
     expect(screen.getByText("No purchase")).toBeInTheDocument();
+  });
+
+  it("uses one seller-style stockist grid for purchase and timed returns", async () => {
+    const api = createApi();
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+    fireEvent.click(screen.getByRole("button", { name: DAILY_SELLERS_TAB }));
+    fireEvent.click(screen.getByRole("button", { name: "Stockist purchase" }));
+
+    expect(await screen.findByText("Daily purchase and stockist return")).toBeInTheDocument();
+    expect(screen.getByText("Stockist grid")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Original purchase receipt")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Stockist A purchase"), {
+      target: { value: "100" },
+    });
+    fireEvent.change(screen.getByLabelText("Stockist A morning return"), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByLabelText("Stockist A day return"), {
+      target: { value: "5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: SAVE_TABLE_BUTTON }));
+
+    await waitFor(() => expect(api.saveDailyStockistEntry).toHaveBeenCalled());
+    expect(api.saveDailyStockistEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        partyId: STOCKIST_ID,
+        purchaseQuantity: "100",
+        morningReturnQuantity: "10",
+        dayReturnQuantity: "5",
+        eveningReturnQuantity: "0",
+        commissionPaise: "0",
+      }),
+    );
   });
 
   it("shows the mobile seller table with shared date, three returns and daily totals", async () => {
@@ -313,7 +361,7 @@ describe("LotteryAccountingWorkspace", () => {
     fireEvent.change(screen.getByLabelText(COMMISSION_LABEL), {
       target: { value: "100" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save table" }));
+    fireEvent.click(screen.getByRole("button", { name: SAVE_TABLE_BUTTON }));
 
     await waitFor(() => expect(api.saveDailySellerDraft).toHaveBeenCalled());
     expect(api.saveDailySellerDraft).toHaveBeenCalledWith(
@@ -344,7 +392,7 @@ describe("LotteryAccountingWorkspace", () => {
     fireEvent.change(screen.getByLabelText(SELLER_DISPATCH_LABEL), {
       target: { value: "10" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save table" }));
+    fireEvent.click(screen.getByRole("button", { name: SAVE_TABLE_BUTTON }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "PARTY_PROFILE_REQUIRED",

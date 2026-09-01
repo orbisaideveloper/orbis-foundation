@@ -1,6 +1,7 @@
 import { authenticatedAdminFetch } from "../auth/adminFetch";
 import type {
   LotteryDailySellerDraftIdentity,
+  LotteryDailyStockistEntryIdentity,
   LotteryOrganization,
   LotterySalePreview,
   LotteryWorkspace,
@@ -83,6 +84,9 @@ export interface LotteryAccountingClient {
     payload: Record<string, unknown>,
   ) => Promise<void>;
   recordStockMovement: (payload: Record<string, unknown>) => Promise<void>;
+  saveDailyStockistEntry: (
+    payload: Record<string, unknown>,
+  ) => Promise<LotteryDailyStockistEntryIdentity>;
   previewSale: (
     payload: Record<string, unknown>,
   ) => Promise<LotterySalePreview>;
@@ -154,6 +158,12 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
   },
   async recordStockMovement(payload) {
     await postLottery("/stock-movements", payload);
+  },
+  async saveDailyStockistEntry(payload) {
+    const body = await postLottery<{
+      entry: LotteryDailyStockistEntryIdentity;
+    }>("/daily-stockist-entries", payload);
+    return body.entry;
   },
   async previewSale(payload) {
     return postLottery<LotterySalePreview>("/sales/preview", payload);

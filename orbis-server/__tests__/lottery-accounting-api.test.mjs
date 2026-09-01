@@ -38,6 +38,10 @@ function serviceMock() {
     createPeriod: vi.fn().mockResolvedValue({ id: "period-1" }),
     createFinancialYearPeriod: vi.fn().mockResolvedValue({ id: "period-1" }),
     recordStockMovement: vi.fn().mockResolvedValue({ id: "stock-1" }),
+    saveDailyStockistEntry: vi.fn().mockResolvedValue({
+      partyId: "stockist-1",
+      occurredAt: "2026-09-01T00:00:00.000Z",
+    }),
     recordSale: vi
       .fn()
       .mockResolvedValue({ sale: { id: "sale-1" }, ledger: [] }),
@@ -134,6 +138,10 @@ describe("Lottery Accounting Admin API", () => {
       .post("/lottery/stock-movements")
       .send({ reference: "S" })
       .expect(201);
+    await request(app)
+      .post("/lottery/daily-stockist-entries")
+      .send({ organizationId: "org-1", partyId: "stockist-1" })
+      .expect(200);
     await request(app).post(SALES_ROUTE).send({ reference: "A" }).expect(201);
     await request(app)
       .post("/lottery/daily-seller-drafts")
@@ -172,6 +180,7 @@ describe("Lottery Accounting Admin API", () => {
       service.createPeriod,
       service.createFinancialYearPeriod,
       service.recordStockMovement,
+      service.saveDailyStockistEntry,
       service.recordSale,
       service.createDailySellerDraft,
       service.updateDailySellerDraft,

@@ -116,4 +116,30 @@ describe("lotteryAccountingClient", () => {
       }),
     );
   });
+
+  it("saves the simple stockist daily grid through the private Admin API", async () => {
+    authenticatedAdminFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          entry: {
+            partyId: "stockist-1",
+            occurredAt: "2026-09-01T00:00:00.000Z",
+          },
+        }),
+      ),
+    );
+    await lotteryAccountingClient.saveDailyStockistEntry({
+      organizationId: "org-1",
+      partyId: "stockist-1",
+      purchaseQuantity: "7000",
+      morningReturnQuantity: "2000",
+    });
+    expect(authenticatedAdminFetch).toHaveBeenCalledWith(
+      "/api/admin/models/orbis-accounting-ai/modules/lottery/daily-stockist-entries",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"purchaseQuantity":"7000"'),
+      }),
+    );
+  });
 });

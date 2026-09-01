@@ -2,6 +2,8 @@ const express = require("express");
 const {
   createLotteryAccountingService,
 } = require("./lottery-accounting-service.cjs");
+const NO_STORE = "no-store";
+const CACHE_CONTROL = "Cache-Control";
 
 const CLIENT_ERROR_CODES = new Set([
   "DATA_INTEGRITY_ERROR",
@@ -31,6 +33,7 @@ const CLIENT_ERROR_CODES = new Set([
   "RATE_OUT_OF_RANGE",
   "REQUIRED_FIELD",
   "RETURN_EXCEEDS_DISPATCH",
+  "RETURN_EXCEEDS_AVAILABLE_STOCK",
   "RETURN_TOTAL_MISMATCH",
   "SALE_HAS_SETTLEMENTS",
   "SALE_NOT_FOUND",
@@ -95,7 +98,7 @@ function createLotteryAccountingRouter({
   router.get("/organizations", async (_req, res) => {
     try {
       const organizations = await service.listOrganizations();
-      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(CACHE_CONTROL, NO_STORE);
       return res.json({ organizations });
     } catch (error) {
       return sendAccountingError(res, error);
@@ -192,6 +195,18 @@ function createLotteryAccountingRouter({
     }
   });
 
+  router.post("/daily-stockist-entries", async (req, res) => {
+    try {
+      const entry = await service.saveDailyStockistEntry(
+        req.body,
+        req.adminUser?.id,
+      );
+      return res.status(200).json({ entry });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
   router.post("/sales", async (req, res) => {
     try {
       const result = await service.recordSale(req.body, req.adminUser?.id);
@@ -236,7 +251,7 @@ function createLotteryAccountingRouter({
   router.post("/sales/preview", async (req, res) => {
     try {
       const preview = await service.previewSale(req.body);
-      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(CACHE_CONTROL, NO_STORE);
       return res.json(preview);
     } catch (error) {
       return sendAccountingError(res, error);
@@ -267,7 +282,7 @@ function createLotteryAccountingRouter({
   router.get("/summary", async (req, res) => {
     try {
       const summary = await service.getVerifiedSummary(req.query);
-      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(CACHE_CONTROL, NO_STORE);
       return res.json({ summary });
     } catch (error) {
       return sendAccountingError(res, error);
@@ -277,7 +292,7 @@ function createLotteryAccountingRouter({
   router.get("/workspace", async (req, res) => {
     try {
       const workspace = await service.getWorkspace(req.query);
-      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(CACHE_CONTROL, NO_STORE);
       return res.json({ workspace });
     } catch (error) {
       return sendAccountingError(res, error);
@@ -287,7 +302,7 @@ function createLotteryAccountingRouter({
   router.get("/analysis", async (req, res) => {
     try {
       const result = await service.analyzeVerifiedAccounting(req.query);
-      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(CACHE_CONTROL, NO_STORE);
       return res.json(result);
     } catch (error) {
       return sendAccountingError(res, error);

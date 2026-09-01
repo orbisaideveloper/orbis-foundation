@@ -35,6 +35,7 @@ function createPrismaMock() {
     periods: [],
     sequences: [],
     stocks: [],
+    stockistEntries: [],
     sales: [],
     payments: [],
     settlements: [],
@@ -131,6 +132,26 @@ function createPrismaMock() {
         state.stocks.push(...data.map((row) => created("stock", row)));
         return { count: data.length };
       },
+      deleteMany: async ({ where }) => {
+        const ids = new Set(where.id.in);
+        const before = state.stocks.length;
+        state.stocks = state.stocks.filter((row) => !ids.has(row.id));
+        return { count: before - state.stocks.length };
+      },
+    },
+    foundationLotteryStockistEntry: {
+      create: async ({ data }) => {
+        const row = created("stockist-entry", data);
+        state.stockistEntries.push(row);
+        return row;
+      },
+      update: async ({ where, data }) => {
+        const row = state.stockistEntries.find((item) => item.id === where.id);
+        Object.assign(row, data);
+        return row;
+      },
+      findMany: async ({ where = {} }) =>
+        state.stockistEntries.filter((row) => within(row, where)),
     },
     foundationLotterySale: {
       create: async ({ data }) => {
@@ -692,6 +713,173 @@ describe("Lottery Accounting Service", () => {
       tdsPaise: "2000",
       netPayablePaise: "88000",
     });
+  });
+
+  it("saves one simple editable stockist row and calculates payable from net purchase", async () => {
+    const prisma = createPrismaMock();
+    prisma.state.parties.push({
+      id: "stockist-1",
+      organizationId: "org-1",
+      status: "ACTIVE",
+      partyType: "STOCKIST",
+      name: "Stockist A",
+      uniqueCode: "stockist-code-1",
+      ticketRatePaise: 100n,
+    });
+    prisma.state.stocks.push({
+      id: "seller-return-1",
+      organizationId: "org-1",
+      partyId: null,
+      movementType: "RETURN",
+      quantity: 2_000n,
+      occurredAt: new Date("2026-08-31T00:00:00.000Z"),
+    });
+    const service = createLotteryAccountingService({ prisma });
+    const first = await service.saveDailyStockistEntry(
+      {
+        organizationId: "org-1",
+        partyId: "stockist-1",
+        occurredAt: "2026-09-01",
+        purchaseQuantity: 7_000,
+        morningReturnQuantity: 1_000,
+        dayReturnQuantity: 500,
+        eveningReturnQuantity: 500,
+        commissionPaise: 0,
+      },
+      "admin-1",
+    );
+    expect(first).toMatchObject({
+      purchaseQuantity: "7000",
+      totalReturnQuantity: "2000",
+      netPurchaseQuantity: "5000",
+      netPayablePaise: "500000",
+    });
+    expect(prisma.state.stockistEntries).toHaveLength(1);
+
+    const updated = await service.saveDailyStockistEntry(
+      {
+        organizationId: "org-1",
+        partyId: "stockist-1",
+        occurredAt: "2026-09-01",
+        purchaseQuantity: 6_500,
+        morningReturnQuantity: 1_000,
+        dayReturnQuantity: 500,
+        eveningReturnQuantity: 0,
+        commissionPaise: 0,
+      },
+      "admin-1",
+    );
+    expect(updated).toMatchObject({
+      netPurchaseQuantity: "5000",
+      netPayablePaise: "500000",
+    });
+    expect(prisma.state.stockistEntries).toHaveLength(1);
+    expect(prisma.state.stockistEntries[0]).toMatchObject({
+      purchaseQuantity: 6_500n,
+      totalReturnQuantity: 1_500n,
+    });
+    expect(prisma.state.audits.at(-1)).toMatchObject({
+      eventType: "DAILY_STOCKIST_ENTRY_SAVED",
+      actorAdminId: "admin-1",
+    });
+    const summary = await service.getVerifiedSummary({
+      organizationId: "org-1",
+    });
+    expect(summary.stock).toMatchObject({
+      received: "6500",
+      returned: "2000",
+      stockistReturned: "1500",
+      closing: "7000",
+    });
+  });
+
+  it("rejects a stockist return above the seller-return stock", async () => {
+    const prisma = createPrismaMock();
+    prisma.state.parties.push({
+      id: "stockist-1",
+      organizationId: "org-1",
+      status: "ACTIVE",
+      partyType: "STOCKIST",
+      name: "Stockist A",
+      uniqueCode: "stockist-code-1",
+      ticketRatePaise: 100n,
+    });
+    const service = createLotteryAccountingService({ prisma });
+    await expect(
+      service.saveDailyStockistEntry(
+        {
+          organizationId: "org-1",
+          partyId: "stockist-1",
+          occurredAt: "2026-09-01",
+          purchaseQuantity: 0,
+          morningReturnQuantity: 1,
+        },
+        "admin-1",
+      ),
+    ).rejects.toMatchObject({ code: "RETURN_EXCEEDS_AVAILABLE_STOCK" });
+  });
+
+  it("lets a zero daily row override and clear an older technical stock entry", async () => {
+    const prisma = createPrismaMock();
+    prisma.state.parties.push({
+      id: "stockist-legacy",
+      organizationId: "org-1",
+      status: "ACTIVE",
+      partyType: "STOCKIST",
+      name: "Old Stockist",
+      uniqueCode: "stockist-legacy-code",
+      ticketRatePaise: 100n,
+    });
+    prisma.state.stocks.push(
+      {
+        id: "legacy-purchase",
+        organizationId: "org-1",
+        partyId: "stockist-legacy",
+        movementType: "RECEIPT",
+        quantity: 100n,
+        unitRatePaise: 100n,
+        grossPurchasePaise: 10_000n,
+        commissionPaise: 0n,
+        tdsRateBps: 0,
+        tdsPaise: 0n,
+        netPayablePaise: 10_000n,
+        reference: "OLD-1",
+        occurredAt: new Date("2026-09-01T00:00:00.000Z"),
+      },
+      {
+        id: "seller-return",
+        organizationId: "org-1",
+        partyId: null,
+        movementType: "RETURN",
+        quantity: 20n,
+        reference: "SALE-OLD",
+        occurredAt: new Date("2026-09-01T00:00:00.000Z"),
+      },
+    );
+    const service = createLotteryAccountingService({ prisma });
+    await service.saveDailyStockistEntry(
+      {
+        organizationId: "org-1",
+        partyId: "stockist-legacy",
+        occurredAt: "2026-09-01",
+        purchaseQuantity: 0,
+        morningReturnQuantity: 0,
+        dayReturnQuantity: 0,
+        eveningReturnQuantity: 0,
+        commissionPaise: 0,
+      },
+      "admin-1",
+    );
+    const workspace = await service.getWorkspace({ organizationId: "org-1" });
+    expect(workspace.stockistEntries).toEqual([
+      expect.objectContaining({
+        partyId: "stockist-legacy",
+        purchaseQuantity: "0",
+        totalReturnQuantity: "0",
+        source: "DAILY",
+      }),
+    ]);
+    expect(workspace.summary.stock.received).toBe("0");
   });
 
   it("autosave upserts one same-seller daily draft instead of duplicating it", async () => {

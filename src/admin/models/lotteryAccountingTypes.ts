@@ -98,6 +98,30 @@ export type LotteryDailySellerDraftIdentity = Pick<
   "id" | "reference" | "status"
 >;
 
+export interface LotteryDailyStockistEntryIdentity {
+  partyId: string;
+  occurredAt: string;
+}
+
+export interface LotteryStockistEntry extends LotteryDailyStockistEntryIdentity {
+  id: string;
+  partyName: string;
+  reference: string;
+  purchaseQuantity: string;
+  morningReturnQuantity: string;
+  dayReturnQuantity: string;
+  eveningReturnQuantity: string;
+  totalReturnQuantity: string;
+  netPurchaseQuantity: string;
+  unitRatePaise: string;
+  grossPurchasePaise: string;
+  commissionPaise: string;
+  tdsRateBps: number;
+  tdsPaise: string;
+  netPayablePaise: string;
+  source: "DAILY" | "LEGACY";
+}
+
 export interface LotteryPayment {
   id: string;
   partyId: string;
@@ -183,6 +207,7 @@ export interface LotteryWorkspace {
   parties: LotteryParty[];
   periods: LotteryPeriod[];
   stockMovements: LotteryStockMovement[];
+  stockistEntries: LotteryStockistEntry[];
   sales: LotterySale[];
   draftSales: LotteryDraftSale[];
   payments: LotteryPayment[];

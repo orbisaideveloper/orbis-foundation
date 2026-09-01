@@ -29,6 +29,12 @@ const stockistPurchaseMigration = fs.readFileSync(
   ),
   "utf8",
 );
+const stockistDailyEntryMigration = fs.readFileSync(
+  path.resolve(
+    "prisma/migrations/20260901050000_add_simple_stockist_daily_entries/migration.sql",
+  ),
+  "utf8",
+);
 
 const TABLES = [
   "FoundationAccountingOrganization",
@@ -107,5 +113,22 @@ describe("Lottery Accounting migration security", () => {
     expect(stockistPurchaseMigration).toContain('"grossPurchasePaise" BIGINT NOT NULL DEFAULT 0');
     expect(stockistPurchaseMigration).toContain('"FoundationLotteryStockMovement_partyId_fkey"');
     expect(stockistPurchaseMigration).toContain('"tdsRateBps" BETWEEN 0 AND 10000');
+  });
+
+  it("keeps editable stockist daily rows private and uniquely scoped by party and date", () => {
+    expect(stockistDailyEntryMigration).toContain(
+      'CREATE TABLE "FoundationLotteryStockistEntry"',
+    );
+    expect(stockistDailyEntryMigration).toContain(
+      '"organizationId", "partyId", "occurredAt"',
+    );
+    expect(stockistDailyEntryMigration).toContain(
+      'ALTER TABLE "FoundationLotteryStockistEntry" ENABLE ROW LEVEL SECURITY',
+    );
+    expect(stockistDailyEntryMigration).toContain(
+      'REVOKE ALL ON TABLE "FoundationLotteryStockistEntry" FROM PUBLIC, anon, authenticated',
+    );
+    expect(stockistDailyEntryMigration.trim().startsWith("BEGIN;")).toBe(true);
+    expect(stockistDailyEntryMigration.trim().endsWith("COMMIT;")).toBe(true);
   });
 });
