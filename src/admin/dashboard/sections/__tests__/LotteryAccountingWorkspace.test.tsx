@@ -8,7 +8,14 @@ import type { LotteryWorkspace } from "../../../models/lotteryAccountingTypes";
 const ORGANIZATION_NAME = "Demo Lottery";
 const ORGANIZATION_OVERVIEW = `${ORGANIZATION_NAME} dashboard`;
 const SELLER_DISPATCH_LABEL = "Seller A dispatch";
-const AUGUST_2026 = "August 2026";
+const DAILY_SELLERS_TAB = "Daily sellers";
+const DAILY_SELLER_ENTRY = "Daily seller entry";
+const MORNING_RETURN_LABEL = "Seller A morning return";
+const DAY_RETURN_LABEL = "Seller A day return";
+const EVENING_RETURN_LABEL = "Seller A evening return";
+const COMMISSION_LABEL = "Seller A commission amount";
+const BACKDATED_ENTRY_DATE = "2026-08-29";
+const FINANCIAL_YEAR_2026 = "FY26-27";
 const RECORDED_AT = "2026-08-30T00:00:00.000Z";
 
 const organization = {
@@ -40,9 +47,9 @@ const workspace: LotteryWorkspace = {
     {
       id: "period-1",
       organizationId: "org-1",
-      label: AUGUST_2026,
-      startsAt: "2026-08-01T00:00:00.000Z",
-      endsAt: "2026-08-31T00:00:00.000Z",
+      label: FINANCIAL_YEAR_2026,
+      startsAt: "2026-04-01T00:00:00.000Z",
+      endsAt: "2027-03-31T00:00:00.000Z",
       status: "OPEN",
     },
   ],
@@ -62,6 +69,36 @@ const workspace: LotteryWorkspace = {
       reference: "STK-1",
       occurredAt: RECORDED_AT,
     },
+    {
+      id: "stock-2",
+      partyId: null,
+      partyName: null,
+      movementType: "DISPATCH",
+      quantity: "100",
+      unitRatePaise: "0",
+      grossPurchasePaise: "0",
+      commissionPaise: "0",
+      tdsRateBps: 0,
+      tdsPaise: "0",
+      netPayablePaise: "0",
+      reference: "SALE-1",
+      occurredAt: RECORDED_AT,
+    },
+    {
+      id: "stock-3",
+      partyId: null,
+      partyName: null,
+      movementType: "RETURN",
+      quantity: "20",
+      unitRatePaise: "0",
+      grossPurchasePaise: "0",
+      commissionPaise: "0",
+      tdsRateBps: 0,
+      tdsPaise: "0",
+      netPayablePaise: "0",
+      reference: "SALE-1",
+      occurredAt: RECORDED_AT,
+    },
   ],
   sales: [
     {
@@ -69,7 +106,7 @@ const workspace: LotteryWorkspace = {
       partyId: "party-1",
       partyName: "Seller A",
       periodId: "period-1",
-      periodLabel: AUGUST_2026,
+      periodLabel: FINANCIAL_YEAR_2026,
       reference: "SALE-1",
       dispatchQuantity: 100,
       morningReturnQuantity: 5,
@@ -97,7 +134,7 @@ const workspace: LotteryWorkspace = {
       partyId: "party-1",
       partyName: "Seller A",
       periodId: "period-1",
-      periodLabel: AUGUST_2026,
+      periodLabel: FINANCIAL_YEAR_2026,
       direction: "RECEIPT",
       totalAmountPaise: "50000",
       methodSplit: { cashPaise: "50000" },
@@ -193,11 +230,23 @@ function createApi(): LotteryAccountingClient {
       ],
     }),
     recordSale: vi.fn().mockResolvedValue(undefined),
-    saveDailySellerDraft: vi.fn().mockResolvedValue(undefined),
-    updateDailySellerDraft: vi.fn().mockResolvedValue(undefined),
+    saveDailySellerDraft: vi.fn().mockResolvedValue({
+      id: "draft-1",
+      reference: "SAL-2026-1",
+      status: "DRAFT",
+    }),
+    updateDailySellerDraft: vi.fn().mockResolvedValue({
+      id: "draft-1",
+      reference: "SAL-2026-1",
+      status: "DRAFT",
+    }),
     deleteDailySellerDraft: vi.fn().mockResolvedValue(undefined),
     postDailySellerDraft: vi.fn().mockResolvedValue(undefined),
-    correctPostedSale: vi.fn().mockResolvedValue(undefined),
+    correctPostedSale: vi.fn().mockResolvedValue({
+      id: "draft-corrected-1",
+      reference: "SAL-2026-2",
+      status: "DRAFT",
+    }),
     recordPayment: vi.fn().mockResolvedValue(undefined),
     recordSettlement: vi.fn().mockResolvedValue(undefined),
   };
@@ -208,6 +257,7 @@ describe("LotteryAccountingWorkspace", () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
     expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Today" })).toBeInTheDocument();
+    expect(screen.getByText(/Stock clearance alert/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Records" }));
     expect(
@@ -222,15 +272,28 @@ describe("LotteryAccountingWorkspace", () => {
     expect(
       screen.getByText(/This AI cannot write records/i),
     ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Statements" }));
+    expect(await screen.findByText("Accounting statement")).toBeInTheDocument();
+    expect(screen.getByText("Statement rows")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("From date"), {
+      target: { value: "2026-08-29" },
+    });
+    fireEvent.change(screen.getByLabelText("To date"), {
+      target: { value: "2026-08-30" },
+    });
+    expect(screen.getByText("Daily stock-clearance control")).toBeInTheDocument();
+    expect(screen.getByText("Not clear: 40 remain")).toBeInTheDocument();
+    expect(screen.getByText("No purchase")).toBeInTheDocument();
   });
 
   it("shows the mobile seller table with shared date, three returns and daily totals", async () => {
     const api = createApi();
     render(<LotteryAccountingWorkspace api={api} />);
     await screen.findByText(ORGANIZATION_OVERVIEW);
-    fireEvent.click(screen.getByRole("button", { name: "Daily sellers" }));
+    fireEvent.click(screen.getByRole("button", { name: DAILY_SELLERS_TAB }));
 
-    expect(await screen.findByText("Daily seller entry")).toBeInTheDocument();
+    expect(await screen.findByText(DAILY_SELLER_ENTRY)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Table view" }),
     ).toBeInTheDocument();
@@ -238,16 +301,16 @@ describe("LotteryAccountingWorkspace", () => {
     fireEvent.change(screen.getByLabelText(SELLER_DISPATCH_LABEL), {
       target: { value: "100" },
     });
-    fireEvent.change(screen.getByLabelText("Seller A morning return"), {
+    fireEvent.change(screen.getByLabelText(MORNING_RETURN_LABEL), {
       target: { value: "10" },
     });
-    fireEvent.change(screen.getByLabelText("Seller A day return"), {
+    fireEvent.change(screen.getByLabelText(DAY_RETURN_LABEL), {
       target: { value: "20" },
     });
-    fireEvent.change(screen.getByLabelText("Seller A evening return"), {
+    fireEvent.change(screen.getByLabelText(EVENING_RETURN_LABEL), {
       target: { value: "5" },
     });
-    fireEvent.change(screen.getByLabelText("Seller A commission amount"), {
+    fireEvent.change(screen.getByLabelText(COMMISSION_LABEL), {
       target: { value: "100" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save table" }));
@@ -276,8 +339,8 @@ describe("LotteryAccountingWorkspace", () => {
     );
     render(<LotteryAccountingWorkspace api={api} />);
     await screen.findByText(ORGANIZATION_OVERVIEW);
-    fireEvent.click(screen.getByRole("button", { name: "Daily sellers" }));
-    await screen.findByText("Daily seller entry");
+    fireEvent.click(screen.getByRole("button", { name: DAILY_SELLERS_TAB }));
+    await screen.findByText(DAILY_SELLER_ENTRY);
     fireEvent.change(screen.getByLabelText(SELLER_DISPATCH_LABEL), {
       target: { value: "10" },
     });
@@ -287,5 +350,100 @@ describe("LotteryAccountingWorkspace", () => {
       "PARTY_PROFILE_REQUIRED",
     );
     expect(screen.getByLabelText(SELLER_DISPATCH_LABEL)).toHaveValue("10");
+  });
+
+  it("replaces a backdated seller value and keeps the latest draft on screen", async () => {
+    const api = createApi();
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+    fireEvent.click(screen.getByRole("button", { name: DAILY_SELLERS_TAB }));
+    await screen.findByText(DAILY_SELLER_ENTRY);
+
+    fireEvent.change(screen.getByLabelText("Entry date for all sellers"), {
+      target: { value: BACKDATED_ENTRY_DATE },
+    });
+    const dispatch = screen.getByLabelText(SELLER_DISPATCH_LABEL);
+    fireEvent.focus(dispatch);
+    fireEvent.change(dispatch, { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText(MORNING_RETURN_LABEL), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByLabelText(DAY_RETURN_LABEL), {
+      target: { value: "0" },
+    });
+    fireEvent.change(screen.getByLabelText(EVENING_RETURN_LABEL), {
+      target: { value: "0" },
+    });
+    fireEvent.change(screen.getByLabelText(COMMISSION_LABEL), {
+      target: { value: "10" },
+    });
+
+    await waitFor(() =>
+      expect(api.saveDailySellerDraft).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          occurredAt: BACKDATED_ENTRY_DATE,
+          dispatchQuantity: "100",
+        }),
+      ),
+      { timeout: 2_000 },
+    );
+    fireEvent.focus(dispatch);
+    fireEvent.change(dispatch, { target: { value: "125" } });
+
+    await waitFor(() =>
+      expect(api.updateDailySellerDraft).toHaveBeenLastCalledWith(
+        "draft-1",
+        expect.objectContaining({
+          occurredAt: BACKDATED_ENTRY_DATE,
+          dispatchQuantity: "125",
+        }),
+      ),
+      { timeout: 2_000 },
+    );
+    expect(dispatch).toHaveValue("125");
+  });
+
+  it("removes an existing daily draft when every value is reset to zero", async () => {
+    const api = createApi();
+    const savedDraft: LotteryWorkspace = {
+      ...workspace,
+      sales: [],
+      draftSales: [
+        {
+          ...workspace.sales[0],
+          status: "DRAFT",
+          correctionOfSaleId: null,
+        },
+      ],
+    };
+    vi.mocked(api.loadWorkspace).mockResolvedValue(savedDraft);
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+    fireEvent.click(screen.getByRole("button", { name: DAILY_SELLERS_TAB }));
+    await screen.findByText(DAILY_SELLER_ENTRY);
+    fireEvent.change(screen.getByLabelText("Entry date for all sellers"), {
+      target: { value: "2026-08-30" },
+    });
+
+    for (const label of [
+      SELLER_DISPATCH_LABEL,
+      MORNING_RETURN_LABEL,
+      DAY_RETURN_LABEL,
+      EVENING_RETURN_LABEL,
+      COMMISSION_LABEL,
+    ]) {
+      const input = screen.getByLabelText(label);
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: "0" } });
+    }
+
+    await waitFor(
+      () =>
+        expect(api.deleteDailySellerDraft).toHaveBeenCalledWith("sale-1", {
+          organizationId: "org-1",
+        }),
+      { timeout: 2_000 },
+    );
+    expect(screen.getByLabelText(SELLER_DISPATCH_LABEL)).toHaveValue("0");
   });
 });

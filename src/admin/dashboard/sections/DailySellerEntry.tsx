@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   ChevronDown,
@@ -14,6 +14,7 @@ import {
 } from "../../models/lotteryAccountingMoney";
 import type {
   LotteryDraftSale,
+  LotteryDailySellerDraftIdentity,
   LotteryParty,
   LotterySale,
   LotteryWorkspace,
@@ -61,6 +62,30 @@ function isSameEntryDate(value: string, day: string) {
   );
 }
 
+function dateKey(value: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
+function financialYearForDate(
+  periods: LotteryWorkspace["periods"],
+  selectedDate: string,
+) {
+  const matchingPeriods = periods.filter(
+    (period) =>
+      dateKey(period.startsAt) <= selectedDate &&
+      dateKey(period.endsAt) >= selectedDate,
+  );
+  return (
+    matchingPeriods.find((period) => /^FY\d{2}-\d{2}$/.test(period.label)) ||
+    matchingPeriods[0]
+  );
+}
+
+function selectAllInputText(event: React.FocusEvent<HTMLInputElement>) {
+  event.currentTarget.select();
+}
+
 function rowFromSale(sale: SaleLike): DailySellerRow {
   return {
     saleId: sale.id,
@@ -94,6 +119,74 @@ function rowIsZero(row: DailySellerRow) {
     row.eveningReturnQuantity,
     row.commissionRupees,
   ].every((value) => !value.trim() || /^0+(?:\.0+)?$/.test(value.trim()));
+}
+
+function pendingRowStorageKey(
+  organizationId: string,
+  partyId: string,
+  occurredAt: string,
+) {
+  return `orbis.accounting.pending-seller-row.${organizationId}.${partyId}.${occurredAt}`;
+}
+
+function readPendingRow(
+  organizationId: string,
+  partyId: string,
+  occurredAt: string,
+): DailySellerRow | null {
+  try {
+    const value = window.localStorage.getItem(
+      pendingRowStorageKey(organizationId, partyId, occurredAt),
+    );
+    if (!value) return null;
+    const parsed: unknown = JSON.parse(value);
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !(
+        "dispatchQuantity" in parsed &&
+        "morningReturnQuantity" in parsed &&
+        "dayReturnQuantity" in parsed &&
+        "eveningReturnQuantity" in parsed &&
+        "commissionRupees" in parsed
+      )
+    ) {
+      return null;
+    }
+    return parsed as DailySellerRow;
+  } catch {
+    return null;
+  }
+}
+
+function storePendingRow(
+  organizationId: string,
+  partyId: string,
+  occurredAt: string,
+  row: DailySellerRow,
+) {
+  try {
+    window.localStorage.setItem(
+      pendingRowStorageKey(organizationId, partyId, occurredAt),
+      JSON.stringify(row),
+    );
+  } catch {
+    // Browser storage can be unavailable in private mode; the network save still runs.
+  }
+}
+
+function clearPendingRow(
+  organizationId: string,
+  partyId: string,
+  occurredAt: string,
+) {
+  try {
+    window.localStorage.removeItem(
+      pendingRowStorageKey(organizationId, partyId, occurredAt),
+    );
+  } catch {
+    // Nothing further is required when the browser has already discarded storage.
+  }
 }
 
 function paiseToRupeesInput(value: string) {
@@ -308,32 +401,31 @@ function DailyTotals({
 export interface DailySellerEntryProps {
   organizationId: string;
   workspace: LotteryWorkspace;
-  busy: boolean;
-  onSaveDraft: (payload: Record<string, unknown>) => Promise<boolean>;
+  onSaveDraft: (
+    payload: Record<string, unknown>,
+  ) => Promise<LotteryDailySellerDraftIdentity | null>;
   onUpdateDraft: (
     saleId: string,
     payload: Record<string, unknown>,
-  ) => Promise<boolean>;
-  onPostDraft: (saleId: string) => Promise<boolean>;
+  ) => Promise<LotteryDailySellerDraftIdentity | null>;
   onDeleteDraft: (saleId: string) => Promise<boolean>;
-  onCorrectPosted: (saleId: string) => Promise<boolean>;
+  onCorrectPosted: (
+    saleId: string,
+  ) => Promise<LotteryDailySellerDraftIdentity | null>;
   onUpdateTdsRate: (tdsRateBps: number) => Promise<boolean>;
 }
 
 export function DailySellerEntry({
   organizationId,
   workspace,
-  busy,
   onSaveDraft,
   onUpdateDraft,
-  onPostDraft,
   onDeleteDraft,
   onCorrectPosted,
   onUpdateTdsRate,
 }: Readonly<DailySellerEntryProps>) {
   const [viewMode, setViewMode] = useState<DailyViewMode>("table");
   const [selectedDate, setSelectedDate] = useState(todayInputValue());
-  const [periodId, setPeriodId] = useState("");
   const globalTdsRateBps = workspace.organization.tdsRateBps ?? 200;
   const [tdsPercent, setTdsPercent] = useState(
     (globalTdsRateBps / 100).toFixed(2),
@@ -344,29 +436,69 @@ export function DailySellerEntry({
   );
   const [rows, setRows] = useState<Record<string, DailySellerRow>>({});
   const [localError, setLocalError] = useState<string | null>(null);
+  const [savingPartyIds, setSavingPartyIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [autosaveVersion, setAutosaveVersion] = useState(0);
+  const rowsRef = useRef(rows);
+  const workspaceRef = useRef(workspace);
+  const sellersRef = useRef(sellers);
+  const currentDateRef = useRef(selectedDate);
+  const dirtyPartyIdsRef = useRef(new Set<string>());
+  const rowVersionsRef = useRef(new Map<string, number>());
+  const savingPartyIdsRef = useRef(new Set<string>());
+  const actionsRef = useRef({
+    onSaveDraft,
+    onUpdateDraft,
+    onDeleteDraft,
+    onCorrectPosted,
+  });
+  const sellerKey = sellers
+    .map((party) => `${party.id}:${party.name}:${party.ticketRatePaise}`)
+    .join("|");
+  const activeFinancialYear = useMemo(
+    () => financialYearForDate(workspace.periods, selectedDate),
+    [selectedDate, workspace.periods],
+  );
 
-  useEffect(() => {
-    setPeriodId((current) =>
-      workspace.periods.some((period) => period.id === current)
-        ? current
-        : workspace.periods[0]?.id || "",
-    );
-  }, [workspace.periods]);
+  rowsRef.current = rows;
+  workspaceRef.current = workspace;
+  sellersRef.current = sellers;
+  currentDateRef.current = selectedDate;
+  actionsRef.current = {
+    onSaveDraft,
+    onUpdateDraft,
+    onDeleteDraft,
+    onCorrectPosted,
+  };
 
   useEffect(() => {
     setTdsPercent((globalTdsRateBps / 100).toFixed(2));
   }, [globalTdsRateBps]);
 
   useEffect(() => {
-    setRows(
-      buildRows({
-        parties: sellers,
-        sales: workspace.sales,
-        drafts: workspace.draftSales,
-        selectedDate,
-      }),
+    const currentWorkspace = workspaceRef.current;
+    const nextRows = buildRows({
+      parties: sellersRef.current,
+      sales: currentWorkspace.sales,
+      drafts: currentWorkspace.draftSales,
+      selectedDate,
+    });
+    const recoveredPartyIds = sellersRef.current.flatMap((party) => {
+      const pending = readPendingRow(organizationId, party.id, selectedDate);
+      if (!pending) return [];
+      nextRows[party.id] = { ...nextRows[party.id], ...pending, partyId: party.id };
+      return [party.id];
+    });
+    setRows(nextRows);
+    dirtyPartyIdsRef.current = new Set(recoveredPartyIds);
+    rowVersionsRef.current = new Map(
+      recoveredPartyIds.map((partyId) => [partyId, 1]),
     );
-  }, [selectedDate, sellers, workspace.draftSales, workspace.sales]);
+    if (recoveredPartyIds.length) {
+      setAutosaveVersion((current) => current + 1);
+    }
+  }, [organizationId, selectedDate, sellerKey]);
 
   const postedSales = useMemo(
     () =>
@@ -397,10 +529,21 @@ export function DailySellerEntry({
     field: keyof DailySellerRow,
     value: string,
   ) => {
+    const nextRow = {
+      ...(rowsRef.current[partyId] || blankRow(partyId)),
+      [field]: value,
+    };
+    storePendingRow(organizationId, partyId, selectedDate, nextRow);
     setRows((current) => ({
       ...current,
-      [partyId]: { ...current[partyId], [field]: value },
+      [partyId]: nextRow,
     }));
+    dirtyPartyIdsRef.current.add(partyId);
+    rowVersionsRef.current.set(
+      partyId,
+      (rowVersionsRef.current.get(partyId) || 0) + 1,
+    );
+    setAutosaveVersion((current) => current + 1);
   };
 
   const entryPayload = (party: LotteryParty, row: DailySellerRow) => {
@@ -432,9 +575,9 @@ export function DailySellerEntry({
         "Enter a commission amount that is not greater than the net amount.",
       );
     }
-    if (!periodId) {
+    if (!activeFinancialYear) {
       throw new Error(
-        "Create or select the financial year before saving seller entry.",
+        "Set the financial year once in Setup before saving seller entry.",
       );
     }
     if (BigInt(party.ticketRatePaise || "0") <= 0n) {
@@ -443,7 +586,7 @@ export function DailySellerEntry({
     return {
       organizationId,
       partyId: party.id,
-      periodId,
+      periodId: activeFinancialYear.id,
       occurredAt: selectedDate,
       dispatchQuantity: row.dispatchQuantity,
       morningReturnQuantity: row.morningReturnQuantity,
@@ -453,52 +596,169 @@ export function DailySellerEntry({
     };
   };
 
-  const saveRow = async (party: LotteryParty) => {
+  const setPartySaving = (partyId: string, saving: boolean) => {
+    if (saving) {
+      savingPartyIdsRef.current.add(partyId);
+    } else {
+      savingPartyIdsRef.current.delete(partyId);
+    }
+    setSavingPartyIds(new Set(savingPartyIdsRef.current));
+  };
+
+  const deleteZeroSellerRow = async (
+    row: DailySellerRow,
+    actions: typeof actionsRef.current,
+  ) => {
+    if (!row.saleId) return true;
+    if (row.status !== "POSTED") {
+      return actions.onDeleteDraft(row.saleId);
+    }
+    const replacement = await actions.onCorrectPosted(row.saleId);
+    return Boolean(replacement && (await actions.onDeleteDraft(replacement.id)));
+  };
+
+  const saveSellerRow = async (
+    party: LotteryParty,
+    row: DailySellerRow,
+    actions: typeof actionsRef.current,
+  ) => {
+    const payload = entryPayload(party, row);
+    if (!row.saleId) return actions.onSaveDraft(payload);
+    if (row.status !== "POSTED") {
+      return actions.onUpdateDraft(row.saleId, payload);
+    }
+    const replacement = await actions.onCorrectPosted(row.saleId);
+    return replacement
+      ? actions.onUpdateDraft(replacement.id, payload)
+      : null;
+  };
+
+  const finishSavingRow = (
+    partyId: string,
+    entryDate: string,
+    versionAtStart: number,
+    saved: LotteryDailySellerDraftIdentity | null,
+  ) => {
+    if (
+      currentDateRef.current !== selectedDate ||
+      rowVersionsRef.current.get(partyId) !== versionAtStart
+    ) {
+      setAutosaveVersion((current) => current + 1);
+      return;
+    }
+    if (saved) {
+      setRows((current) => ({
+        ...current,
+        [partyId]: {
+          ...(current[partyId] || blankRow(partyId)),
+          saleId: saved.id,
+          reference: saved.reference,
+          status: "DRAFT",
+        },
+      }));
+      clearPendingRow(organizationId, partyId, entryDate);
+    }
+    dirtyPartyIdsRef.current.delete(partyId);
+  };
+
+  const finishDeletingRow = (
+    partyId: string,
+    entryDate: string,
+    versionAtStart: number,
+    deleted: boolean,
+  ) => {
+    const isCurrentRow =
+      currentDateRef.current === entryDate &&
+      rowVersionsRef.current.get(partyId) === versionAtStart;
+    if (!deleted || !isCurrentRow) return;
+    setRows((current) => ({
+      ...current,
+      [partyId]: blankRow(partyId),
+    }));
+    clearPendingRow(organizationId, partyId, entryDate);
+    dirtyPartyIdsRef.current.delete(partyId);
+  };
+
+  const persistRow = async (partyId: string, showValidation: boolean) => {
+    if (savingPartyIdsRef.current.has(partyId)) return;
+    const party = sellersRef.current.find((item) => item.id === partyId);
+    const row = rowsRef.current[partyId];
+    if (!party || !row) return;
+    const entryDate = currentDateRef.current;
+    const versionAtStart = rowVersionsRef.current.get(partyId) || 0;
+    const actions = actionsRef.current;
+    setPartySaving(partyId, true);
     try {
-      const row = rows[party.id] || blankRow(party.id);
-      const payload = entryPayload(party, row);
-      setLocalError(null);
-      if (row.saleId) {
-        await onUpdateDraft(row.saleId, payload);
-      } else {
-        await onSaveDraft(payload);
+      if (rowIsZero(row)) {
+        const deleted = await deleteZeroSellerRow(row, actions);
+        finishDeletingRow(partyId, entryDate, versionAtStart, deleted);
+        return;
       }
+
+      const saved = await saveSellerRow(party, row, actions);
+      if (!saved && showValidation) {
+        setLocalError("The seller entry could not be saved. Please try again.");
+        return;
+      }
+      finishSavingRow(partyId, entryDate, versionAtStart, saved);
     } catch (error) {
-      setLocalError(
-        error instanceof Error ? error.message : "Entry could not be saved.",
-      );
+      if (showValidation) {
+        setLocalError(
+          error instanceof Error ? error.message : "Entry could not be saved.",
+        );
+      }
+    } finally {
+      setPartySaving(partyId, false);
+      if (dirtyPartyIdsRef.current.has(partyId)) {
+        setAutosaveVersion((current) => current + 1);
+      }
+    }
+  };
+
+  const persistRowRef = useRef(persistRow);
+  persistRowRef.current = persistRow;
+
+  const saveRow = async (party: LotteryParty) => {
+    setLocalError(null);
+    await persistRowRef.current(party.id, true);
+  };
+
+  const saveTable = async () => {
+    setLocalError(null);
+    for (const party of sellersRef.current) {
+      const row = rowsRef.current[party.id];
+      if (!row || (rowIsZero(row) && !row.saleId)) continue;
+      await persistRowRef.current(party.id, true);
     }
   };
 
   useEffect(() => {
+    if (!autosaveVersion) return undefined;
     const timer = window.setTimeout(() => {
-      for (const party of sellers) {
-        const row = rows[party.id];
-        if (!row) continue;
-        if (rowIsZero(row)) {
-          if (row.saleId && row.status === "DRAFT") void onDeleteDraft(row.saleId);
-          continue;
-        }
-        try {
-          const payload = entryPayload(party, row);
-          if (row.saleId && row.status === "DRAFT") {
-            void onUpdateDraft(row.saleId, payload);
-          } else if (!row.saleId) {
-            void onSaveDraft(payload);
-          }
-        } catch {
-          // Validation remains visible on the manual save path; incomplete rows
-          // are intentionally not persisted by autosave.
-        }
+      for (const partyId of dirtyPartyIdsRef.current) {
+        void persistRowRef.current(partyId, false);
       }
-    }, 700);
+    }, 800);
     return () => window.clearTimeout(timer);
-  }, [onDeleteDraft, onSaveDraft, onUpdateDraft, rows, sellers]);
+  }, [autosaveVersion, selectedDate, sellerKey]);
 
-  const runRowAction = async (action: () => Promise<boolean>) => {
-    setLocalError(null);
-    await action();
-  };
+  useEffect(() => {
+    const flushPendingRows = () => {
+      for (const partyId of dirtyPartyIdsRef.current) {
+        void persistRowRef.current(partyId, false);
+      }
+    };
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") flushPendingRows();
+    };
+    window.addEventListener("pagehide", flushPendingRows);
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    return () => {
+      window.removeEventListener("pagehide", flushPendingRows);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+    };
+  }, [selectedDate, sellerKey]);
+
   const saveGlobalTdsRate = async () => {
     const tdsRateBps = percentToBasisPoints(tdsPercent);
     if (tdsRateBps === null) {
@@ -511,13 +771,10 @@ export function DailySellerEntry({
   const sellerViewProps = {
     sellers,
     rows,
-    busy,
+    savingPartyIds,
     onChange: updateRow,
     onSave: saveRow,
-    onPost: (saleId: string) => runRowAction(() => onPostDraft(saleId)),
-    onDelete: (saleId: string) => runRowAction(() => onDeleteDraft(saleId)),
-    onCorrect: (saleId: string) =>
-      runRowAction(() => onCorrectPosted(saleId)),
+    onSaveTable: saveTable,
     tdsRateBps: globalTdsRateBps,
   };
 
@@ -582,35 +839,33 @@ export function DailySellerEntry({
                 onChange={(event) => setTdsPercent(event.target.value)}
                 className={CONTROL_CLASS}
               />
-              <ActionButton disabled={busy} onClick={() => void saveGlobalTdsRate()}>
+              <ActionButton
+                disabled={savingPartyIds.size > 0}
+                onClick={() => void saveGlobalTdsRate()}
+              >
                 Save TDS
               </ActionButton>
             </div>
           </label>
-          <label>
+          <div>
             <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">
               Financial year
             </span>
-            <select
-              aria-label="Financial year"
-              value={periodId}
-              onChange={(event) => setPeriodId(event.target.value)}
-              className={CONTROL_CLASS}
+            <p
+              className={`${CONTROL_CLASS} ${activeFinancialYear ? "bg-emerald-50 text-emerald-900" : "border-orange-200 bg-orange-50 text-orange-800"}`}
             >
-              <option value="">Select financial year</option>
-              {workspace.periods.map(({ id, label }) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
+              {activeFinancialYear
+                ? `${activeFinancialYear.label} · set once in Setup`
+                : "Set the financial year once in Setup"}
+            </p>
+          </div>
         </div>
         <p className="mt-2 text-[9px] text-slate-500">
           {dateCaption(selectedDate)} · Global TDS is currently{" "}
           <strong>{formatPercentFromBasisPoints(globalTdsRateBps)}</strong>.
-          Draft can be edited or deleted. Posted entries keep their saved TDS
-          snapshot; <strong>Correct</strong> reverses safely and opens a replacement draft.
+          A number replaces the old value as soon as you type it. Autosave keeps
+          the latest draft; a saved posted row is corrected safely before the
+          replacement draft is stored.
         </p>
       </header>
 
@@ -659,7 +914,7 @@ export function DailySellerEntry({
 interface SellerRowsProps {
   sellers: LotteryParty[];
   rows: Record<string, DailySellerRow>;
-  busy: boolean;
+  savingPartyIds: ReadonlySet<string>;
   tdsRateBps: number;
   onChange: (
     partyId: string,
@@ -667,14 +922,12 @@ interface SellerRowsProps {
     value: string,
   ) => void;
   onSave: (party: LotteryParty) => Promise<void>;
-  onPost: (saleId: string) => Promise<void>;
-  onDelete: (saleId: string) => Promise<void>;
-  onCorrect: (saleId: string) => Promise<void>;
+  onSaveTable: () => Promise<void>;
 }
 
 type SellerActionProps = Pick<
   SellerRowsProps,
-  "busy" | "onSave"
+  "onSave" | "savingPartyIds"
 > & {
   party: LotteryParty;
   row: DailySellerRow;
@@ -697,27 +950,24 @@ type SellerQuantityProps = {
 function SellerActionCell({
   party,
   row,
-  busy,
+  savingPartyIds,
   onSave,
 }: Readonly<SellerActionProps>) {
-  if (row.status === "POSTED" && row.saleId) {
-    return (
-      <div className="flex flex-wrap gap-1">
-        <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-[8px] font-bold text-emerald-800">
-          <CheckCircle2 className="h-3 w-3" /> Posted
-        </span>
-      </div>
-    );
-  }
+  const saving = savingPartyIds.has(party.id);
   return (
     <div className="flex flex-wrap gap-1">
+      {row.status === "POSTED" && (
+        <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-[8px] font-bold text-emerald-800">
+          <CheckCircle2 className="h-3 w-3" /> Final saved
+        </span>
+      )}
       <ActionButton
-        disabled={busy}
+        disabled={saving}
         onClick={() => void onSave(party)}
         tone="save"
       >
         <FilePenLine className="h-3 w-3" />{" "}
-        {row.saleId ? "Save edit" : "Save draft"}
+        {saving ? "Saving" : row.saleId ? "Save latest" : "Save draft"}
       </ActionButton>
     </div>
   );
@@ -726,10 +976,10 @@ function SellerActionCell({
 function DailySellerTable({
   sellers,
   rows,
-  busy,
+  savingPartyIds,
   tdsRateBps,
   onChange,
-  onSave,
+  onSaveTable,
 }: Readonly<SellerRowsProps>) {
   const rowCalculations = sellers.map((party) => ({
     party,
@@ -786,7 +1036,18 @@ function DailySellerTable({
     <section className="rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <h5 className="text-xs font-black text-slate-900">Seller table</h5>
-        <div className="flex items-center gap-2"><span className="inline-flex items-center gap-1 text-[9px] text-slate-500">Scroll sideways <ChevronDown className="h-3 w-3 rotate-[-90deg]" /></span><ActionButton disabled={busy} onClick={() => void Promise.all(sellers.map((party) => onSave(party)))} tone="save"><FilePenLine className="h-3 w-3" /> Save table</ActionButton></div>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1 text-[9px] text-slate-500">
+            Scroll sideways <ChevronDown className="h-3 w-3 rotate-[-90deg]" />
+          </span>
+          <ActionButton
+            disabled={savingPartyIds.size > 0}
+            onClick={() => void onSaveTable()}
+            tone="save"
+          >
+            <FilePenLine className="h-3 w-3" /> Save table
+          </ActionButton>
+        </div>
       </div>
       <div className="mt-3 overflow-x-auto rounded-xl border border-emerald-100">
         <table className="min-w-[1370px] border-collapse text-left text-[10px]">
@@ -948,10 +1209,19 @@ function SellerCommissionInput({
       aria-label={`${party.name} commission amount`}
       inputMode="decimal"
       value={row.commissionRupees}
-      disabled={row.status === "POSTED"}
       onChange={(event) =>
-        onChange(party.id, "commissionRupees", event.target.value)
+        onChange(
+          party.id,
+          "commissionRupees",
+          event.target.value.replace(/[^\d.]/g, ""),
+        )
       }
+      onFocus={selectAllInputText}
+      onBlur={(event) => {
+        if (!event.target.value.trim()) {
+          onChange(party.id, "commissionRupees", "0");
+        }
+      }}
       className={CONTROL_CLASS}
     />
   );
@@ -981,7 +1251,7 @@ function CommissionCell({
 function DailySellerGrid({
   sellers,
   rows,
-  busy,
+  savingPartyIds,
   tdsRateBps,
   onChange,
   onSave,
@@ -1077,8 +1347,8 @@ function DailySellerGrid({
               <SellerActionCell
                 party={party}
                 row={row}
-                  busy={busy}
-                  onSave={onSave}
+                savingPartyIds={savingPartyIds}
+                onSave={onSave}
               />
             </div>
           </article>
@@ -1149,8 +1419,15 @@ function SellerQuantityInput({
       aria-label={`${party.name} ${label}`}
       inputMode="numeric"
       value={row[field]}
-      disabled={row.status === "POSTED"}
-      onChange={(event) => onChange(party.id, field, event.target.value)}
+      onChange={(event) =>
+        onChange(party.id, field, event.target.value.replace(/\D/g, ""))
+      }
+      onFocus={selectAllInputText}
+      onBlur={(event) => {
+        if (!event.target.value.trim()) {
+          onChange(party.id, field, "0");
+        }
+      }}
       className={CONTROL_CLASS}
     />
   );

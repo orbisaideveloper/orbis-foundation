@@ -254,6 +254,12 @@ describe("Lottery Accounting Service", () => {
     });
     expect(period).toMatchObject({ label: "2026-08", status: "OPEN" });
     expect(financialYear).toMatchObject({ label: "FY26-27", status: "OPEN" });
+    await expect(
+      service.createFinancialYearPeriod(
+        { organizationId: organization.id, financialYearStart: 2027 },
+        "admin-1",
+      ),
+    ).resolves.toMatchObject({ id: financialYear.id, label: "FY26-27" });
     expect(prisma.state.audits.map((event) => event.eventType)).toEqual([
       "ORGANIZATION_CREATED",
       "PARTY_CREATED",

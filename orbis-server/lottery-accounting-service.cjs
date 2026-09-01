@@ -430,12 +430,17 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     );
     const period = financialYearRange(input?.financialYearStart);
     return prisma.$transaction(async (client) => {
-      const existing = await client.foundationLotteryAccountingPeriod.findFirst(
-        {
-          where: { organizationId, label: period.label },
-        },
+      const existingPeriods =
+        await client.foundationLotteryAccountingPeriod.findMany({
+          where: { organizationId },
+        });
+      const existingFinancialYear = existingPeriods.find((item) =>
+        /^FY\d{2}-\d{2}$/.test(item.label),
       );
-      if (existing) return serialize(existing);
+      // The Admin selects this once during setup. Keeping that selected year
+      // prevents a later screen refresh or accidental tap from moving entries
+      // to a different financial year.
+      if (existingFinancialYear) return serialize(existingFinancialYear);
       const created = await client.foundationLotteryAccountingPeriod.create({
         data: {
           organizationId,

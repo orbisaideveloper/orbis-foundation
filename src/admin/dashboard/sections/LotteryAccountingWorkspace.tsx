@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LoaderCircle,
   Plus,
@@ -28,7 +28,13 @@ import type {
 } from "../../models/lotteryAccountingTypes";
 
 type WorkspaceTab =
-  "dashboard" | "setup" | "seller" | "entry" | "records" | "analysis";
+  | "dashboard"
+  | "setup"
+  | "seller"
+  | "entry"
+  | "records"
+  | "statements"
+  | "analysis";
 type EntryKind = "stock" | "payment" | "settlement";
 
 const WORKSPACE_TABS: Array<[WorkspaceTab, string]> = [
@@ -37,6 +43,7 @@ const WORKSPACE_TABS: Array<[WorkspaceTab, string]> = [
   ["seller", "Daily sellers"],
   ["entry", "Data entry"],
   ["records", "Records"],
+  ["statements", "Statements"],
   ["analysis", "AI analysis"],
 ];
 
@@ -77,6 +84,12 @@ function financialYearLabel(startYear: string) {
   return Number.isInteger(start)
     ? `FY${String(start).slice(-2)}-${String(start + 1).slice(-2)}`
     : "Financial year";
+}
+
+function isFinancialYearPeriod(
+  period: LotteryWorkspace["periods"][number],
+) {
+  return /^FY\d{2}-\d{2}$/.test(period.label);
 }
 
 function paiseToRupeesInput(value: string) {
@@ -214,6 +227,7 @@ export function LotteryAccountingWorkspace({
   const [workingAction, setWorkingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const dailyRefreshTimerRef = useRef<number | null>(null);
 
   const refreshWorkspace = useCallback(
     async (nextOrganizationId = organizationId) => {
@@ -253,6 +267,40 @@ export function LotteryAccountingWorkspace({
       setIsLoading(false);
     }
   }, [api]);
+
+  const scheduleDailyWorkspaceRefresh = useCallback(() => {
+    if (dailyRefreshTimerRef.current !== null) {
+      window.clearTimeout(dailyRefreshTimerRef.current);
+    }
+    dailyRefreshTimerRef.current = window.setTimeout(() => {
+      dailyRefreshTimerRef.current = null;
+      void refreshWorkspace();
+    }, 1_200);
+  }, [refreshWorkspace]);
+
+  useEffect(
+    () => () => {
+      if (dailyRefreshTimerRef.current !== null) {
+        window.clearTimeout(dailyRefreshTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const runDailyDraftAction = useCallback(
+    async <T,>(action: () => Promise<T>): Promise<T | null> => {
+      setError(null);
+      try {
+        const result = await action();
+        scheduleDailyWorkspaceRefresh();
+        return result;
+      } catch (actionError) {
+        setError(friendlyError(actionError));
+        return null;
+      }
+    },
+    [scheduleDailyWorkspaceRefresh],
+  );
 
   useEffect(() => {
     void refreshOrganizations();
@@ -461,40 +509,23 @@ export function LotteryAccountingWorkspace({
             <DailySellerEntry
               organizationId={organizationId}
               workspace={workspace}
-              busy={Boolean(workingAction)}
               onSaveDraft={(payload) =>
-                runAction(
-                  "daily-seller-draft",
-                  () => api.saveDailySellerDraft(payload),
-                  "Daily seller draft saved. You can still edit or delete it.",
-                )
+                runDailyDraftAction(() => api.saveDailySellerDraft(payload))
               }
               onUpdateDraft={(saleId, payload) =>
-                runAction(
-                  `daily-seller-draft-${saleId}`,
-                  () => api.updateDailySellerDraft(saleId, payload),
-                  "Daily seller draft updated.",
-                )
-              }
-              onPostDraft={(saleId) =>
-                runAction(
-                  `daily-seller-post-${saleId}`,
-                  () => api.postDailySellerDraft(saleId, { organizationId }),
-                  "Daily seller entry posted with stock and ledger audit rows.",
+                runDailyDraftAction(() =>
+                  api.updateDailySellerDraft(saleId, payload),
                 )
               }
               onDeleteDraft={(saleId) =>
-                runAction(
-                  `daily-seller-delete-${saleId}`,
-                  () => api.deleteDailySellerDraft(saleId, { organizationId }),
-                  "Daily seller draft deleted before posting.",
-                )
+                runDailyDraftAction(async () => {
+                  await api.deleteDailySellerDraft(saleId, { organizationId });
+                  return true;
+                }).then(Boolean)
               }
               onCorrectPosted={(saleId) =>
-                runAction(
-                  `daily-seller-correct-${saleId}`,
-                  () => api.correctPostedSale(saleId, { organizationId }),
-                  "Posted entry reversed safely; a replacement draft is ready to edit.",
+                runDailyDraftAction(() =>
+                  api.correctPostedSale(saleId, { organizationId }),
                 )
               }
               onUpdateTdsRate={(tdsRateBps) =>
@@ -541,6 +572,7 @@ export function LotteryAccountingWorkspace({
             />
           )}
           {tab === "records" && <RecordsPanel workspace={workspace} />}
+          {tab === "statements" && <StatementPanel workspace={workspace} />}
           {tab === "analysis" && <AnalysisPanel workspace={workspace} />}
         </>
       )}
@@ -579,7 +611,11 @@ function DashboardPanel({
   const visibleDraftSales = workspace.draftSales.filter((sale) => inRange(sale.occurredAt) && allowedPartyIds.has(sale.partyId));
   const visiblePayments = workspace.payments.filter((payment) => inRange(payment.occurredAt) && allowedPartyIds.has(payment.partyId));
   const visibleStock = workspace.stockMovements.filter((movement) => inRange(movement.occurredAt) && (!movement.partyId || allowedPartyIds.has(movement.partyId)));
-  const sum = (values: Array<string | number>) => values.reduce((total, value) => total + BigInt(value), 0n);
+  const sum = (values: Iterable<string | number | bigint>) => {
+    let total = 0n;
+    for (const value of values) total += BigInt(value);
+    return total;
+  };
   const grossSales = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.grossSalesPaise));
   const dispatch = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.dispatchQuantity));
   const returns = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.returnQuantity));
@@ -588,6 +624,24 @@ function DashboardPanel({
   const expenses = sum(visiblePayments.filter((payment) => payment.direction === "EXPENSE").map((payment) => payment.totalAmountPaise));
   const purchase = sum(visibleStock.filter((movement) => movement.movementType === "RECEIPT").map((movement) => movement.quantity));
   const stockDispatch = sum(visibleStock.filter((movement) => movement.movementType === "DISPATCH").map((movement) => movement.quantity));
+  const stockEffectAtRangeEnd = sum(
+    workspace.stockMovements
+      .filter((movement) => new Date(movement.occurredAt) < bounds.to)
+      .map((movement) => {
+        const quantity = BigInt(movement.quantity);
+        if (movement.movementType === "DISPATCH") return -quantity;
+        if (movement.movementType === "ADJUSTMENT") return quantity;
+        return quantity;
+      }),
+  );
+  const draftStockEffectAtRangeEnd = sum(
+    workspace.draftSales
+      .filter((sale) => new Date(sale.occurredAt) < bounds.to)
+      .map((sale) => -BigInt(sale.netTickets)),
+  );
+  const operationalClosingStock =
+    stockEffectAtRangeEnd + draftStockEffectAtRangeEnd;
+  const hasUnclearedStock = operationalClosingStock !== 0n;
   return (
     <div className="space-y-3">
       <WorkspaceCard title={`${workspace.organization.name} dashboard`}>
@@ -613,8 +667,19 @@ function DashboardPanel({
           <Metric label="Outgoing" value={formatPaise(outgoing)} tone="orange" />
           <Metric label="Expenses" value={formatPaise(expenses)} tone="orange" />
           <Metric label="Net cash" value={formatPaise(received - outgoing - expenses)} />
-          <Metric label="All-time closing stock" value={workspace.summary.stock.closing} />
+          <Metric
+            label="Operational closing stock"
+            value={operationalClosingStock.toString()}
+            tone={hasUnclearedStock ? "orange" : "emerald"}
+          />
         </div>
+        <p
+          className={`mt-3 rounded-xl border p-3 text-[10px] font-bold ${hasUnclearedStock ? "border-orange-200 bg-orange-50 text-orange-800" : "border-emerald-100 bg-emerald-50 text-emerald-800"}`}
+        >
+          {hasUnclearedStock
+            ? `Stock clearance alert: ${operationalClosingStock.toString()} ticket(s) remain after this selected period. Check stock receipt, seller dispatch and return entries before play starts.`
+            : "Stock clearance: zero tickets remain after this selected period."}
+        </p>
       </WorkspaceCard>
       <WorkspaceCard title="Party-wise activity">
         <div className="space-y-2">
@@ -682,6 +747,7 @@ function SetupPanel({
     String(currentFinancialYearStart()),
   );
   const [localError, setLocalError] = useState<string | null>(null);
+  const fixedFinancialYear = workspace?.periods.find(isFinancialYearPeriod);
 
   const submitOrganization = async (
     event: React.FormEvent<HTMLFormElement>,
@@ -950,36 +1016,46 @@ function SetupPanel({
           </WorkspaceCard>
 
           <WorkspaceCard title="Financial year periods">
-            <form
-              className="space-y-3"
-              onSubmit={(event) => void submitPeriod(event)}
-            >
-              <div>
-                <Label htmlFor="lottery-financial-year">Financial year</Label>
-                <select
-                  id="lottery-financial-year"
-                  value={financialYearStart}
-                  onChange={(event) =>
-                    setFinancialYearStart(event.target.value)
-                  }
-                  className={CONTROL_CLASS}
-                >
-                  {[
-                    currentFinancialYearStart() - 1,
-                    currentFinancialYearStart(),
-                    currentFinancialYearStart() + 1,
-                  ].map((year) => (
-                    <option key={year} value={String(year)}>
-                      {financialYearLabel(String(year))} · 01 Apr {year} – 31
-                      Mar {year + 1}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <SubmitButton busy={workingAction === "financial-year"}>
-                Create / select financial year
-              </SubmitButton>
-            </form>
+            {fixedFinancialYear ? (
+              <p className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-[10px] leading-relaxed text-emerald-900">
+                <strong>Fixed financial year: {fixedFinancialYear.label}</strong>
+                <br />
+                {displayDate(fixedFinancialYear.startsAt)} – {displayDate(fixedFinancialYear.endsAt)}.
+                This workspace keeps the year selected during setup; it will not
+                reset or change while you enter current or backdated data.
+              </p>
+            ) : (
+              <form
+                className="space-y-3"
+                onSubmit={(event) => void submitPeriod(event)}
+              >
+                <div>
+                  <Label htmlFor="lottery-financial-year">Financial year</Label>
+                  <select
+                    id="lottery-financial-year"
+                    value={financialYearStart}
+                    onChange={(event) =>
+                      setFinancialYearStart(event.target.value)
+                    }
+                    className={CONTROL_CLASS}
+                  >
+                    {[
+                      currentFinancialYearStart() - 1,
+                      currentFinancialYearStart(),
+                      currentFinancialYearStart() + 1,
+                    ].map((year) => (
+                      <option key={year} value={String(year)}>
+                        {financialYearLabel(String(year))} · 01 Apr {year} – 31
+                        Mar {year + 1}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <SubmitButton busy={workingAction === "financial-year"}>
+                  Set financial year
+                </SubmitButton>
+              </form>
+            )}
             <EntityList
               items={workspace.periods.map(
                 (period) =>
@@ -1523,6 +1599,378 @@ function RecordsPanel({
           />
         ) : (
           <EmptyState>No audit events yet.</EmptyState>
+        )}
+      </WorkspaceCard>
+    </div>
+  );
+}
+
+type StatementRow = {
+  id: string;
+  occurredAt: string;
+  category: string;
+  party: string;
+  reference: string;
+  quantity: string;
+  netQuantity: string;
+  amountPaise: string;
+  status: string;
+};
+
+type DailyStockClearanceRow = {
+  day: string;
+  purchased: bigint;
+  dispatched: bigint;
+  returned: bigint;
+  draftNetSale: bigint;
+  adjustment: bigint;
+  closing: bigint;
+};
+
+function inputDateKey(value: string) {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
+function occurredDateKey(value: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
+function nextInputDate(day: string) {
+  const date = new Date(`${day}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function stockMovementEffect(
+  movement: LotteryWorkspace["stockMovements"][number],
+) {
+  const quantity = BigInt(movement.quantity);
+  if (movement.movementType === "DISPATCH") return -quantity;
+  return quantity;
+}
+
+function dailyStockClearanceRows(
+  workspace: LotteryWorkspace,
+  fromDate: string,
+  toDate: string,
+) {
+  const from = inputDateKey(fromDate);
+  const to = inputDateKey(toDate);
+  if (!from || !to || to < from) return [];
+
+  const earlierStock = workspace.stockMovements
+    .filter((movement) => occurredDateKey(movement.occurredAt) < from)
+    .reduce((total, movement) => total + stockMovementEffect(movement), 0n);
+  const earlierDrafts = workspace.draftSales
+    .filter((sale) => occurredDateKey(sale.occurredAt) < from)
+    .reduce((total, sale) => total - BigInt(sale.netTickets), 0n);
+  let closing = earlierStock + earlierDrafts;
+  const rows: DailyStockClearanceRow[] = [];
+
+  for (let day = from; day <= to; day = nextInputDate(day)) {
+    const movements = workspace.stockMovements.filter(
+      (movement) => occurredDateKey(movement.occurredAt) === day,
+    );
+    const purchased = movements
+      .filter((movement) => movement.movementType === "RECEIPT")
+      .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
+    const dispatched = movements
+      .filter((movement) => movement.movementType === "DISPATCH")
+      .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
+    const returned = movements
+      .filter((movement) => movement.movementType === "RETURN")
+      .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
+    const adjustment = movements
+      .filter((movement) => movement.movementType === "ADJUSTMENT")
+      .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
+    const draftNetSale = workspace.draftSales
+      .filter((sale) => occurredDateKey(sale.occurredAt) === day)
+      .reduce((total, sale) => total + BigInt(sale.netTickets), 0n);
+    closing += purchased - dispatched + returned + adjustment - draftNetSale;
+    rows.push({
+      day,
+      purchased,
+      dispatched,
+      returned,
+      draftNetSale,
+      adjustment,
+      closing,
+    });
+  }
+  return rows;
+}
+
+function StatementPanel({
+  workspace,
+}: Readonly<{ workspace: LotteryWorkspace }>) {
+  const [fromDate, setFromDate] = useState(todayInputValue());
+  const [toDate, setToDate] = useState(todayInputValue());
+  const [partyId, setPartyId] = useState("ALL");
+  const from = new Date(`${fromDate}T00:00:00Z`);
+  const endCandidate = new Date(`${toDate || fromDate}T00:00:00Z`);
+  const to =
+    endCandidate >= from
+      ? new Date(endCandidate.getTime() + 86_400_000)
+      : new Date(from.getTime() + 86_400_000);
+  const inRange = (occurredAt: string) => {
+    const date = new Date(occurredAt);
+    return date >= from && date < to;
+  };
+  const includesParty = (entryPartyId: string | null) =>
+    partyId === "ALL" || entryPartyId === partyId;
+  const partyName = (entryPartyId: string | null, fallback: string | null) =>
+    fallback ||
+    workspace.parties.find((party) => party.id === entryPartyId)?.name ||
+    "General stock / expense";
+  const visibleStock = workspace.stockMovements.filter(
+    (movement) => inRange(movement.occurredAt) && includesParty(movement.partyId),
+  );
+  const visibleSales = [...workspace.sales, ...workspace.draftSales].filter(
+    (sale) => inRange(sale.occurredAt) && includesParty(sale.partyId),
+  );
+  const visiblePayments = workspace.payments.filter(
+    (payment) => inRange(payment.occurredAt) && includesParty(payment.partyId),
+  );
+  const rows = useMemo<StatementRow[]>(
+    () => [
+      ...visibleStock.map((movement) => ({
+        id: `stock-${movement.id}`,
+        occurredAt: movement.occurredAt,
+        category: `Stock ${movement.movementType.toLowerCase()}`,
+        party: partyName(movement.partyId, movement.partyName),
+        reference: movement.reference,
+        quantity: movement.quantity,
+        netQuantity: "—",
+        amountPaise:
+          movement.movementType === "RECEIPT"
+            ? movement.netPayablePaise
+            : "0",
+        status: "Posted",
+      })),
+      ...visibleSales.map((sale) => ({
+        id: `sale-${sale.id}`,
+        occurredAt: sale.occurredAt,
+        category: "Seller sale",
+        party: sale.partyName,
+        reference: sale.reference,
+        quantity: String(sale.dispatchQuantity),
+        netQuantity: String(sale.netTickets),
+        amountPaise: sale.grossSalesPaise,
+        status: sale.status === "DRAFT" ? "Saved draft" : "Final",
+      })),
+      ...visiblePayments.map((payment) => ({
+        id: `payment-${payment.id}`,
+        occurredAt: payment.occurredAt,
+        category: payment.direction.toLowerCase(),
+        party: payment.partyName,
+        reference: payment.reference,
+        quantity: "—",
+        netQuantity: "—",
+        amountPaise: payment.totalAmountPaise,
+        status: "Posted",
+      })),
+    ].sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)),
+    [visiblePayments, visibleSales, visibleStock],
+  );
+  const purchased = visibleStock
+    .filter((movement) => movement.movementType === "RECEIPT")
+    .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
+  const dispatched = visibleSales.reduce(
+    (total, sale) => total + BigInt(sale.dispatchQuantity),
+    0n,
+  );
+  const returned = visibleSales.reduce(
+    (total, sale) => total + BigInt(sale.returnQuantity),
+    0n,
+  );
+  const netSale = visibleSales.reduce(
+    (total, sale) => total + BigInt(sale.netTickets),
+    0n,
+  );
+  const grossSales = sumPaise(
+    visibleSales.map((sale) => sale.grossSalesPaise),
+  );
+  const received = sumPaise(
+    visiblePayments
+      .filter((payment) => payment.direction === "RECEIPT")
+      .map((payment) => payment.totalAmountPaise),
+  );
+  const expenses = sumPaise(
+    visiblePayments
+      .filter((payment) => payment.direction === "EXPENSE")
+      .map((payment) => payment.totalAmountPaise),
+  );
+  const stockClearanceRows = useMemo(
+    () => dailyStockClearanceRows(workspace, fromDate, toDate),
+    [fromDate, toDate, workspace],
+  );
+
+  return (
+    <div className="space-y-3">
+      <WorkspaceCard title="Accounting statement">
+        <p className="text-[10px] leading-relaxed text-slate-600">
+          A date-and-party-wise statement of saved drafts, final seller sales,
+          stock, payments and expenses. PDF/Excel export is intentionally not
+          included in this screen yet.
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label>
+            <Label htmlFor="statement-from-date">From date</Label>
+            <input
+              id="statement-from-date"
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+              className={CONTROL_CLASS}
+            />
+          </label>
+          <label>
+            <Label htmlFor="statement-to-date">To date</Label>
+            <input
+              id="statement-to-date"
+              type="date"
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+              className={CONTROL_CLASS}
+            />
+          </label>
+          <label>
+            <Label htmlFor="statement-party">Party</Label>
+            <select
+              id="statement-party"
+              value={partyId}
+              onChange={(event) => setPartyId(event.target.value)}
+              className={CONTROL_CLASS}
+            >
+              <option value="ALL">All parties and general stock</option>
+              {workspace.parties.map((party) => (
+                <option key={party.id} value={party.id}>
+                  {party.name} · {party.partyType.toLowerCase()}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </WorkspaceCard>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Metric label="Purchased" value={purchased.toString()} />
+        <Metric label="Dispatch" value={dispatched.toString()} />
+        <Metric label="Return" value={returned.toString()} />
+        <Metric label="Net sale" value={netSale.toString()} />
+        <Metric label="Gross sales" value={formatPaise(grossSales)} />
+        <Metric label="Payment received" value={formatPaise(received)} />
+        <Metric label="Expenses" value={formatPaise(expenses)} tone="orange" />
+        <Metric
+          label="Net cash"
+          value={formatPaise(BigInt(received) - BigInt(expenses))}
+        />
+      </div>
+
+      <WorkspaceCard title="Daily stock-clearance control">
+        <p className="text-[10px] leading-relaxed text-slate-600">
+          Every date in the selected range is shown, including days with no
+          purchase. A non-zero closing stock is highlighted because lottery
+          stock should be cleared before that day&apos;s play begins.
+        </p>
+        <div className="mt-3 overflow-x-auto rounded-xl border border-emerald-100">
+          <table className="min-w-[820px] border-collapse text-left text-[10px]">
+            <thead className="bg-emerald-50 text-[8px] uppercase tracking-wide text-slate-600">
+              <tr>
+                {[
+                  "Date",
+                  "Purchase",
+                  "Dispatch",
+                  "Return",
+                  "Draft net sale",
+                  "Adjustment",
+                  "Closing stock",
+                  "Clearance",
+                ].map((heading) => (
+                  <th
+                    key={heading}
+                    className="border-b border-emerald-100 px-2 py-2 font-black"
+                  >
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {stockClearanceRows.map((row) => {
+                const clear = row.closing === 0n;
+                return (
+                  <tr
+                    key={row.day}
+                    className={`border-b border-slate-100 last:border-0 ${clear ? "bg-white" : "bg-orange-50/70"}`}
+                  >
+                    <td className="px-2 py-2">{displayDate(`${row.day}T00:00:00.000Z`)}</td>
+                    <td className="px-2 py-2">
+                      {row.purchased === 0n ? "No purchase" : row.purchased.toString()}
+                    </td>
+                    <td className="px-2 py-2">{row.dispatched.toString()}</td>
+                    <td className="px-2 py-2">{row.returned.toString()}</td>
+                    <td className="px-2 py-2">{row.draftNetSale.toString()}</td>
+                    <td className="px-2 py-2">{row.adjustment.toString()}</td>
+                    <td className="px-2 py-2 font-black">{row.closing.toString()}</td>
+                    <td className="px-2 py-2 font-bold">
+                      {clear
+                        ? "Clear"
+                        : `Not clear: ${row.closing.toString()} remain`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </WorkspaceCard>
+
+      <WorkspaceCard title="Statement rows">
+        {rows.length ? (
+          <div className="overflow-x-auto rounded-xl border border-emerald-100">
+            <table className="min-w-[920px] border-collapse text-left text-[10px]">
+              <thead className="bg-emerald-50 text-[8px] uppercase tracking-wide text-slate-600">
+                <tr>
+                  {[
+                    "Date",
+                    "Category",
+                    "Party",
+                    "Reference",
+                    "Quantity",
+                    "Net sale",
+                    "Amount",
+                    "Status",
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="border-b border-emerald-100 px-2 py-2 font-black"
+                    >
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-2 py-2">{displayDate(row.occurredAt)}</td>
+                    <td className="px-2 py-2 capitalize">{row.category}</td>
+                    <td className="px-2 py-2 font-bold">{row.party}</td>
+                    <td className="px-2 py-2">{row.reference}</td>
+                    <td className="px-2 py-2">{row.quantity}</td>
+                    <td className="px-2 py-2">{row.netQuantity}</td>
+                    <td className="px-2 py-2">{formatPaise(row.amountPaise)}</td>
+                    <td className="px-2 py-2">{row.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState>No saved accounting row matches this date and party.</EmptyState>
         )}
       </WorkspaceCard>
     </div>

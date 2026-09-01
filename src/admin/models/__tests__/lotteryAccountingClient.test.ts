@@ -39,6 +39,16 @@ describe("lotteryAccountingClient", () => {
       organizationId: "org-1",
       tdsRateBps: 200,
     });
+    authenticatedAdminFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          sale: { id: "draft-1", reference: "SAL-1", status: "DRAFT" },
+        }),
+      ),
+    );
+    await expect(
+      lotteryAccountingClient.saveDailySellerDraft({ organizationId: "org-1" }),
+    ).resolves.toEqual({ id: "draft-1", reference: "SAL-1", status: "DRAFT" });
 
     expect(authenticatedAdminFetch).toHaveBeenNthCalledWith(
       1,
@@ -64,6 +74,14 @@ describe("lotteryAccountingClient", () => {
       expect.objectContaining({
         method: "PATCH",
         body: '{"organizationId":"org-1","tdsRateBps":200}',
+      }),
+    );
+    expect(authenticatedAdminFetch).toHaveBeenNthCalledWith(
+      5,
+      "/api/admin/models/orbis-accounting-ai/modules/lottery/daily-seller-drafts",
+      expect.objectContaining({
+        method: "POST",
+        body: '{"organizationId":"org-1"}',
       }),
     );
   });

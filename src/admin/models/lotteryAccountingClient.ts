@@ -1,5 +1,6 @@
 import { authenticatedAdminFetch } from "../auth/adminFetch";
 import type {
+  LotteryDailySellerDraftIdentity,
   LotteryOrganization,
   LotterySalePreview,
   LotteryWorkspace,
@@ -86,11 +87,13 @@ export interface LotteryAccountingClient {
     payload: Record<string, unknown>,
   ) => Promise<LotterySalePreview>;
   recordSale: (payload: Record<string, unknown>) => Promise<void>;
-  saveDailySellerDraft: (payload: Record<string, unknown>) => Promise<void>;
+  saveDailySellerDraft: (
+    payload: Record<string, unknown>,
+  ) => Promise<LotteryDailySellerDraftIdentity>;
   updateDailySellerDraft: (
     saleId: string,
     payload: Record<string, unknown>,
-  ) => Promise<void>;
+  ) => Promise<LotteryDailySellerDraftIdentity>;
   deleteDailySellerDraft: (
     saleId: string,
     payload: Record<string, unknown>,
@@ -102,7 +105,7 @@ export interface LotteryAccountingClient {
   correctPostedSale: (
     saleId: string,
     payload: Record<string, unknown>,
-  ) => Promise<void>;
+  ) => Promise<LotteryDailySellerDraftIdentity>;
   recordPayment: (payload: Record<string, unknown>) => Promise<void>;
   recordSettlement: (payload: Record<string, unknown>) => Promise<void>;
 }
@@ -159,13 +162,18 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
     await postLottery("/sales", payload);
   },
   async saveDailySellerDraft(payload) {
-    await postLottery("/daily-seller-drafts", payload);
+    const body = await postLottery<{ sale: LotteryDailySellerDraftIdentity }>(
+      "/daily-seller-drafts",
+      payload,
+    );
+    return body.sale;
   },
   async updateDailySellerDraft(saleId, payload) {
-    await patchLottery(
+    const body = await patchLottery<{ sale: LotteryDailySellerDraftIdentity }>(
       `/daily-seller-drafts/${encodeURIComponent(saleId)}`,
       payload,
     );
+    return body.sale;
   },
   async deleteDailySellerDraft(saleId, payload) {
     await deleteLottery(
@@ -180,7 +188,11 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
     );
   },
   async correctPostedSale(saleId, payload) {
-    await postLottery(`/sales/${encodeURIComponent(saleId)}/correct`, payload);
+    const body = await postLottery<{ draft: LotteryDailySellerDraftIdentity }>(
+      `/sales/${encodeURIComponent(saleId)}/correct`,
+      payload,
+    );
+    return body.draft;
   },
   async recordPayment(payload) {
     await postLottery("/payments", payload);

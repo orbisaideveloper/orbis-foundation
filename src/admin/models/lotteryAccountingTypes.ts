@@ -85,6 +85,17 @@ export interface LotteryDraftSale extends LotterySaleFields {
   correctionOfSaleId: string | null;
 }
 
+/**
+ * The Daily Seller screen needs only this stable server identity after an
+ * autosave. Keeping the small response shape here prevents a background save
+ * from having to reload and replace the whole workspace while the Admin is
+ * still typing.
+ */
+export type LotteryDailySellerDraftIdentity = Pick<
+  LotteryDraftSale,
+  "id" | "reference" | "status"
+>;
+
 export interface LotteryPayment {
   id: string;
   partyId: string;
