@@ -476,7 +476,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     } = stockPostingContext(input);
     const movementType = requiredText(input?.type, "type").toUpperCase();
     if (
-      !new Set(["RECEIPT", "DISPATCH", "RETURN", "ADJUSTMENT"]).has(
+      !new Set(["RECEIPT", "DISPATCH", "RETURN", "STOCKIST_RETURN", "ADJUSTMENT"]).has(
         movementType,
       )
     ) {
@@ -497,8 +497,10 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         tdsPaise: 0n,
         netPayablePaise: 0n,
       };
+      let sourceReceiptId = null;
+      let returnSession = null;
       if (input?.partyId) {
-        if (movementType !== "RECEIPT") {
+        if (!new Set(["RECEIPT", "STOCKIST_RETURN"]).has(movementType)) {
           throw accountingError("INVALID_STOCK_PARTY", "partyId");
         }
         const party = await ensureParty(client, organizationId, input.partyId);
@@ -506,19 +508,23 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           throw accountingError("INVALID_STOCK_PARTY", "partyId");
         }
         const organization = await ensureOrganization(client, organizationId);
-        const unitRatePaise = partyProfileFromRow(party).ticketRatePaise;
+        const suppliedReceiptId = input?.sourceReceiptId ? requiredText(input.sourceReceiptId, "sourceReceiptId") : null;
+        const sourceReceipt = suppliedReceiptId
+          ? await client.foundationLotteryStockMovement.findFirst({ where: { id: suppliedReceiptId, organizationId, partyId: party.id, movementType: "RECEIPT" } })
+          : null;
+        if (movementType === "STOCKIST_RETURN" && !sourceReceipt) {
+          throw accountingError("STOCKIST_RETURN_NEEDS_RECEIPT", "sourceReceiptId");
+        }
+        sourceReceiptId = sourceReceipt?.id || null;
+        returnSession = movementType === "STOCKIST_RETURN" ? requiredText(input?.returnSession, "returnSession").toUpperCase() : null;
+        if (returnSession && !new Set(["MORNING", "DAY", "EVENING"]).has(returnSession)) throw accountingError("INVALID_RETURN_SESSION", "returnSession");
+        const unitRatePaise = sourceReceipt ? BigInt(sourceReceipt.unitRatePaise) : partyProfileFromRow(party).ticketRatePaise;
         const grossPurchasePaise = quantity * unitRatePaise;
-        const commissionPaise = optionalMoney(
-          input?.commissionPaise,
-          "commissionPaise",
-        );
+        const commissionPaise = sourceReceipt ? (quantity * BigInt(sourceReceipt.commissionPaise)) / BigInt(sourceReceipt.quantity) : optionalMoney(input?.commissionPaise, "commissionPaise");
         if (commissionPaise > grossPurchasePaise) {
           throw accountingError("RATE_OUT_OF_RANGE", "commissionPaise");
         }
-        const tdsRateBps = percentageRate(
-          organization.tdsRateBps ?? DEFAULT_TDS_RATE_BPS,
-          "tdsRateBps",
-        );
+        const tdsRateBps = sourceReceipt ? sourceReceipt.tdsRateBps : percentageRate(organization.tdsRateBps ?? DEFAULT_TDS_RATE_BPS, "tdsRateBps");
         const tdsPaise = roundedPercentage(grossPurchasePaise, tdsRateBps);
         purchase = {
           partyId: party.id,
@@ -540,6 +546,8 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         data: {
           organizationId,
           ...purchase,
+          sourceReceiptId,
+          returnSession,
           movementType,
           quantity,
           reference,
@@ -563,6 +571,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
                   partyId: purchase.partyId,
                   grossPurchasePaise: purchase.grossPurchasePaise.toString(),
                   netPayablePaise: purchase.netPayablePaise.toString(),
+                  ...(sourceReceiptId ? { sourceReceiptId, returnSession } : {}),
                 }
               : {}),
           },

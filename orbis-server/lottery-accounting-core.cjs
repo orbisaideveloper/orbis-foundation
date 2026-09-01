@@ -232,7 +232,7 @@ function validatePayment(input) {
 }
 
 function stockSummary(movements = []) {
-  const totals = { RECEIPT: 0n, DISPATCH: 0n, RETURN: 0n, ADJUSTMENT: 0n };
+  const totals = { RECEIPT: 0n, DISPATCH: 0n, RETURN: 0n, STOCKIST_RETURN: 0n, ADJUSTMENT: 0n };
   for (const movement of movements) {
     const type = String(movement.type || "").toUpperCase();
     if (!(type in totals)) throw accountingError("INVALID_STOCK_TYPE", "type");
@@ -241,12 +241,13 @@ function stockSummary(movements = []) {
     });
   }
   const closing =
-    totals.RECEIPT - totals.DISPATCH + totals.RETURN + totals.ADJUSTMENT;
+    totals.RECEIPT - totals.DISPATCH + totals.RETURN - totals.STOCKIST_RETURN + totals.ADJUSTMENT;
   if (closing < 0n) throw accountingError("NEGATIVE_STOCK", "stock");
   return Object.freeze({
     received: totals.RECEIPT.toString(),
     dispatched: totals.DISPATCH.toString(),
     returned: totals.RETURN.toString(),
+    stockistReturned: totals.STOCKIST_RETURN.toString(),
     adjustment: totals.ADJUSTMENT.toString(),
     closing: closing.toString(),
   });

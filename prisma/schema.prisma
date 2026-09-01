@@ -234,6 +234,8 @@ model FoundationLotteryStockMovement {
   id               String   @id @default(uuid())
   organizationId   String
   partyId          String?
+  sourceReceiptId  String?
+  returnSession    String?
   movementType     String
   quantity         BigInt
   unitRatePaise    BigInt   @default(0)
@@ -253,6 +255,7 @@ model FoundationLotteryStockMovement {
   @@unique([organizationId, reference, movementType])
   @@index([organizationId, occurredAt])
   @@index([partyId, occurredAt])
+  @@index([sourceReceiptId])
 }
 
 model FoundationLotterySale {

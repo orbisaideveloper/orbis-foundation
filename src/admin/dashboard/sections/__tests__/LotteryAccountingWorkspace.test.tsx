@@ -8,7 +8,7 @@ import type { LotteryWorkspace } from "../../../models/lotteryAccountingTypes";
 const ORGANIZATION_NAME = "Demo Lottery";
 const ORGANIZATION_OVERVIEW = `${ORGANIZATION_NAME} dashboard`;
 const SELLER_DISPATCH_LABEL = "Seller A dispatch";
-const DAILY_SELLERS_TAB = "Daily sellers";
+const DAILY_SELLERS_TAB = "Daily entry";
 const DAILY_SELLER_ENTRY = "Daily seller entry";
 const MORNING_RETURN_LABEL = "Seller A morning return";
 const DAY_RETURN_LABEL = "Seller A day return";

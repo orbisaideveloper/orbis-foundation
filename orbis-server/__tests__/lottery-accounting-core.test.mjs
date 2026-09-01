@@ -221,4 +221,15 @@ describe("Lottery Accounting Core", () => {
     );
     expect(runLotteryCoreVerification()).toMatchObject({ status: "PASSED" });
   });
+
+  it("keeps seller return in warehouse until the manual stockist return", () => {
+    expect(
+      stockSummary([
+        { type: "RECEIPT", quantity: 100 },
+        { type: "DISPATCH", quantity: 100 },
+        { type: "RETURN", quantity: 30 },
+        { type: "STOCKIST_RETURN", quantity: 30 },
+      ]),
+    ).toMatchObject({ returned: "30", stockistReturned: "30", closing: "0" });
+  });
 });

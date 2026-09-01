@@ -35,20 +35,20 @@ type WorkspaceTab =
   | "records"
   | "statements"
   | "analysis";
-type EntryKind = "stock" | "payment" | "settlement";
+type EntryKind = "payment" | "settlement";
+type DailyOperation = "SALE" | "PURCHASE";
 
 const WORKSPACE_TABS: Array<[WorkspaceTab, string]> = [
   ["dashboard", "Dashboard"],
   ["setup", "Setup"],
-  ["seller", "Daily sellers"],
-  ["entry", "Data entry"],
+  ["seller", "Daily entry"],
+  ["entry", "Payment"],
   ["records", "Records"],
   ["statements", "Statements"],
   ["analysis", "AI analysis"],
 ];
 
 const ENTRY_KINDS: Array<[EntryKind, string]> = [
-  ["stock", "Stock"],
   ["payment", "Payment"],
   ["settlement", "Settlement"],
 ];
@@ -95,14 +95,6 @@ function isFinancialYearPeriod(
 function paiseToRupeesInput(value: string) {
   const paise = BigInt(value);
   return `${paise / 100n}.${(paise % 100n).toString().padStart(2, "0")}`;
-}
-
-function partyListLabel(party: LotteryWorkspace["parties"][number]) {
-  const identity = `${party.name} · ${party.partyType.replace(/_/g, " ")}`;
-  return [
-    identity,
-    `rate ${formatPaise(party.ticketRatePaise)}`,
-  ].join(" · ");
 }
 
 function friendlyError(error: unknown) {
@@ -221,7 +213,8 @@ export function LotteryAccountingWorkspace({
   const [organizationId, setOrganizationId] = useState("");
   const [workspace, setWorkspace] = useState<LotteryWorkspace | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>("dashboard");
-  const [entryKind, setEntryKind] = useState<EntryKind>("stock");
+  const [entryKind, setEntryKind] = useState<EntryKind>("payment");
+  const [dailyOperation, setDailyOperation] = useState<DailyOperation>("SALE");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [workingAction, setWorkingAction] = useState<string | null>(null);
@@ -506,7 +499,11 @@ export function LotteryAccountingWorkspace({
             />
           )}
           {tab === "seller" && (
-            <DailySellerEntry
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-emerald-100 bg-white p-2">
+                {(["SALE", "PURCHASE"] as const).map((operation) => <button key={operation} type="button" onClick={() => setDailyOperation(operation)} className={`rounded-lg px-3 py-2 text-[10px] font-bold ${dailyOperation === operation ? "bg-emerald-600 text-white" : "text-slate-600"}`}>{operation === "SALE" ? "Sale entry" : "Purchase / return"}</button>)}
+              </div>
+              {dailyOperation === "SALE" ? <DailySellerEntry
               organizationId={organizationId}
               workspace={workspace}
               onSaveDraft={(payload) =>
@@ -539,7 +536,8 @@ export function LotteryAccountingWorkspace({
                   "Global TDS rate updated for new and draft seller entries.",
                 )
               }
-            />
+              /> : <StockForm organizationId={organizationId} workspace={workspace} busy={workingAction === "stock"} onSubmit={(payload) => runAction("stock", () => api.recordStockMovement(payload), "Purchase or stockist return posted.")} />}
+            </div>
           )}
           {tab === "entry" && (
             <EntryPanel
@@ -548,13 +546,6 @@ export function LotteryAccountingWorkspace({
               entryKind={entryKind}
               setEntryKind={setEntryKind}
               workingAction={workingAction}
-              onStock={(payload) =>
-                runAction(
-                  "stock",
-                  () => api.recordStockMovement(payload),
-                  "Stock movement posted. The audit trail is updated.",
-                )
-              }
               onPayment={(payload) =>
                 runAction(
                   "payment",
@@ -681,24 +672,14 @@ function DashboardPanel({
             : "Stock clearance: zero tickets remain after this selected period."}
         </p>
       </WorkspaceCard>
-      <WorkspaceCard title="Party-wise activity">
-        <div className="space-y-2">
-          {workspace.parties.filter((party) => partyFilter === "ALL" || party.partyType === partyFilter).map((party) => {
-            const partySales = [...visibleSales, ...visibleDraftSales].filter((sale) => sale.partyId === party.id);
-            const partyPayments = visiblePayments.filter((payment) => payment.partyId === party.id);
-            return <div key={party.id} className="rounded-xl border border-emerald-100 p-3 text-[10px]"><p className="font-black text-slate-900">{party.name} · {party.partyType.toLowerCase()}</p><p className="mt-1 text-slate-500">Dispatch {sum(partySales.map((sale) => sale.dispatchQuantity)).toString()} · sales {formatPaise(sum(partySales.map((sale) => sale.grossSalesPaise)))} · payments {formatPaise(sum(partyPayments.map((payment) => payment.totalAmountPaise)))}</p></div>;
-          })}
-        </div>
-      </WorkspaceCard>
       <WorkspaceCard title="Before you publish the model">
         <ol className="space-y-2 text-[10px] text-slate-600">
           <li>
             <strong>1.</strong> Setup party and accounting period.
           </li>
           <li>
-            <strong>2.</strong> Use Daily sellers for dispatch, three return
-            times and draft review; use Data entry for stock, payment and
-            settlement.
+            <strong>2.</strong> Use Daily entry for sellers. Use Purchase &amp;
+            payment to receive stock, return it to a stockist and settle money.
           </li>
           <li>
             <strong>3.</strong> Check Records and AI analysis from verified
@@ -866,7 +847,7 @@ function SetupPanel({
 
       {workspace && (
         <>
-          <WorkspaceCard title="Parties">
+          <WorkspaceCard title="Party profile">
             <form
               className="space-y-3"
               onSubmit={(event) => void submitParty(event)}
@@ -937,13 +918,7 @@ function SetupPanel({
                 Save party
               </SubmitButton>
             </form>
-            <EntityList
-              items={workspace.parties.map(partyListLabel)}
-              empty="No party added yet."
-            />
-          </WorkspaceCard>
-
-          <WorkspaceCard title="Update party rate">
+            <p className="mt-3 text-[10px] text-slate-500">Saved parties remain in this profile. Select one below only when you need to review or change its rate.</p>
             <form
               className="space-y-3"
               onSubmit={(event) => void submitPartyProfile(event)}
@@ -1092,7 +1067,6 @@ function EntryPanel({
   entryKind,
   setEntryKind,
   workingAction,
-  onStock,
   onPayment,
   onSettlement,
 }: Readonly<{
@@ -1101,7 +1075,6 @@ function EntryPanel({
   entryKind: EntryKind;
   setEntryKind: (value: EntryKind) => void;
   workingAction: string | null;
-  onStock: (payload: Record<string, unknown>) => Promise<boolean>;
   onPayment: (payload: Record<string, unknown>) => Promise<boolean>;
   onSettlement: (payload: Record<string, unknown>) => Promise<boolean>;
 }>) {
@@ -1124,14 +1097,6 @@ function EntryPanel({
           ))}
         </div>
       </WorkspaceCard>
-      {entryKind === "stock" && (
-        <StockForm
-          organizationId={organizationId}
-          workspace={workspace}
-          busy={workingAction === "stock"}
-          onSubmit={onStock}
-        />
-      )}
       {entryKind === "payment" && (
         <PaymentForm
           organizationId={organizationId}
@@ -1167,6 +1132,8 @@ function StockForm({
   const [quantity, setQuantity] = useState("");
   const [partyId, setPartyId] = useState("");
   const [commission, setCommission] = useState("");
+  const [sourceReceiptId, setSourceReceiptId] = useState("");
+  const [returnSession, setReturnSession] = useState("MORNING");
   const [occurredAt, setOccurredAt] = useState(todayInputValue());
   const [error, setError] = useState<string | null>(null);
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1183,6 +1150,8 @@ function StockForm({
         quantity,
         occurredAt,
         ...(partyId ? { partyId } : {}),
+        ...(sourceReceiptId ? { sourceReceiptId } : {}),
+        ...(type === "STOCKIST_RETURN" ? { returnSession } : {}),
         ...(commission.trim() ? { commissionPaise: rupeesToPaise(commission) } : {}),
       })
     ) {
@@ -1191,7 +1160,7 @@ function StockForm({
     }
   };
   return (
-    <WorkspaceCard title="Stock receipt, return or adjustment">
+    <WorkspaceCard title="Purchase and stockist return">
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -1202,7 +1171,7 @@ function StockForm({
               onChange={(event) => setType(event.target.value)}
               className={CONTROL_CLASS}
             >
-              {["RECEIPT", "DISPATCH", "RETURN", "ADJUSTMENT"].map((value) => (
+              {["RECEIPT", "STOCKIST_RETURN", "ADJUSTMENT"].map((value) => (
                 <option key={value}>{value}</option>
               ))}
             </select>
@@ -1228,25 +1197,39 @@ function StockForm({
             className={CONTROL_CLASS}
           />
         </div>
-        {type === "RECEIPT" && (
+        {(type === "RECEIPT" || type === "STOCKIST_RETURN") && (
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label htmlFor="lottery-stock-party">Stockist (optional)</Label>
+              <Label htmlFor="lottery-stock-party">Stockist</Label>
               <select id="lottery-stock-party" value={partyId} onChange={(event) => setPartyId(event.target.value)} className={CONTROL_CLASS}>
-                <option value="">No linked stockist</option>
+                <option value="">Select stockist</option>
                 {workspace.parties.filter((party) => party.partyType === "STOCKIST" || party.partyType === "SERVICE_STOCKIST").map((party) => <option key={party.id} value={party.id}>{party.name} · {formatPaise(party.ticketRatePaise)}</option>)}
               </select>
             </div>
-            <div>
+            {type === "RECEIPT" && <div>
               <Label htmlFor="lottery-stock-commission">Commission (₹)</Label>
               <input id="lottery-stock-commission" inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} placeholder="0.00" className={CONTROL_CLASS} />
-            </div>
+            </div>}
+          </div>
+        )}
+        {type === "STOCKIST_RETURN" && (
+          <div className="space-y-2 rounded-xl border border-orange-200 bg-orange-50 p-3">
+            <p className="text-[10px] font-bold text-orange-900">Available return stock: {warehouseReturnBalance(workspace).toString()} tickets</p>
+            <select value={sourceReceiptId} onChange={(event) => setSourceReceiptId(event.target.value)} className={CONTROL_CLASS} aria-label="Original purchase receipt">
+              <option value="">Choose original purchase</option>
+              {workspace.stockMovements.filter((movement) => movement.movementType === "RECEIPT" && movement.partyId === partyId).map((movement) => <option key={movement.id} value={movement.id}>{displayDate(movement.occurredAt)} · {movement.reference} · {movement.quantity} tickets</option>)}
+            </select>
+            <select value={returnSession} onChange={(event) => setReturnSession(event.target.value)} className={CONTROL_CLASS} aria-label="Return session">
+              <option value="MORNING">Morning return</option><option value="DAY">Day return</option><option value="EVENING">Evening return</option>
+            </select>
+            <p className="text-[9px] text-orange-800">Seller return reaches your stock first. Ticket return reduces stock; record cash, bank or UPI settlement separately.</p>
           </div>
         )}
         <p className="text-[9px] leading-relaxed text-slate-500">
           The server creates the stock bill reference automatically. For a
           stockist receipt it uses that party's fixed rate, the receipt
-          commission and the common TDS rate automatically.
+          commission and the common TDS rate automatically. A stockist return
+          uses the selected original purchase rate.
         </p>
         <InlineError message={error} />
         <SubmitButton busy={busy}>Post stock movement</SubmitButton>
@@ -1622,6 +1605,7 @@ type DailyStockClearanceRow = {
   purchased: bigint;
   dispatched: bigint;
   returned: bigint;
+  stockistReturned: bigint;
   draftNetSale: bigint;
   adjustment: bigint;
   closing: bigint;
@@ -1648,7 +1632,17 @@ function stockMovementEffect(
 ) {
   const quantity = BigInt(movement.quantity);
   if (movement.movementType === "DISPATCH") return -quantity;
+  if (movement.movementType === "STOCKIST_RETURN") return -quantity;
   return quantity;
+}
+
+function warehouseReturnBalance(workspace: LotteryWorkspace) {
+  return workspace.stockMovements.reduce((total, movement) => {
+    const quantity = BigInt(movement.quantity);
+    if (movement.movementType === "RETURN") return total + quantity;
+    if (movement.movementType === "STOCKIST_RETURN") return total - quantity;
+    return total;
+  }, 0n);
 }
 
 function dailyStockClearanceRows(
@@ -1682,18 +1676,22 @@ function dailyStockClearanceRows(
     const returned = movements
       .filter((movement) => movement.movementType === "RETURN")
       .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
+    const stockistReturned = movements
+      .filter((movement) => movement.movementType === "STOCKIST_RETURN")
+      .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
     const adjustment = movements
       .filter((movement) => movement.movementType === "ADJUSTMENT")
       .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
     const draftNetSale = workspace.draftSales
       .filter((sale) => occurredDateKey(sale.occurredAt) === day)
       .reduce((total, sale) => total + BigInt(sale.netTickets), 0n);
-    closing += purchased - dispatched + returned + adjustment - draftNetSale;
+    closing += purchased - dispatched + returned - stockistReturned + adjustment - draftNetSale;
     rows.push({
       day,
       purchased,
       dispatched,
       returned,
+      stockistReturned,
       draftNetSale,
       adjustment,
       closing,
@@ -1884,6 +1882,7 @@ function StatementPanel({
                   "Purchase",
                   "Dispatch",
                   "Return",
+                  "To stockist",
                   "Draft net sale",
                   "Adjustment",
                   "Closing stock",
@@ -1912,6 +1911,7 @@ function StatementPanel({
                     </td>
                     <td className="px-2 py-2">{row.dispatched.toString()}</td>
                     <td className="px-2 py-2">{row.returned.toString()}</td>
+                    <td className="px-2 py-2">{row.stockistReturned.toString()}</td>
                     <td className="px-2 py-2">{row.draftNetSale.toString()}</td>
                     <td className="px-2 py-2">{row.adjustment.toString()}</td>
                     <td className="px-2 py-2 font-black">{row.closing.toString()}</td>

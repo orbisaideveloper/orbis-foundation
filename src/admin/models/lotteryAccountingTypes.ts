@@ -4,7 +4,7 @@ export type LotteryPartyType =
 export type LotteryPaymentDirection = "RECEIPT" | "PAYMENT" | "EXPENSE";
 
 export type LotteryStockMovementType =
-  "RECEIPT" | "DISPATCH" | "RETURN" | "ADJUSTMENT";
+  "RECEIPT" | "DISPATCH" | "RETURN" | "STOCKIST_RETURN" | "ADJUSTMENT";
 
 export interface LotteryOrganization {
   id: string;
@@ -38,6 +38,8 @@ export interface LotteryPeriod {
 export interface LotteryStockMovement {
   id: string;
   partyId: string | null;
+  sourceReceiptId?: string | null;
+  returnSession?: "MORNING" | "DAY" | "EVENING" | null;
   partyName: string | null;
   movementType: LotteryStockMovementType;
   quantity: string;
@@ -159,6 +161,7 @@ export interface VerifiedLotterySummary {
     received: string;
     dispatched: string;
     returned: string;
+    stockistReturned: string;
     adjustment: string;
     closing: string;
   };
