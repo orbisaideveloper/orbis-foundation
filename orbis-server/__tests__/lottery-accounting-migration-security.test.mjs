@@ -17,6 +17,18 @@ const globalTdsMigration = fs.readFileSync(
   ),
   "utf8",
 );
+const partyDirectoryMigration = fs.readFileSync(
+  path.resolve(
+    "prisma/migrations/20260831020000_add_accounting_party_directory_and_user_storage_policy/migration.sql",
+  ),
+  "utf8",
+);
+const stockistPurchaseMigration = fs.readFileSync(
+  path.resolve(
+    "prisma/migrations/20260831030000_add_stockist_purchase_values/migration.sql",
+  ),
+  "utf8",
+);
 
 const TABLES = [
   "FoundationAccountingOrganization",
@@ -83,5 +95,17 @@ describe("Lottery Accounting migration security", () => {
     );
     expect(globalTdsMigration.trim().startsWith("BEGIN;")).toBe(true);
     expect(globalTdsMigration.trim().endsWith("COMMIT;")).toBe(true);
+  });
+
+  it("keeps the party directory common while only future user ledger storage is configurable", () => {
+    expect(partyDirectoryMigration).toContain('"userLedgerStorage" TEXT NOT NULL DEFAULT \'CLOUD\'');
+    expect(partyDirectoryMigration).toContain('"uniqueCode" TEXT');
+    expect(partyDirectoryMigration).toContain('CREATE UNIQUE INDEX IF NOT EXISTS "FoundationAccountingParty_uniqueCode_key"');
+  });
+
+  it("freezes stockist purchase values without relaxing existing private-table security", () => {
+    expect(stockistPurchaseMigration).toContain('"grossPurchasePaise" BIGINT NOT NULL DEFAULT 0');
+    expect(stockistPurchaseMigration).toContain('"FoundationLotteryStockMovement_partyId_fkey"');
+    expect(stockistPurchaseMigration).toContain('"tdsRateBps" BETWEEN 0 AND 10000');
   });
 });

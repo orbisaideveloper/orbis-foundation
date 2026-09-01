@@ -81,4 +81,21 @@ describe("lotteryAccountingClient", () => {
       "PARTY NOT FOUND",
     );
   });
+
+  it("uses the private Admin route for the future user storage policy", async () => {
+    authenticatedAdminFetch.mockResolvedValue(
+      new Response(JSON.stringify({ organization: { id: "org-1" } })),
+    );
+    await lotteryAccountingClient.updateUserLedgerStorage({
+      organizationId: "org-1",
+      userLedgerStorage: "DEVICE",
+    });
+    expect(authenticatedAdminFetch).toHaveBeenCalledWith(
+      "/api/admin/models/orbis-accounting-ai/modules/lottery/settings/user-ledger-storage",
+      expect.objectContaining({
+        method: "PATCH",
+        body: '{"organizationId":"org-1","userLedgerStorage":"DEVICE"}',
+      }),
+    );
+  });
 });

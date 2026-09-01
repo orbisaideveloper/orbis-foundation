@@ -17,6 +17,10 @@ import {
   rupeesToPaise,
   sumPaise,
 } from "../../models/lotteryAccountingMoney";
+import {
+  pickMobileContact,
+  supportsMobileContactPicker,
+} from "../../models/mobileContactPicker";
 import type {
   LotteryOrganization,
   LotteryPartyType,
@@ -82,10 +86,9 @@ function paiseToRupeesInput(value: string) {
 
 function partyListLabel(party: LotteryWorkspace["parties"][number]) {
   const identity = `${party.name} · ${party.partyType.replace(/_/g, " ")}`;
-  if (party.partyType !== "SELLER") return identity;
   return [
     identity,
-    `${formatPaise(party.ticketRatePaise)} / ticket`,
+    `rate ${formatPaise(party.ticketRatePaise)}`,
   ].join(" · ");
 }
 
@@ -406,6 +409,7 @@ export function LotteryAccountingWorkspace({
           onCreateOrganization={createOrganization}
           onCreateParty={() => Promise.resolve(false)}
           onUpdatePartyProfile={() => Promise.resolve(false)}
+          onUpdateUserLedgerStorage={() => Promise.resolve(false)}
           onCreateFinancialYearPeriod={() => Promise.resolve(false)}
           workingAction={workingAction}
           organizationId=""
@@ -430,6 +434,17 @@ export function LotteryAccountingWorkspace({
                   "party-profile",
                   () => api.updatePartyProfile(payload),
                   "Seller fixed rate updated.",
+                )
+              }
+              onUpdateUserLedgerStorage={(userLedgerStorage) =>
+                runAction(
+                  "user-ledger-storage",
+                  () =>
+                    api.updateUserLedgerStorage({
+                      organizationId,
+                      userLedgerStorage,
+                    }),
+                  "Future user ledger storage policy saved. Party directory remains private in the database.",
                 )
               }
               onCreateFinancialYearPeriod={(payload) =>
@@ -536,33 +551,78 @@ export function LotteryAccountingWorkspace({
 function DashboardPanel({
   workspace,
 }: Readonly<{ workspace: LotteryWorkspace }>) {
-  const { summary } = workspace;
+  const [range, setRange] = useState<"today" | "yesterday" | "week" | "custom">("today");
+  const [partyFilter, setPartyFilter] = useState<"ALL" | LotteryPartyType>("ALL");
+  const [customFrom, setCustomFrom] = useState(todayInputValue());
+  const [customTo, setCustomTo] = useState(todayInputValue());
+  const bounds = useMemo(() => {
+    const today = new Date(`${todayInputValue()}T00:00:00Z`);
+    if (range === "today") return { from: today, to: new Date(today.getTime() + 86_400_000) };
+    if (range === "yesterday") return { from: new Date(today.getTime() - 86_400_000), to: today };
+    if (range === "week") return { from: new Date(today.getTime() - 6 * 86_400_000), to: new Date(today.getTime() + 86_400_000) };
+    return {
+      from: new Date(`${customFrom || todayInputValue()}T00:00:00Z`),
+      to: new Date(`${customTo || customFrom || todayInputValue()}T00:00:00Z`).getTime() >= new Date(`${customFrom || todayInputValue()}T00:00:00Z`).getTime()
+        ? new Date(new Date(`${customTo || customFrom || todayInputValue()}T00:00:00Z`).getTime() + 86_400_000)
+        : new Date(`${customFrom || todayInputValue()}T00:00:00Z`),
+    };
+  }, [customFrom, customTo, range]);
+  const allowedPartyIds = useMemo(
+    () => new Set(workspace.parties.filter((party) => partyFilter === "ALL" || party.partyType === partyFilter).map((party) => party.id)),
+    [partyFilter, workspace.parties],
+  );
+  const inRange = (occurredAt: string) => {
+    const date = new Date(occurredAt);
+    return date >= bounds.from && date < bounds.to;
+  };
+  const visibleSales = workspace.sales.filter((sale) => inRange(sale.occurredAt) && allowedPartyIds.has(sale.partyId));
+  const visibleDraftSales = workspace.draftSales.filter((sale) => inRange(sale.occurredAt) && allowedPartyIds.has(sale.partyId));
+  const visiblePayments = workspace.payments.filter((payment) => inRange(payment.occurredAt) && allowedPartyIds.has(payment.partyId));
+  const visibleStock = workspace.stockMovements.filter((movement) => inRange(movement.occurredAt) && (!movement.partyId || allowedPartyIds.has(movement.partyId)));
+  const sum = (values: Array<string | number>) => values.reduce((total, value) => total + BigInt(value), 0n);
+  const grossSales = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.grossSalesPaise));
+  const dispatch = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.dispatchQuantity));
+  const returns = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.returnQuantity));
+  const received = sum(visiblePayments.filter((payment) => payment.direction === "RECEIPT").map((payment) => payment.totalAmountPaise));
+  const outgoing = sum(visiblePayments.filter((payment) => payment.direction === "PAYMENT").map((payment) => payment.totalAmountPaise));
+  const expenses = sum(visiblePayments.filter((payment) => payment.direction === "EXPENSE").map((payment) => payment.totalAmountPaise));
+  const purchase = sum(visibleStock.filter((movement) => movement.movementType === "RECEIPT").map((movement) => movement.quantity));
+  const stockDispatch = sum(visibleStock.filter((movement) => movement.movementType === "DISPATCH").map((movement) => movement.quantity));
   return (
     <div className="space-y-3">
-      <WorkspaceCard title={`${workspace.organization.name} overview`}>
+      <WorkspaceCard title={`${workspace.organization.name} dashboard`}>
+        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Dashboard date filter">
+          {(["today", "yesterday", "week", "custom"] as const).map((value) => (
+            <button key={value} type="button" onClick={() => setRange(value)} className={`shrink-0 rounded-xl border px-3 py-2 text-[10px] font-bold ${range === value ? "border-emerald-600 bg-emerald-600 text-white" : "border-emerald-100 text-slate-600"}`}>
+              {{ today: "Today", yesterday: "Yesterday", week: "Last 7 days", custom: "Custom" }[value]}
+            </button>
+          ))}
+        </div>
+        {range === "custom" && <div className="mt-2 grid grid-cols-2 gap-2"><input aria-label="Dashboard from date" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} className={CONTROL_CLASS} /><input aria-label="Dashboard to date" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} className={CONTROL_CLASS} /></div>}
+        <select aria-label="Dashboard party filter" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value as "ALL" | LotteryPartyType)} className={`${CONTROL_CLASS} mt-2`}>
+          <option value="ALL">All parties</option>
+          {PARTY_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
         <div className="grid grid-cols-2 gap-2">
-          <Metric label="Closing stock" value={summary.stock.closing} />
-          <Metric
-            label="Gross sales"
-            value={formatPaise(summary.grossSalesPaise)}
-          />
-          <Metric
-            label="Collected"
-            value={formatPaise(summary.collectedPaise)}
-          />
-          <Metric
-            label="Outstanding"
-            value={formatPaise(summary.outstandingPaise)}
-            tone={BigInt(summary.outstandingPaise) > 0n ? "orange" : "emerald"}
-          />
-          <Metric
-            label="Net cash flow"
-            value={formatPaise(summary.netCashFlowPaise)}
-          />
-          <Metric
-            label="Operating result"
-            value={formatPaise(summary.operatingResultPaise)}
-          />
+          <Metric label="Purchased stock" value={purchase.toString()} />
+          <Metric label="Dispatched" value={dispatch.toString()} />
+          <Metric label="Stock dispatch" value={stockDispatch.toString()} />
+          <Metric label="Returns" value={returns.toString()} />
+          <Metric label="Gross sales" value={formatPaise(grossSales)} />
+          <Metric label="Payments received" value={formatPaise(received)} />
+          <Metric label="Outgoing" value={formatPaise(outgoing)} tone="orange" />
+          <Metric label="Expenses" value={formatPaise(expenses)} tone="orange" />
+          <Metric label="Net cash" value={formatPaise(received - outgoing - expenses)} />
+          <Metric label="All-time closing stock" value={workspace.summary.stock.closing} />
+        </div>
+      </WorkspaceCard>
+      <WorkspaceCard title="Party-wise activity">
+        <div className="space-y-2">
+          {workspace.parties.filter((party) => partyFilter === "ALL" || party.partyType === partyFilter).map((party) => {
+            const partySales = [...visibleSales, ...visibleDraftSales].filter((sale) => sale.partyId === party.id);
+            const partyPayments = visiblePayments.filter((payment) => payment.partyId === party.id);
+            return <div key={party.id} className="rounded-xl border border-emerald-100 p-3 text-[10px]"><p className="font-black text-slate-900">{party.name} · {party.partyType.toLowerCase()}</p><p className="mt-1 text-slate-500">Dispatch {sum(partySales.map((sale) => sale.dispatchQuantity)).toString()} · sales {formatPaise(sum(partySales.map((sale) => sale.grossSalesPaise)))} · payments {formatPaise(sum(partyPayments.map((payment) => payment.totalAmountPaise)))}</p></div>;
+          })}
         </div>
       </WorkspaceCard>
       <WorkspaceCard title="Before you publish the model">
@@ -595,6 +655,7 @@ function SetupPanel({
   onCreateOrganization,
   onCreateParty,
   onUpdatePartyProfile,
+  onUpdateUserLedgerStorage,
   onCreateFinancialYearPeriod,
   workingAction,
 }: Readonly<{
@@ -603,6 +664,9 @@ function SetupPanel({
   onCreateOrganization: (name: string) => Promise<boolean>;
   onCreateParty: (payload: Record<string, unknown>) => Promise<boolean>;
   onUpdatePartyProfile: (payload: Record<string, unknown>) => Promise<boolean>;
+  onUpdateUserLedgerStorage: (
+    storage: "CLOUD" | "DEVICE",
+  ) => Promise<boolean>;
   onCreateFinancialYearPeriod: (
     payload: Record<string, unknown>,
   ) => Promise<boolean>;
@@ -640,12 +704,6 @@ function SetupPanel({
       return;
     }
     const ticketRatePaise = rupeesToPaise(ticketRate);
-    if (partyType === "SELLER" && (!ticketRatePaise || ticketRatePaise === "0")) {
-      setLocalError(
-        "Seller needs a fixed ticket rate.",
-      );
-      return;
-    }
     setLocalError(null);
     if (
       await onCreateParty({
@@ -653,9 +711,7 @@ function SetupPanel({
         name: partyName.trim(),
         partyType,
         phone: phone.trim() || undefined,
-        ...(partyType === "SELLER"
-          ? { ticketRatePaise }
-          : {}),
+        ...(ticketRatePaise ? { ticketRatePaise } : {}),
       })
     ) {
       setPartyName("");
@@ -682,9 +738,9 @@ function SetupPanel({
   ) => {
     event.preventDefault();
     const ticketRatePaise = rupeesToPaise(ticketRate);
-    if (!profilePartyId || !ticketRatePaise || ticketRatePaise === "0") {
+    if (!profilePartyId || !ticketRatePaise) {
       setLocalError(
-        "Select a seller and enter its fixed rate.",
+        "Select a party and enter its rate.",
       );
       return;
     }
@@ -694,6 +750,17 @@ function SetupPanel({
       partyId: profilePartyId,
       ticketRatePaise,
     });
+  };
+
+  const selectPhoneContact = async () => {
+    try {
+      const contact = await pickMobileContact();
+      if (!contact) return;
+      if (contact.name) setPartyName(contact.name);
+      if (contact.phone) setPhone(contact.phone);
+    } catch {
+      setLocalError("Phone contact could not be read. You can enter it manually.");
+    }
   };
 
   return (
@@ -767,31 +834,38 @@ function SetupPanel({
                 </div>
                 <div>
                   <Label htmlFor="lottery-party-phone">Phone (optional)</Label>
+                  <div className="flex gap-2">
+                    <input
+                      id="lottery-party-phone"
+                      inputMode="tel"
+                      value={phone}
+                      onChange={(event) => setPhone(event.target.value)}
+                      className={CONTROL_CLASS}
+                    />
+                    {supportsMobileContactPicker() && (
+                      <button
+                        type="button"
+                        onClick={() => void selectPhoneContact()}
+                        className="rounded-xl border border-emerald-100 px-3 text-[10px] font-bold text-emerald-700"
+                      >
+                        Contact
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="lottery-party-ticket-rate">
+                    Fixed rate (₹, optional)
+                  </Label>
                   <input
-                    id="lottery-party-phone"
-                    inputMode="tel"
-                    value={phone}
-                    onChange={(event) => setPhone(event.target.value)}
+                    id="lottery-party-ticket-rate"
+                    inputMode="decimal"
+                    value={ticketRate}
+                    onChange={(event) => setTicketRate(event.target.value)}
+                    placeholder="10.00"
                     className={CONTROL_CLASS}
                   />
                 </div>
-                {partyType === "SELLER" && (
-                  <>
-                    <div>
-                      <Label htmlFor="lottery-party-ticket-rate">
-                        Fixed ticket rate (₹)
-                      </Label>
-                      <input
-                        id="lottery-party-ticket-rate"
-                        inputMode="decimal"
-                        value={ticketRate}
-                        onChange={(event) => setTicketRate(event.target.value)}
-                        placeholder="10.00"
-                        className={CONTROL_CLASS}
-                      />
-                    </div>
-                  </>
-                )}
               </div>
               <SubmitButton busy={workingAction === "party"}>
                 Save party
@@ -803,13 +877,13 @@ function SetupPanel({
             />
           </WorkspaceCard>
 
-          <WorkspaceCard title="Update a seller fixed rate">
+          <WorkspaceCard title="Update party rate">
             <form
               className="space-y-3"
               onSubmit={(event) => void submitPartyProfile(event)}
             >
               <div>
-                <Label htmlFor="lottery-party-profile">Seller</Label>
+                <Label htmlFor="lottery-party-profile">Party</Label>
                 <select
                   id="lottery-party-profile"
                   value={profilePartyId}
@@ -824,10 +898,8 @@ function SetupPanel({
                   }}
                   className={CONTROL_CLASS}
                 >
-                  <option value="">Select seller</option>
-                  {workspace.parties
-                    .filter((party) => party.partyType === "SELLER")
-                    .map((party) => (
+                  <option value="">Select party</option>
+                  {workspace.parties.map((party) => (
                       <option key={party.id} value={party.id}>
                         {party.name}
                       </option>
@@ -847,13 +919,34 @@ function SetupPanel({
                 </div>
               </div>
               <p className="text-[9px] leading-relaxed text-slate-500">
-                Commission is entered on each sale. TDS is controlled once from
-                the Daily sellers screen for every seller in this workspace.
+                Commission is entered on a sale or stock receipt. Global TDS is
+                controlled once for every party in this workspace.
               </p>
               <SubmitButton busy={workingAction === "party-profile"}>
-                Save fixed rate
+                Save party rate
               </SubmitButton>
             </form>
+          </WorkspaceCard>
+
+          <WorkspaceCard title="Future user ledger storage">
+            <p className="text-[10px] leading-relaxed text-slate-500">
+              Admin accounting stays in the private database. This policy only
+              decides the default for a future user app; party name, phone and
+              unique code always remain in the private directory.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {(["CLOUD", "DEVICE"] as const).map((storage) => (
+                <button
+                  key={storage}
+                  type="button"
+                  disabled={workingAction === "user-ledger-storage"}
+                  onClick={() => void onUpdateUserLedgerStorage(storage)}
+                  className={`rounded-xl border p-3 text-left text-[10px] font-bold ${workspace.organization.userLedgerStorage === storage ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-emerald-100 bg-white text-slate-600"}`}
+                >
+                  {storage === "CLOUD" ? "Database" : "Phone storage"}
+                </button>
+              ))}
+            </div>
           </WorkspaceCard>
 
           <WorkspaceCard title="Financial year periods">
@@ -958,6 +1051,7 @@ function EntryPanel({
       {entryKind === "stock" && (
         <StockForm
           organizationId={organizationId}
+          workspace={workspace}
           busy={workingAction === "stock"}
           onSubmit={onStock}
         />
@@ -984,15 +1078,19 @@ function EntryPanel({
 
 function StockForm({
   organizationId,
+  workspace,
   busy,
   onSubmit,
 }: Readonly<{
   organizationId: string;
+  workspace: LotteryWorkspace;
   busy: boolean;
   onSubmit: (payload: Record<string, unknown>) => Promise<boolean>;
 }>) {
   const [type, setType] = useState("RECEIPT");
   const [quantity, setQuantity] = useState("");
+  const [partyId, setPartyId] = useState("");
+  const [commission, setCommission] = useState("");
   const [occurredAt, setOccurredAt] = useState(todayInputValue());
   const [error, setError] = useState<string | null>(null);
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1008,9 +1106,12 @@ function StockForm({
         type,
         quantity,
         occurredAt,
+        ...(partyId ? { partyId } : {}),
+        ...(commission.trim() ? { commissionPaise: rupeesToPaise(commission) } : {}),
       })
     ) {
       setQuantity("");
+      setCommission("");
     }
   };
   return (
@@ -1051,10 +1152,25 @@ function StockForm({
             className={CONTROL_CLASS}
           />
         </div>
+        {type === "RECEIPT" && (
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label htmlFor="lottery-stock-party">Stockist (optional)</Label>
+              <select id="lottery-stock-party" value={partyId} onChange={(event) => setPartyId(event.target.value)} className={CONTROL_CLASS}>
+                <option value="">No linked stockist</option>
+                {workspace.parties.filter((party) => party.partyType === "STOCKIST" || party.partyType === "SERVICE_STOCKIST").map((party) => <option key={party.id} value={party.id}>{party.name} · {formatPaise(party.ticketRatePaise)}</option>)}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="lottery-stock-commission">Commission (₹)</Label>
+              <input id="lottery-stock-commission" inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} placeholder="0.00" className={CONTROL_CLASS} />
+            </div>
+          </div>
+        )}
         <p className="text-[9px] leading-relaxed text-slate-500">
-          The server creates the stock bill reference automatically. Posted
-          stock is immutable. Use a new <strong>ADJUSTMENT</strong> entry with
-          its own reference to correct stock; never overwrite history.
+          The server creates the stock bill reference automatically. For a
+          stockist receipt it uses that party's fixed rate, the receipt
+          commission and the common TDS rate automatically.
         </p>
         <InlineError message={error} />
         <SubmitButton busy={busy}>Post stock movement</SubmitButton>

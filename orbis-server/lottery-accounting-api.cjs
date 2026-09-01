@@ -17,8 +17,10 @@ const CLIENT_ERROR_CODES = new Set([
   "INVALID_SALE_PARTY",
   "INVALID_SALE_QUANTITY",
   "INVALID_SETTLEMENT",
+  "INVALID_STOCK_PARTY",
   "INVALID_STOCK_QUANTITY",
   "INVALID_STOCK_TYPE",
+  "INVALID_USER_LEDGER_STORAGE",
   "NEGATIVE_STOCK",
   "NEGATIVE_VALUE",
   "ORGANIZATION_NOT_FOUND",
@@ -136,6 +138,18 @@ function createLotteryAccountingRouter({
   router.patch("/settings/tds-rate", async (req, res) => {
     try {
       const organization = await service.updateOrganizationTdsRate(
+        req.body,
+        req.adminUser?.id,
+      );
+      return res.json({ organization });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.patch("/settings/user-ledger-storage", async (req, res) => {
+    try {
+      const organization = await service.updateUserLedgerStorage(
         req.body,
         req.adminUser?.id,
       );

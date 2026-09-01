@@ -5,8 +5,6 @@ import {
   FilePenLine,
   Grid2X2,
   List,
-  Send,
-  Trash2,
 } from "lucide-react";
 import {
   formatPaise,
@@ -80,12 +78,22 @@ function rowFromSale(sale: SaleLike): DailySellerRow {
 function blankRow(partyId: string): DailySellerRow {
   return {
     partyId,
-    dispatchQuantity: "",
+    dispatchQuantity: "0",
     morningReturnQuantity: "0",
     dayReturnQuantity: "0",
     eveningReturnQuantity: "0",
     commissionRupees: "0",
   };
+}
+
+function rowIsZero(row: DailySellerRow) {
+  return [
+    row.dispatchQuantity,
+    row.morningReturnQuantity,
+    row.dayReturnQuantity,
+    row.eveningReturnQuantity,
+    row.commissionRupees,
+  ].every((value) => !value.trim() || /^0+(?:\.0+)?$/.test(value.trim()));
 }
 
 function paiseToRupeesInput(value: string) {
@@ -159,7 +167,7 @@ function buildRows({
   selectedDate,
 }: {
   parties: LotteryParty[];
-  sales: LotterySale[];
+  sales: Array<LotterySale | LotteryDraftSale>;
   drafts: LotteryDraftSale[];
   selectedDate: string;
 }) {
@@ -222,7 +230,7 @@ function DailyTotals({
   payments,
 }: Readonly<{
   title: string;
-  sales: LotterySale[];
+  sales: Array<LotterySale | LotteryDraftSale>;
   payments: LotteryWorkspace["payments"];
 }>) {
   const totals = useMemo(() => {
@@ -367,6 +375,15 @@ export function DailySellerEntry({
       ),
     [selectedDate, workspace.sales],
   );
+  const savedSales = useMemo(
+    () => [
+      ...postedSales,
+      ...workspace.draftSales.filter((sale) =>
+        isSameEntryDate(sale.occurredAt, selectedDate),
+      ),
+    ],
+    [postedSales, selectedDate, workspace.draftSales],
+  );
   const dailyPayments = useMemo(
     () =>
       workspace.payments.filter((payment) =>
@@ -452,6 +469,31 @@ export function DailySellerEntry({
       );
     }
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      for (const party of sellers) {
+        const row = rows[party.id];
+        if (!row) continue;
+        if (rowIsZero(row)) {
+          if (row.saleId && row.status === "DRAFT") void onDeleteDraft(row.saleId);
+          continue;
+        }
+        try {
+          const payload = entryPayload(party, row);
+          if (row.saleId && row.status === "DRAFT") {
+            void onUpdateDraft(row.saleId, payload);
+          } else if (!row.saleId) {
+            void onSaveDraft(payload);
+          }
+        } catch {
+          // Validation remains visible on the manual save path; incomplete rows
+          // are intentionally not persisted by autosave.
+        }
+      }
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [onDeleteDraft, onSaveDraft, onUpdateDraft, rows, sellers]);
 
   const runRowAction = async (action: () => Promise<boolean>) => {
     setLocalError(null);
@@ -606,8 +648,8 @@ export function DailySellerEntry({
       )}
 
       <DailyTotals
-        title={`Daily posted total · ${dateCaption(selectedDate)}`}
-        sales={postedSales}
+        title={`Daily saved total · ${dateCaption(selectedDate)}`}
+        sales={savedSales}
         payments={dailyPayments}
       />
     </section>
@@ -632,7 +674,7 @@ interface SellerRowsProps {
 
 type SellerActionProps = Pick<
   SellerRowsProps,
-  "busy" | "onSave" | "onPost" | "onDelete" | "onCorrect"
+  "busy" | "onSave"
 > & {
   party: LotteryParty;
   row: DailySellerRow;
@@ -657,9 +699,6 @@ function SellerActionCell({
   row,
   busy,
   onSave,
-  onPost,
-  onDelete,
-  onCorrect,
 }: Readonly<SellerActionProps>) {
   if (row.status === "POSTED" && row.saleId) {
     return (
@@ -667,13 +706,6 @@ function SellerActionCell({
         <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-[8px] font-bold text-emerald-800">
           <CheckCircle2 className="h-3 w-3" /> Posted
         </span>
-        <ActionButton
-          disabled={busy}
-          onClick={() => void onCorrect(row.saleId!)}
-          tone="danger"
-        >
-          Correct
-        </ActionButton>
       </div>
     );
   }
@@ -687,24 +719,6 @@ function SellerActionCell({
         <FilePenLine className="h-3 w-3" />{" "}
         {row.saleId ? "Save edit" : "Save draft"}
       </ActionButton>
-      {row.saleId && (
-        <>
-          <ActionButton
-            disabled={busy}
-            onClick={() => void onPost(row.saleId!)}
-            tone="plain"
-          >
-            <Send className="h-3 w-3" /> Post
-          </ActionButton>
-          <ActionButton
-            disabled={busy}
-            onClick={() => void onDelete(row.saleId!)}
-            tone="danger"
-          >
-            <Trash2 className="h-3 w-3" /> Delete
-          </ActionButton>
-        </>
-      )}
     </div>
   );
 }
@@ -716,9 +730,6 @@ function DailySellerTable({
   tdsRateBps,
   onChange,
   onSave,
-  onPost,
-  onDelete,
-  onCorrect,
 }: Readonly<SellerRowsProps>) {
   const rowCalculations = sellers.map((party) => ({
     party,
@@ -765,11 +776,6 @@ function DailySellerTable({
         ({ party, row }) => calculateRow(row, party, tdsRateBps).commission,
       ),
     ),
-    tds: sumValues(
-      rowCalculations.map(({ party, row }) =>
-        calculateRow(row, party, tdsRateBps).tds,
-      ),
-    ),
     partyPayable: sumValues(
       rowCalculations.map(
         ({ party, row }) => calculateRow(row, party, tdsRateBps).partyPayable,
@@ -780,9 +786,7 @@ function DailySellerTable({
     <section className="rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <h5 className="text-xs font-black text-slate-900">Seller table</h5>
-        <span className="inline-flex items-center gap-1 text-[9px] text-slate-500">
-          Scroll sideways <ChevronDown className="h-3 w-3 rotate-[-90deg]" />
-        </span>
+        <div className="flex items-center gap-2"><span className="inline-flex items-center gap-1 text-[9px] text-slate-500">Scroll sideways <ChevronDown className="h-3 w-3 rotate-[-90deg]" /></span><ActionButton disabled={busy} onClick={() => void Promise.all(sellers.map((party) => onSave(party)))} tone="save"><FilePenLine className="h-3 w-3" /> Save table</ActionButton></div>
       </div>
       <div className="mt-3 overflow-x-auto rounded-xl border border-emerald-100">
         <table className="min-w-[1370px] border-collapse text-left text-[10px]">
@@ -798,9 +802,8 @@ function DailySellerTable({
                 "Net sale",
                 "Net amount",
                 "Commission",
-                "TDS on commission",
                 "Party payable",
-                "Bill / actions",
+                "Bill status",
               ].map((label) => (
                 <th
                   key={label}
@@ -866,21 +869,12 @@ function DailySellerTable({
                     onChange={onChange}
                     invalid={calculation.hasInvalidCommission}
                   />
-                  <AmountCell value={formatPaise(calculation.tds)} />
                   <AmountCell value={formatPaise(calculation.partyPayable)} />
-                  <td className="min-w-[180px] px-2 py-2">
+                  <td className="min-w-[130px] px-2 py-2">
                     <p className="mb-1 text-[8px] font-bold text-slate-500">
-                      {row.reference || "Auto bill on draft save"}
+                      {row.reference || "Auto bill on save"}
                     </p>
-                    <SellerActionCell
-                      party={party}
-                      row={row}
-                      busy={busy}
-                      onSave={onSave}
-                      onPost={onPost}
-                      onDelete={onDelete}
-                      onCorrect={onCorrect}
-                    />
+                    <p className="text-[8px] font-bold text-emerald-800">{row.status || "Draft"}</p>
                   </td>
                 </tr>
               );
@@ -897,7 +891,6 @@ function DailySellerTable({
               <td className="px-2 py-2">{totals.netSale.toString()}</td>
               <td className="px-2 py-2">{formatPaise(totals.grossAmount)}</td>
               <td className="px-2 py-2">{formatPaise(totals.commission)}</td>
-              <td className="px-2 py-2">{formatPaise(totals.tds)}</td>
               <td className="px-2 py-2">{formatPaise(totals.partyPayable)}</td>
               <td className="px-2 py-2">Draft values</td>
             </tr>
@@ -992,9 +985,6 @@ function DailySellerGrid({
   tdsRateBps,
   onChange,
   onSave,
-  onPost,
-  onDelete,
-  onCorrect,
 }: Readonly<SellerRowsProps>) {
   return (
     <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -1087,11 +1077,8 @@ function DailySellerGrid({
               <SellerActionCell
                 party={party}
                 row={row}
-                busy={busy}
-                onSave={onSave}
-                onPost={onPost}
-                onDelete={onDelete}
-                onCorrect={onCorrect}
+                  busy={busy}
+                  onSave={onSave}
               />
             </div>
           </article>

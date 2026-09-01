@@ -7,6 +7,7 @@ const {
   summarizeLotteryAccounting,
   validatePayment,
 } = require("./lottery-accounting-core.cjs");
+const { randomUUID } = require("node:crypto");
 
 const DEFAULT_TDS_RATE_BPS = 200;
 
@@ -59,12 +60,18 @@ function requiredPositiveMoney(value, field) {
   return parsed;
 }
 
+function optionalMoney(value, field) {
+  if (value === undefined || value === null || value === "") return 0n;
+  return nonNegativeInteger(value, field);
+}
+
+function roundedPercentage(amount, rateBps) {
+  return (amount * BigInt(rateBps) + 5_000n) / 10_000n;
+}
+
 function partyProfileFromInput(input) {
   return {
-    ticketRatePaise: requiredPositiveMoney(
-      input?.ticketRatePaise,
-      "ticketRatePaise",
-    ),
+    ticketRatePaise: optionalMoney(input?.ticketRatePaise, "ticketRatePaise"),
   };
 }
 
@@ -107,6 +114,15 @@ function financialYearRange(startYear) {
 function optionalReference(value) {
   if (value === undefined || value === null || value === "") return null;
   return requiredText(value, "reference");
+}
+
+function utcDayRange(date) {
+  const startsAt = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+  const endsAt = new Date(startsAt);
+  endsAt.setUTCDate(endsAt.getUTCDate() + 1);
+  return { startsAt, endsAt };
 }
 
 function serialize(value) {
@@ -253,10 +269,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     ) {
       throw accountingError("INVALID_PARTY_TYPE", "partyType");
     }
-    const profile =
-      partyType === "SELLER"
-        ? partyProfileFromInput(input)
-        : { ticketRatePaise: 0n };
+    const profile = partyProfileFromInput(input);
     return prisma.$transaction(async (client) => {
       const party = await client.foundationAccountingParty.create({
         data: {
@@ -264,6 +277,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           name,
           partyType,
           phone: input.phone?.trim() || null,
+          uniqueCode: randomUUID(),
           ticketRatePaise: profile.ticketRatePaise,
           commissionRateBps: 0,
           tdsRateBps: 0,
@@ -279,11 +293,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           actorAdminId,
           metadata: {
             partyType,
-            ...(partyType === "SELLER"
-              ? {
-                  ticketRatePaise: profile.ticketRatePaise.toString(),
-                }
-              : {}),
+            ticketRatePaise: profile.ticketRatePaise.toString(),
           },
         },
       });
@@ -300,23 +310,25 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     const profile = partyProfileFromInput(input);
     return prisma.$transaction(async (client) => {
       const party = await ensureParty(client, organizationId, partyId);
-      if (party.partyType !== "SELLER") {
-        throw accountingError("INVALID_SALE_PARTY", "partyId");
-      }
+      const name = input?.name === undefined ? party.name : requiredText(input.name, "name");
       const updated = await client.foundationAccountingParty.update({
         where: { id: party.id },
         data: {
+          name,
+          phone: input.phone?.trim() || null,
           ticketRatePaise: profile.ticketRatePaise,
         },
       });
       await client.foundationLotteryAuditEvent.create({
         data: {
           organizationId,
-          eventType: "PARTY_PRICING_PROFILE_UPDATED",
+          eventType: "PARTY_PROFILE_UPDATED",
           entityType: "PARTY",
           entityId: party.id,
           actorAdminId,
           metadata: {
+            name,
+            phone: input.phone?.trim() || null,
             ticketRatePaise: profile.ticketRatePaise.toString(),
           },
         },
@@ -345,6 +357,38 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           entityId: organization.id,
           actorAdminId,
           metadata: { tdsRateBps },
+        },
+      });
+      return serialize(updated);
+    });
+  }
+
+  async function updateUserLedgerStorage(input, actorAdminId) {
+    const organizationId = requiredText(
+      input?.organizationId,
+      "organizationId",
+    );
+    const userLedgerStorage = requiredText(
+      input?.userLedgerStorage,
+      "userLedgerStorage",
+    ).toUpperCase();
+    if (!new Set(["CLOUD", "DEVICE"]).has(userLedgerStorage)) {
+      throw accountingError("INVALID_USER_LEDGER_STORAGE", "userLedgerStorage");
+    }
+    return prisma.$transaction(async (client) => {
+      const organization = await ensureOrganization(client, organizationId);
+      const updated = await client.foundationAccountingOrganization.update({
+        where: { id: organization.id },
+        data: { userLedgerStorage },
+      });
+      await client.foundationLotteryAuditEvent.create({
+        data: {
+          organizationId,
+          eventType: "USER_LEDGER_STORAGE_UPDATED",
+          entityType: "ORGANIZATION",
+          entityId: organization.id,
+          actorAdminId,
+          metadata: { userLedgerStorage },
         },
       });
       return serialize(updated);
@@ -439,6 +483,48 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     }
 
     return prisma.$transaction(async (client) => {
+      let purchase = {
+        partyId: null,
+        unitRatePaise: 0n,
+        grossPurchasePaise: 0n,
+        commissionPaise: 0n,
+        tdsRateBps: 0,
+        tdsPaise: 0n,
+        netPayablePaise: 0n,
+      };
+      if (input?.partyId) {
+        if (movementType !== "RECEIPT") {
+          throw accountingError("INVALID_STOCK_PARTY", "partyId");
+        }
+        const party = await ensureParty(client, organizationId, input.partyId);
+        if (!new Set(["STOCKIST", "SERVICE_STOCKIST"]).has(party.partyType)) {
+          throw accountingError("INVALID_STOCK_PARTY", "partyId");
+        }
+        const organization = await ensureOrganization(client, organizationId);
+        const unitRatePaise = partyProfileFromRow(party).ticketRatePaise;
+        const grossPurchasePaise = quantity * unitRatePaise;
+        const commissionPaise = optionalMoney(
+          input?.commissionPaise,
+          "commissionPaise",
+        );
+        if (commissionPaise > grossPurchasePaise) {
+          throw accountingError("RATE_OUT_OF_RANGE", "commissionPaise");
+        }
+        const tdsRateBps = percentageRate(
+          organization.tdsRateBps ?? DEFAULT_TDS_RATE_BPS,
+          "tdsRateBps",
+        );
+        const tdsPaise = roundedPercentage(grossPurchasePaise, tdsRateBps);
+        purchase = {
+          partyId: party.id,
+          unitRatePaise,
+          grossPurchasePaise,
+          commissionPaise,
+          tdsRateBps,
+          tdsPaise,
+          netPayablePaise: grossPurchasePaise - commissionPaise - tdsPaise,
+        };
+      }
       const reference = await nextReference(client, {
         organizationId,
         occurredAt,
@@ -448,6 +534,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       const movement = await client.foundationLotteryStockMovement.create({
         data: {
           organizationId,
+          ...purchase,
           movementType,
           quantity,
           reference,
@@ -462,7 +549,18 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           entityType: "STOCK_MOVEMENT",
           entityId: movement.id,
           actorAdminId,
-          metadata: { movementType, quantity: quantity.toString(), reference },
+          metadata: {
+            movementType,
+            quantity: quantity.toString(),
+            reference,
+            ...(purchase.partyId
+              ? {
+                  partyId: purchase.partyId,
+                  grossPurchasePaise: purchase.grossPurchasePaise.toString(),
+                  netPayablePaise: purchase.netPayablePaise.toString(),
+                }
+              : {}),
+          },
         },
       });
       return serialize(movement);
@@ -603,15 +701,62 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     };
   }
 
+  async function saveExistingDailySellerDraft(
+    client,
+    { existing, context, input, actorAdminId, eventType },
+  ) {
+    const calculated = await calculateSellerEntry(client, context, input);
+    const sale = await client.foundationLotterySale.update({
+      where: { id: existing.id },
+      data: saleData({
+        context,
+        calculated,
+        reference: existing.reference,
+        status: "DRAFT",
+        actorAdminId: existing.createdByAdminId,
+      }),
+    });
+    await client.foundationLotteryAuditEvent.create({
+      data: {
+        organizationId: context.organizationId,
+        eventType,
+        entityType: "SALE",
+        entityId: sale.id,
+        actorAdminId,
+        metadata: { reference: sale.reference, calculation: calculated },
+      },
+    });
+    return { sale: serialize(sale), calculated };
+  }
+
   async function createDailySellerDraft(input, actorAdminId) {
     return prisma.$transaction(async (client) => {
-      const { context, calculated, reference, sale } = await createSellerSale(
+      const context = postingContext(input);
+      const range = utcDayRange(context.occurredAt);
+      const existing = await client.foundationLotterySale.findFirst({
+        where: {
+          organizationId: context.organizationId,
+          partyId: context.partyId,
+          status: "DRAFT",
+          occurredAt: { gte: range.startsAt, lt: range.endsAt },
+        },
+      });
+      if (existing) {
+        return saveExistingDailySellerDraft(client, {
+          existing,
+          context,
+          input,
+          actorAdminId,
+          eventType: "DAILY_SELLER_DRAFT_AUTOSAVED",
+        });
+      }
+      const { context: createdContext, calculated, reference, sale } = await createSellerSale(
         client,
         { input, actorAdminId, status: "DRAFT" },
       );
       await client.foundationLotteryAuditEvent.create({
         data: {
-          organizationId: context.organizationId,
+          organizationId: createdContext.organizationId,
           eventType: "DAILY_SELLER_DRAFT_SAVED",
           entityType: "SALE",
           entityId: sale.id,
@@ -635,28 +780,13 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         },
       });
       if (!existing) throw accountingError("DRAFT_SALE_NOT_FOUND", "saleId");
-      const calculated = await calculateSellerEntry(client, context, input);
-      const sale = await client.foundationLotterySale.update({
-        where: { id: existing.id },
-        data: saleData({
-          context,
-          calculated,
-          reference: existing.reference,
-          status: "DRAFT",
-          actorAdminId: existing.createdByAdminId,
-        }),
+      return saveExistingDailySellerDraft(client, {
+        existing,
+        context,
+        input,
+        actorAdminId,
+        eventType: "DAILY_SELLER_DRAFT_UPDATED",
       });
-      await client.foundationLotteryAuditEvent.create({
-        data: {
-          organizationId: context.organizationId,
-          eventType: "DAILY_SELLER_DRAFT_UPDATED",
-          entityType: "SALE",
-          entityId: sale.id,
-          actorAdminId,
-          metadata: { reference: sale.reference, calculation: calculated },
-        },
-      });
-      return { sale: serialize(sale), calculated };
     });
   }
 
@@ -1111,7 +1241,12 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       organization,
       parties,
       periods,
-      stockMovements,
+      stockMovements: stockMovements.map((movement) => ({
+        ...movement,
+        partyName: movement.partyId
+          ? partyNames.get(movement.partyId) || "Unknown party"
+          : null,
+      })),
       sales: sales.map((sale) => {
         const settledPaise = saleSettled.get(sale.id) || 0n;
         return {
@@ -1250,6 +1385,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     recordStockMovement,
     postDailySellerDraft,
     updateOrganizationTdsRate,
+    updateUserLedgerStorage,
     updateDailySellerDraft,
     updatePartyProfile,
   };

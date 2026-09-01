@@ -73,6 +73,10 @@ export interface LotteryAccountingClient {
     organizationId: string;
     tdsRateBps: number;
   }) => Promise<void>;
+  updateUserLedgerStorage: (payload: {
+    organizationId: string;
+    userLedgerStorage: "CLOUD" | "DEVICE";
+  }) => Promise<void>;
   createPeriod: (payload: Record<string, unknown>) => Promise<void>;
   createFinancialYearPeriod: (
     payload: Record<string, unknown>,
@@ -135,6 +139,9 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
   },
   async updateOrganizationTdsRate(payload) {
     await patchLottery("/settings/tds-rate", payload);
+  },
+  async updateUserLedgerStorage(payload) {
+    await patchLottery("/settings/user-ledger-storage", payload);
   },
   async createPeriod(payload) {
     await postLottery("/periods", payload);

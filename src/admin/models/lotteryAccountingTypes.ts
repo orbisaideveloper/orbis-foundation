@@ -10,6 +10,7 @@ export interface LotteryOrganization {
   id: string;
   name: string;
   tdsRateBps: number;
+  userLedgerStorage: "CLOUD" | "DEVICE";
   status: string;
   createdAt: string;
 }
@@ -20,6 +21,7 @@ export interface LotteryParty {
   partyType: LotteryPartyType;
   name: string;
   phone: string | null;
+  uniqueCode: string;
   ticketRatePaise: string;
   status: string;
 }
@@ -35,8 +37,16 @@ export interface LotteryPeriod {
 
 export interface LotteryStockMovement {
   id: string;
+  partyId: string | null;
+  partyName: string | null;
   movementType: LotteryStockMovementType;
   quantity: string;
+  unitRatePaise: string;
+  grossPurchasePaise: string;
+  commissionPaise: string;
+  tdsRateBps: number;
+  tdsPaise: string;
+  netPayablePaise: string;
   reference: string;
   occurredAt: string;
 }

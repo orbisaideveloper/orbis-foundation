@@ -6,7 +6,7 @@ import type { LotteryAccountingClient } from "../../../models/lotteryAccountingC
 import type { LotteryWorkspace } from "../../../models/lotteryAccountingTypes";
 
 const ORGANIZATION_NAME = "Demo Lottery";
-const ORGANIZATION_OVERVIEW = `${ORGANIZATION_NAME} overview`;
+const ORGANIZATION_OVERVIEW = `${ORGANIZATION_NAME} dashboard`;
 const SELLER_DISPATCH_LABEL = "Seller A dispatch";
 const AUGUST_2026 = "August 2026";
 const RECORDED_AT = "2026-08-30T00:00:00.000Z";
@@ -15,6 +15,7 @@ const organization = {
   id: "org-1",
   name: ORGANIZATION_NAME,
   tdsRateBps: 200,
+  userLedgerStorage: "CLOUD" as const,
   status: "ACTIVE",
   createdAt: "2026-08-31T00:00:00.000Z",
 };
@@ -28,6 +29,7 @@ const workspace: LotteryWorkspace = {
       partyType: "SELLER",
       name: "Seller A",
       phone: null,
+      uniqueCode: "party-code-1",
       ticketRatePaise: "1000",
       commissionRateBps: 500,
       tdsRateBps: 1000,
@@ -47,8 +49,16 @@ const workspace: LotteryWorkspace = {
   stockMovements: [
     {
       id: "stock-1",
+      partyId: null,
+      partyName: null,
       movementType: "RECEIPT",
       quantity: "120",
+      unitRatePaise: "0",
+      grossPurchasePaise: "0",
+      commissionPaise: "0",
+      tdsRateBps: 0,
+      tdsPaise: "0",
+      netPayablePaise: "0",
       reference: "STK-1",
       occurredAt: RECORDED_AT,
     },
@@ -161,6 +171,7 @@ function createApi(): LotteryAccountingClient {
     createParty: vi.fn().mockResolvedValue(undefined),
     updatePartyProfile: vi.fn().mockResolvedValue(undefined),
     updateOrganizationTdsRate: vi.fn().mockResolvedValue(undefined),
+    updateUserLedgerStorage: vi.fn().mockResolvedValue(undefined),
     createPeriod: vi.fn().mockResolvedValue(undefined),
     createFinancialYearPeriod: vi.fn().mockResolvedValue(undefined),
     recordStockMovement: vi.fn().mockResolvedValue(undefined),
@@ -196,7 +207,7 @@ describe("LotteryAccountingWorkspace", () => {
   it("shows real private dashboard, records and read-only AI insights", async () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
     expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
-    expect(screen.getByText("₹800.00")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Today" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Records" }));
     expect(
@@ -223,7 +234,7 @@ describe("LotteryAccountingWorkspace", () => {
     expect(
       screen.getByRole("button", { name: "Table view" }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Daily posted total/)).toBeInTheDocument();
+    expect(screen.getByText(/Daily saved total/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(SELLER_DISPATCH_LABEL), {
       target: { value: "100" },
     });
@@ -239,7 +250,7 @@ describe("LotteryAccountingWorkspace", () => {
     fireEvent.change(screen.getByLabelText("Seller A commission amount"), {
       target: { value: "100" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save table" }));
 
     await waitFor(() => expect(api.saveDailySellerDraft).toHaveBeenCalled());
     expect(api.saveDailySellerDraft).toHaveBeenCalledWith(
@@ -270,7 +281,7 @@ describe("LotteryAccountingWorkspace", () => {
     fireEvent.change(screen.getByLabelText(SELLER_DISPATCH_LABEL), {
       target: { value: "10" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save table" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "PARTY_PROFILE_REQUIRED",

@@ -158,6 +158,7 @@ model FoundationAccountingOrganization {
   id        String   @id @default(uuid())
   name      String
   tdsRateBps Int      @default(200)
+  userLedgerStorage String @default("CLOUD")
   status    String   @default("ACTIVE")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -179,6 +180,7 @@ model FoundationAccountingParty {
   partyType         String
   name              String
   phone             String?
+  uniqueCode        String   @unique
   ticketRatePaise   BigInt   @default(0)
   commissionRateBps Int      @default(0)
   tdsRateBps        Int      @default(0)
@@ -189,6 +191,7 @@ model FoundationAccountingParty {
   organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   sales        FoundationLotterySale[]
   payments     FoundationLotteryPayment[]
+  stockMovements FoundationLotteryStockMovement[]
 
   @@unique([organizationId, name])
   @@index([organizationId, status])
@@ -230,17 +233,26 @@ model FoundationLotteryDocumentSequence {
 model FoundationLotteryStockMovement {
   id               String   @id @default(uuid())
   organizationId   String
+  partyId          String?
   movementType     String
   quantity         BigInt
+  unitRatePaise    BigInt   @default(0)
+  grossPurchasePaise BigInt @default(0)
+  commissionPaise  BigInt   @default(0)
+  tdsRateBps       Int      @default(0)
+  tdsPaise         BigInt   @default(0)
+  netPayablePaise  BigInt   @default(0)
   reference        String
   occurredAt       DateTime
   createdByAdminId String
   createdAt        DateTime @default(now())
 
   organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  party        FoundationAccountingParty? @relation(fields: [partyId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, reference, movementType])
   @@index([organizationId, occurredAt])
+  @@index([partyId, occurredAt])
 }
 
 model FoundationLotterySale {

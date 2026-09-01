@@ -25,6 +25,8 @@ function createPrismaMock() {
         organizationId: "org-1",
         status: "ACTIVE",
         partyType: "SELLER",
+        name: "Seller A",
+        uniqueCode: "party-code-1",
         ticketRatePaise: 1_000n,
         commissionRateBps: 500,
         tdsRateBps: 0,
@@ -49,7 +51,8 @@ function createPrismaMock() {
       if (key === "occurredAt") {
         return (
           (!value.gte || row.occurredAt >= value.gte) &&
-          (!value.lte || row.occurredAt <= value.lte)
+          (!value.lte || row.occurredAt <= value.lte) &&
+          (!value.lt || row.occurredAt < value.lt)
         );
       }
       return row[key] === value;
@@ -622,5 +625,80 @@ describe("Lottery Accounting Service", () => {
     expect(workspace.ledgerEntries).toHaveLength(6);
     expect(workspace.auditEvents).toHaveLength(6);
     expect(workspace.insights).toHaveLength(4);
+  });
+
+  it("keeps party details common, gives each party a unique code and records the future user storage policy", async () => {
+    const prisma = createPrismaMock();
+    const service = createLotteryAccountingService({ prisma });
+    const party = await service.createParty(
+      {
+        organizationId: "org-1",
+        name: "Stockist A",
+        partyType: "STOCKIST",
+        phone: "9999999999",
+        ticketRatePaise: 700,
+      },
+      "admin-1",
+    );
+    expect(party.uniqueCode).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(party.ticketRatePaise).toBe("700");
+    const organization = await service.updateUserLedgerStorage(
+      { organizationId: "org-1", userLedgerStorage: "DEVICE" },
+      "admin-1",
+    );
+    expect(organization.userLedgerStorage).toBe("DEVICE");
+    await expect(
+      service.updateUserLedgerStorage(
+        { organizationId: "org-1", userLedgerStorage: "UNKNOWN" },
+        "admin-1",
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_USER_LEDGER_STORAGE" });
+  });
+
+  it("freezes stockist receipt rate, commission and common TDS on the receipt", async () => {
+    const prisma = createPrismaMock();
+    prisma.state.parties.push({
+      id: "stockist-1",
+      organizationId: "org-1",
+      status: "ACTIVE",
+      partyType: "STOCKIST",
+      name: "Stockist A",
+      uniqueCode: "stockist-code-1",
+      ticketRatePaise: 1_000n,
+    });
+    const service = createLotteryAccountingService({ prisma });
+    const movement = await service.recordStockMovement(
+      {
+        organizationId: "org-1",
+        partyId: "stockist-1",
+        type: "RECEIPT",
+        quantity: 100,
+        commissionPaise: 10_000,
+      },
+      "admin-1",
+    );
+    expect(movement).toMatchObject({
+      partyId: "stockist-1",
+      unitRatePaise: "1000",
+      grossPurchasePaise: "100000",
+      commissionPaise: "10000",
+      tdsRateBps: 200,
+      tdsPaise: "2000",
+      netPayablePaise: "88000",
+    });
+  });
+
+  it("autosave upserts one same-seller daily draft instead of duplicating it", async () => {
+    const prisma = createPrismaMock();
+    const service = createLotteryAccountingService({ prisma });
+    const input = { ...sale, occurredAt: "2026-08-30" };
+    const first = await service.createDailySellerDraft(input, "admin-1");
+    const second = await service.createDailySellerDraft(
+      { ...input, dispatchQuantity: 110 },
+      "admin-1",
+    );
+    expect(first.sale.id).toBe(second.sale.id);
+    expect(prisma.state.sales).toHaveLength(1);
+    expect(second.sale.dispatchQuantity).toBe(110);
   });
 });
