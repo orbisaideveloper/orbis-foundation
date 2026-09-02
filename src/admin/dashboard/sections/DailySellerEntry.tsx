@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   FilePenLine,
+  Grid2X2,
+  List,
 } from "lucide-react";
 import {
   formatPaise,
@@ -16,6 +18,8 @@ import type {
   LotterySale,
   LotteryWorkspace,
 } from "../../models/lotteryAccountingTypes";
+
+type DailyViewMode = "table" | "grid";
 
 type DailySellerRow = {
   saleId?: string;
@@ -401,6 +405,7 @@ export function DailySellerEntry({
   onUpdateTdsRate,
   editRequest,
 }: Readonly<DailySellerEntryProps>) {
+  const [viewMode, setViewMode] = useState<DailyViewMode>("grid");
   const [selectedDate, setSelectedDate] = useState(todayInputValue());
   const [selectedPartyId, setSelectedPartyId] = useState("");
   const globalTdsRateBps = workspace.organization.tdsRateBps ?? 200;
@@ -737,15 +742,24 @@ export function DailySellerEntry({
     setLocalError(null);
     await onUpdateTdsRate(Number(tdsRateBps));
   };
+  const orderedSellers = useMemo(() => {
+    if (!selectedPartyId) return sellers;
+    const selected = sellers.find((party) => party.id === selectedPartyId);
+    if (!selected) return sellers;
+    return [selected, ...sellers.filter((party) => party.id !== selectedPartyId)];
+  }, [selectedPartyId, sellers]);
+
   const sellerViewProps = {
-    sellers: sellers.filter((party) => party.id === selectedPartyId),
+    sellers: orderedSellers,
     rows,
     savingPartyIds,
     onChange: updateRow,
     onSave: saveRow,
     onSaveTable: async () => {
-      const party = sellersRef.current.find((item) => item.id === selectedPartyId);
-      if (party) await saveRow(party);
+      const dirtyPartyIds = [...dirtyPartyIdsRef.current];
+      for (const partyId of dirtyPartyIds) {
+        await persistRowRef.current(partyId, true);
+      }
     },
     tdsRateBps: globalTdsRateBps,
   };
@@ -829,11 +843,32 @@ export function DailySellerEntry({
         </p>
       </header>
 
+      <div
+        className="flex gap-2 overflow-x-auto pb-1"
+        aria-label="Daily entry view"
+      >
+        <ActionButton
+          onClick={() => setViewMode("grid")}
+          tone={viewMode === "grid" ? "save" : "plain"}
+        >
+          <Grid2X2 className="h-3.5 w-3.5" /> Grid view
+        </ActionButton>
+        <ActionButton
+          onClick={() => setViewMode("table")}
+          tone={viewMode === "table" ? "save" : "plain"}
+        >
+          <List className="h-3.5 w-3.5" /> Table view
+        </ActionButton>
+      </div>
+
       <label className="block rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm">
-        <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">Seller</span>
+        <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">Focus seller (optional)</span>
         <select aria-label="Seller" value={selectedPartyId} onChange={(event) => setSelectedPartyId(event.target.value)} className={CONTROL_CLASS}>
           {sellers.map((party) => <option key={party.id} value={party.id}>{party.name}</option>)}
         </select>
+        <span className="mt-1 block text-[8px] text-slate-500">
+          All sellers remain visible. This only moves the selected seller to the first position.
+        </span>
       </label>
 
       {localError && (
@@ -845,7 +880,11 @@ export function DailySellerEntry({
         </p>
       )}
 
-      <DailySellerTable {...sellerViewProps} />
+      {viewMode === "grid" ? (
+        <DailySellerGrid {...sellerViewProps} />
+      ) : (
+        <DailySellerTable {...sellerViewProps} />
+      )}
 
       <DailyTotals
         title={`Daily saved total · ${dateCaption(selectedDate)}`}
@@ -883,6 +922,24 @@ type SellerQuantityProps = {
   label: string;
   onChange: SellerRowsProps["onChange"];
 };
+
+function SaveTableButton({
+  busy,
+  onSaveTable,
+}: Readonly<{
+  busy: boolean;
+  onSaveTable: () => Promise<void>;
+}>) {
+  return (
+    <ActionButton
+      disabled={busy}
+      onClick={() => void onSaveTable()}
+      tone="save"
+    >
+      <FilePenLine className="h-3 w-3" /> Save table
+    </ActionButton>
+  );
+}
 
 function DailySellerTable({
   sellers,
@@ -951,13 +1008,7 @@ function DailySellerTable({
           <span className="inline-flex items-center gap-1 text-[9px] text-slate-500">
             Scroll sideways <ChevronDown className="h-3 w-3 rotate-[-90deg]" />
           </span>
-          <ActionButton
-            disabled={savingPartyIds.size > 0}
-            onClick={() => void onSaveTable()}
-            tone="save"
-          >
-            <FilePenLine className="h-3 w-3" /> Save table
-          </ActionButton>
+<SaveTableButton busy={savingPartyIds.size > 0} onSaveTable={onSaveTable} />
         </div>
       </div>
       <div className="mt-3 overflow-x-auto rounded-xl border border-emerald-100">
@@ -1156,6 +1207,207 @@ function CommissionCell({
         <p className="mt-1 text-[8px] font-bold text-orange-700">Too high</p>
       )}
     </td>
+  );
+}
+
+function DailySellerGrid({
+  sellers,
+  rows,
+  savingPartyIds,
+  tdsRateBps,
+  onChange,
+  onSave,
+  onSaveTable,
+}: Readonly<SellerRowsProps>) {
+  return (
+    <section className="space-y-3" aria-label="Seller grid">
+      <div className="flex items-center justify-between gap-2 px-1">
+        <h5 className="text-xs font-black text-slate-900">Seller grid</h5>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] text-slate-500">
+            {sellers.length} seller{sellers.length === 1 ? "" : "s"}
+          </span>
+<SaveTableButton busy={savingPartyIds.size > 0} onSaveTable={onSaveTable} />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {sellers.map((party) => {
+          const row = rows[party.id] || blankRow(party.id);
+          const calculation = calculateRow(row, party, tdsRateBps);
+          return (
+            <article
+              key={party.id}
+              className="rounded-[22px] border border-emerald-100 bg-white p-4 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h6 className="text-sm font-black text-slate-900">
+                    {party.name}
+                  </h6>
+                  <p className="mt-1 text-[9px] leading-relaxed text-slate-500">
+                    Fixed rate {formatPaise(party.ticketRatePaise)} · Global TDS{" "}
+                    {formatPercentFromBasisPoints(tdsRateBps)} on commission
+                  </p>
+                </div>
+                <span className="rounded-lg bg-emerald-50 px-2 py-1 text-[8px] font-bold text-emerald-800">
+                  {row.reference || "Auto bill"}
+                </span>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <GridQuantity
+                  party={party}
+                  row={row}
+                  field="dispatchQuantity"
+                  label="Dispatch"
+                  onChange={onChange}
+                />
+                <GridCommission
+                  party={party}
+                  row={row}
+                  onChange={onChange}
+                  invalid={calculation.hasInvalidCommission}
+                />
+                <GridQuantity
+                  party={party}
+                  row={row}
+                  field="morningReturnQuantity"
+                  label="Morning return"
+                  onChange={onChange}
+                />
+                <GridQuantity
+                  party={party}
+                  row={row}
+                  field="dayReturnQuantity"
+                  label="Day return"
+                  onChange={onChange}
+                />
+                <GridQuantity
+                  party={party}
+                  row={row}
+                  field="eveningReturnQuantity"
+                  label="Evening return"
+                  onChange={onChange}
+                />
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <GridMetric
+                  label="Total return"
+                  value={calculation.totalReturn.toString()}
+                  invalid={calculation.hasInvalidReturn}
+                />
+                <GridMetric
+                  label="Net sale"
+                  value={calculation.netSale.toString()}
+                />
+                <GridMetric
+                  label="Net amount"
+                  value={formatPaise(calculation.grossAmount)}
+                />
+                <GridMetric
+                  label="Commission"
+                  value={formatPaise(calculation.commission)}
+                />
+                <GridMetric
+                  label="TDS on commission"
+                  value={formatPaise(calculation.tds)}
+                />
+                <GridMetric
+                  label="Party payable"
+                  value={formatPaise(calculation.partyPayable)}
+                />
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="text-[8px] font-bold text-emerald-800">
+                  {savingPartyIds.has(party.id)
+                    ? "Saving"
+                    : row.status || "Draft"}
+                </span>
+                <ActionButton
+                  disabled={savingPartyIds.has(party.id)}
+                  onClick={() => void onSave(party)}
+                  tone="save"
+                >
+                  <FilePenLine className="h-3 w-3" /> Save row
+                </ActionButton>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function GridQuantity({
+  party,
+  row,
+  field,
+  label,
+  onChange,
+}: Readonly<SellerQuantityProps>) {
+  return (
+    <label>
+      <span className="mb-1 block text-[8px] font-bold uppercase tracking-wide text-slate-500">
+        {label}
+      </span>
+      <SellerQuantityInput
+        party={party}
+        row={row}
+        field={field}
+        label={label.toLowerCase()}
+        onChange={onChange}
+      />
+    </label>
+  );
+}
+
+function GridCommission({
+  party,
+  row,
+  onChange,
+  invalid,
+}: Readonly<{
+  party: LotteryParty;
+  row: DailySellerRow;
+  onChange: SellerRowsProps["onChange"];
+  invalid: boolean;
+}>) {
+  return (
+    <label>
+      <span className="mb-1 block text-[8px] font-bold uppercase tracking-wide text-slate-500">
+        Commission (₹)
+      </span>
+      <SellerCommissionInput party={party} row={row} onChange={onChange} />
+      {invalid && (
+        <span className="mt-1 block text-[8px] font-bold text-orange-700">
+          Cannot exceed net amount
+        </span>
+      )}
+    </label>
+  );
+}
+
+function GridMetric({
+  label,
+  value,
+  invalid = false,
+}: Readonly<{ label: string; value: string; invalid?: boolean }>) {
+  return (
+    <div
+      className={`rounded-xl border p-2 ${invalid ? "border-orange-100 bg-orange-50" : "border-emerald-100 bg-emerald-50/45"}`}
+    >
+      <p className="text-[8px] font-bold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p
+        className={`mt-1 text-[11px] font-black ${invalid ? "text-orange-700" : "text-slate-900"}`}
+      >
+        {invalid ? "Check returns" : value}
+      </p>
+    </div>
   );
 }
 

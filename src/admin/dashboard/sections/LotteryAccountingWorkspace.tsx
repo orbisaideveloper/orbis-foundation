@@ -700,6 +700,58 @@ function DashboardPanel({
     for (const value of values) total += BigInt(value);
     return total;
   };
+  const allSellerEntries = [...workspace.sales, ...workspace.draftSales];
+  const businessSalesInRange = allSellerEntries.filter((sale) => inRange(sale.occurredAt));
+  const businessStockistEntriesInRange = workspace.stockistEntries.filter((entry) =>
+    inRange(entry.occurredAt),
+  );
+  const businessExpensesInRange = workspace.payments.filter(
+    (payment) => payment.direction === "EXPENSE" && inRange(payment.occurredAt),
+  );
+  const beforeRange = (occurredAt: string) => new Date(occurredAt) < bounds.from;
+
+  const sellerCommission = sum(
+    businessSalesInRange.map((sale) => sale.commissionPaise),
+  );
+  const stockistCommission = sum(
+    businessStockistEntriesInRange.map((entry) => entry.commissionPaise),
+  );
+  const totalCommissionActivity = sellerCommission + stockistCommission;
+  const commissionDifference = stockistCommission - sellerCommission;
+  const openingSellerCommission = sum(
+    allSellerEntries
+      .filter((sale) => beforeRange(sale.occurredAt))
+      .map((sale) => sale.commissionPaise),
+  );
+  const openingStockistCommission = sum(
+    workspace.stockistEntries
+      .filter((entry) => beforeRange(entry.occurredAt))
+      .map((entry) => entry.commissionPaise),
+  );
+  const openingCommissionBalance =
+    openingStockistCommission - openingSellerCommission;
+  const closingCommissionBalance =
+    openingCommissionBalance + commissionDifference;
+
+  const businessSellerGross = sum(
+    businessSalesInRange.map((sale) => sale.grossSalesPaise),
+  );
+  const businessStockistGross = sum(
+    businessStockistEntriesInRange.map((entry) => entry.grossPurchasePaise),
+  );
+  const businessExpenses = sum(
+    businessExpensesInRange.map((payment) => payment.totalAmountPaise),
+  );
+  const baseTradingMargin = businessSellerGross - businessStockistGross;
+  const netProfitLoss =
+    baseTradingMargin + commissionDifference - businessExpenses;
+  const commissionStatus =
+    closingCommissionBalance === 0n
+      ? "Commission clear"
+      : closingCommissionBalance > 0n
+        ? "Commission surplus"
+        : "Commission short";
+
   const grossSales = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.grossSalesPaise));
   const dispatch = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.dispatchQuantity));
   const returns = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.returnQuantity));
@@ -756,6 +808,37 @@ function DashboardPanel({
           <Metric label="Sale amount" value={formatPaise(grossSales)} />
           <Metric label="Money received" value={formatPaise(received)} />
           <Metric label="Paid / expense" value={formatPaise(outgoing + expenses)} tone="orange" />
+        </div>
+        <div className="mt-3 rounded-xl border border-emerald-100 bg-white p-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-[10px] font-black text-slate-900">Profit & commission</p>
+              <p className="mt-1 text-[9px] leading-relaxed text-slate-600">
+                Business-wide reconciliation for the selected dates. Seller and stockist commission are compared directly; the balance carries forward from earlier dates.
+              </p>
+            </div>
+            <span className={`rounded-lg px-2 py-1 text-[8px] font-black ${closingCommissionBalance < 0n ? "bg-orange-50 text-orange-800" : "bg-emerald-50 text-emerald-800"}`}>
+              {commissionStatus}
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <Metric label="Seller commission given" value={formatPaise(sellerCommission)} tone="orange" />
+            <Metric label="Stockist commission earned" value={formatPaise(stockistCommission)} />
+            <Metric label="Total commission" value={formatPaise(totalCommissionActivity)} />
+            <Metric label="Commission difference" value={formatPaise(commissionDifference)} tone={commissionDifference < 0n ? "orange" : "emerald"} />
+            <Metric label="Opening carry-forward" value={formatPaise(openingCommissionBalance)} tone={openingCommissionBalance < 0n ? "orange" : "emerald"} />
+            <Metric label="Closing commission balance" value={formatPaise(closingCommissionBalance)} tone={closingCommissionBalance < 0n ? "orange" : "emerald"} />
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <Metric label="Seller gross sales" value={formatPaise(businessSellerGross)} />
+            <Metric label="Stockist gross cost" value={formatPaise(businessStockistGross)} tone="orange" />
+            <Metric label="Base trading margin" value={formatPaise(baseTradingMargin)} tone={baseTradingMargin < 0n ? "orange" : "emerald"} />
+            <Metric label="Expenses" value={formatPaise(businessExpenses)} tone="orange" />
+            <Metric label="Net profit / loss" value={formatPaise(netProfitLoss)} tone={netProfitLoss < 0n ? "orange" : "emerald"} />
+          </div>
+          <p className="mt-2 text-[8px] leading-relaxed text-slate-500">
+            Net profit / loss = seller gross sales − stockist gross cost + commission difference − expenses. TDS stays separate and is not treated as profit.
+          </p>
         </div>
         <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
           <p className="text-[10px] font-black text-slate-900">Current money balances</p>
@@ -1160,6 +1243,24 @@ type AccountingFormProps = {
   onSubmit: (payload: Record<string, unknown>) => Promise<boolean>;
 };
 
+type PaymentDirection = "PAYMENT" | "RECEIPT" | "EXPENSE";
+
+const PAYMENT_DIRECTION_LABELS: Record<PaymentDirection, string> = {
+  PAYMENT: "Money paid to stockist",
+  RECEIPT: "Money received from seller",
+  EXPENSE: "Expense",
+};
+
+function paymentDirectionForParty(
+  partyType: LotteryWorkspace["parties"][number]["partyType"] | undefined,
+): PaymentDirection {
+  if (partyType === "STOCKIST" || partyType === "SERVICE_STOCKIST") {
+    return "PAYMENT";
+  }
+  if (partyType === "SELLER") return "RECEIPT";
+  return "EXPENSE";
+}
+
 function PaymentForm({
   organizationId,
   workspace,
@@ -1172,19 +1273,8 @@ function PaymentForm({
   const [error, setError] = useState<string | null>(null);
 
   const selectedParty = workspace.parties.find((party) => party.id === partyId);
-  const direction =
-    selectedParty?.partyType === "STOCKIST" ||
-    selectedParty?.partyType === "SERVICE_STOCKIST"
-      ? "PAYMENT"
-      : selectedParty?.partyType === "SELLER"
-        ? "RECEIPT"
-        : "EXPENSE";
-  const directionLabel =
-    direction === "PAYMENT"
-      ? "Money paid to stockist"
-      : direction === "RECEIPT"
-        ? "Money received from seller"
-        : "Expense";
+  const direction = paymentDirectionForParty(selectedParty?.partyType);
+  const directionLabel = PAYMENT_DIRECTION_LABELS[direction];
 
   const availableBalances = paymentMethodBalances(
     workspace.payments,
