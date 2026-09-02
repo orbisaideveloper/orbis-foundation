@@ -12,6 +12,22 @@ const { randomUUID } = require("node:crypto");
 const DEFAULT_TDS_RATE_BPS = 200;
 const UNKNOWN_PARTY_NAME = "Unknown party";
 const STOCKIST_MOVEMENT_TYPES = new Set(["RECEIPT", "STOCKIST_RETURN"]);
+const PAYMENT_METHOD_FIELDS = [
+  "cashPaise",
+  "bankPaise",
+  "upiPaise",
+  "chequePaise",
+  "pwtPaise",
+];
+
+function paymentMethodBalance(payments, method) {
+  return payments.reduce((balance, payment) => {
+    const amount = BigInt(payment.methodSplit?.[method] || 0);
+    return payment.direction === "RECEIPT"
+      ? balance + amount
+      : balance - amount;
+  }, 0n);
+}
 
 function requiredText(value, field) {
   if (typeof value !== "string" || !value.trim()) {
@@ -1345,6 +1361,26 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
 
     return prisma.$transaction(async (client) => {
       await ensureParty(client, organizationId, partyId);
+      if (payment.direction !== "RECEIPT") {
+        const priorPayments = await client.foundationLotteryPayment.findMany({
+          where: {
+            organizationId,
+            status: "POSTED",
+            occurredAt: { lte: occurredAt },
+          },
+        });
+        for (const method of PAYMENT_METHOD_FIELDS) {
+          const requested = BigInt(payment.methodSplit[method] || 0);
+          if (requested === 0n) continue;
+          const available = paymentMethodBalance(priorPayments, method);
+          if (requested > available) {
+            throw accountingError(
+              "INVALID_PAYMENT",
+              `methodSplit.${method}`,
+            );
+          }
+        }
+      }
       const resolvedReference = await nextReference(client, {
         organizationId,
         occurredAt,
@@ -1392,9 +1428,11 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
             sourceId: saved.id,
             lineNumber: methodEntries.length + 1,
             accountCode:
-              payment.direction === "EXPENSE"
-                ? "OPERATING_EXPENSE"
-                : "PARTY_RECEIVABLE",
+              payment.direction === "RECEIPT"
+                ? "PARTY_RECEIVABLE"
+                : payment.direction === "PAYMENT"
+                  ? "PARTY_PAYABLE"
+                  : "OPERATING_EXPENSE",
             side: offsetSide,
             amountPaise: asBigInt(payment.totalAmountPaise),
             occurredAt,

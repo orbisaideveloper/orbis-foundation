@@ -65,6 +65,99 @@ const PAYMENT_METHODS = [
   ["pwtPaise", "PWT"],
 ] as const;
 
+type PaymentMethodKey = (typeof PAYMENT_METHODS)[number][0];
+
+type PaymentInputRow = {
+  id: number;
+  method: PaymentMethodKey;
+  amount: string;
+};
+
+function initialPaymentRows(): PaymentInputRow[] {
+  return [
+    { id: 1, method: "cashPaise", amount: "" },
+    { id: 2, method: "bankPaise", amount: "" },
+    { id: 3, method: "pwtPaise", amount: "" },
+  ];
+}
+
+function paymentMethodBalances(
+  payments: LotteryWorkspace["payments"],
+  throughDate?: string,
+) {
+  const balances = Object.fromEntries(
+    PAYMENT_METHODS.map(([key]) => [key, 0n]),
+  ) as Record<PaymentMethodKey, bigint>;
+  const cutoff = throughDate
+    ? new Date(`${throughDate}T23:59:59.999Z`)
+    : null;
+
+  for (const payment of payments) {
+    if (cutoff && new Date(payment.occurredAt) > cutoff) continue;
+    const sign = payment.direction === "RECEIPT" ? 1n : -1n;
+    for (const [key] of PAYMENT_METHODS) {
+      balances[key] += sign * BigInt(payment.methodSplit[key] || "0");
+    }
+  }
+
+  return balances;
+}
+
+function partyOutstandingAt(
+  workspace: LotteryWorkspace,
+  partyId: string,
+  throughDate: string,
+) {
+  const party = workspace.parties.find((item) => item.id === partyId);
+  if (!party) return null;
+
+  const cutoff = new Date(`${throughDate}T23:59:59.999Z`);
+  const through = (occurredAt: string) => new Date(occurredAt) <= cutoff;
+  const partyPayments = workspace.payments.filter(
+    (payment) => payment.partyId === partyId && through(payment.occurredAt),
+  );
+
+  if (party.partyType === "SELLER") {
+    const sales = [...workspace.sales, ...workspace.draftSales]
+      .filter((sale) => sale.partyId === partyId && through(sale.occurredAt))
+      .reduce((total, sale) => total + BigInt(sale.netPayablePaise), 0n);
+    const receipts = partyPayments
+      .filter((payment) => payment.direction === "RECEIPT")
+      .reduce(
+        (total, payment) => total + BigInt(payment.totalAmountPaise),
+        0n,
+      );
+    return {
+      label: "Outstanding to receive",
+      amountPaise: sales - receipts,
+    };
+  }
+
+  if (
+    party.partyType === "STOCKIST" ||
+    party.partyType === "SERVICE_STOCKIST"
+  ) {
+    const purchases = workspace.stockistEntries
+      .filter((entry) => entry.partyId === partyId && through(entry.occurredAt))
+      .reduce(
+        (total, entry) => total + BigInt(entry.netPayablePaise),
+        0n,
+      );
+    const paid = partyPayments
+      .filter((payment) => payment.direction === "PAYMENT")
+      .reduce(
+        (total, payment) => total + BigInt(payment.totalAmountPaise),
+        0n,
+      );
+    return {
+      label: "Outstanding to pay",
+      amountPaise: purchases - paid,
+    };
+  }
+
+  return null;
+}
+
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -613,6 +706,11 @@ function DashboardPanel({
   const received = sum(visiblePayments.filter((payment) => payment.direction === "RECEIPT").map((payment) => payment.totalAmountPaise));
   const outgoing = sum(visiblePayments.filter((payment) => payment.direction === "PAYMENT").map((payment) => payment.totalAmountPaise));
   const expenses = sum(visiblePayments.filter((payment) => payment.direction === "EXPENSE").map((payment) => payment.totalAmountPaise));
+  const moneyBalances = paymentMethodBalances(workspace.payments);
+  const totalAvailableMoney = Object.values(moneyBalances).reduce(
+    (total, amount) => total + amount,
+    0n,
+  );
   const purchase = sum(
     [
       ...visibleStockistEntries.map((entry) => entry.purchaseQuantity),
@@ -658,6 +756,18 @@ function DashboardPanel({
           <Metric label="Sale amount" value={formatPaise(grossSales)} />
           <Metric label="Money received" value={formatPaise(received)} />
           <Metric label="Paid / expense" value={formatPaise(outgoing + expenses)} tone="orange" />
+        </div>
+        <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
+          <p className="text-[10px] font-black text-slate-900">Current money balances</p>
+          <p className="mt-1 text-[9px] text-slate-600">
+            Each method stays separate. Receipts add to that method and payments or expenses reduce only that same method.
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {PAYMENT_METHODS.map(([key, label]) => (
+              <Metric key={key} label={label === "Cash" ? "Cash in hand" : label} value={formatPaise(moneyBalances[key])} />
+            ))}
+            <Metric label="Total available" value={formatPaise(totalAvailableMoney)} />
+          </div>
         </div>
         <div className="mt-3 rounded-xl border border-emerald-100 bg-slate-50 p-3">
           <p className="text-[10px] font-black text-slate-900">Daily lottery check</p>
@@ -1058,11 +1168,9 @@ function PaymentForm({
 }: Readonly<AccountingFormProps>) {
   const [partyId, setPartyId] = useState("");
   const [occurredAt, setOccurredAt] = useState(todayInputValue());
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<(typeof PAYMENT_METHODS)[number][0]>(
-    "cashPaise",
-  );
+  const [rows, setRows] = useState<PaymentInputRow[]>(initialPaymentRows);
   const [error, setError] = useState<string | null>(null);
+
   const selectedParty = workspace.parties.find((party) => party.id === partyId);
   const direction =
     selectedParty?.partyType === "STOCKIST" ||
@@ -1077,17 +1185,101 @@ function PaymentForm({
       : direction === "RECEIPT"
         ? "Money received from seller"
         : "Expense";
+
+  const availableBalances = paymentMethodBalances(
+    workspace.payments,
+    occurredAt,
+  );
+  const outstanding = partyOutstandingAt(workspace, partyId, occurredAt);
+
+  const previewSplit = Object.fromEntries(
+    PAYMENT_METHODS.map(([key]) => [key, 0n]),
+  ) as Record<PaymentMethodKey, bigint>;
+  let previewTotal = 0n;
+  for (const row of rows) {
+    const paise = row.amount.trim() ? rupeesToPaise(row.amount) : null;
+    if (!paise) continue;
+    const amountPaise = BigInt(paise);
+    previewSplit[row.method] += amountPaise;
+    previewTotal += amountPaise;
+  }
+
+  const projectedBalances = { ...availableBalances };
+  if (selectedParty) {
+    const sign = direction === "RECEIPT" ? 1n : -1n;
+    for (const [key] of PAYMENT_METHODS) {
+      projectedBalances[key] += sign * previewSplit[key];
+    }
+  }
+
+  const updateRow = (
+    id: number,
+    patch: Partial<Pick<PaymentInputRow, "method" | "amount">>,
+  ) => {
+    setRows((current) =>
+      current.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+    );
+  };
+
+  const addRow = () => {
+    setRows((current) => {
+      const nextId = current.reduce((max, row) => Math.max(max, row.id), 0) + 1;
+      const used = new Set(current.map((row) => row.method));
+      const method =
+        PAYMENT_METHODS.find(([key]) => !used.has(key))?.[0] || "cashPaise";
+      return [...current, { id: nextId, method, amount: "" }];
+    });
+  };
+
+  const removeRow = (id: number) => {
+    setRows((current) =>
+      current.length > 1 ? current.filter((row) => row.id !== id) : current,
+    );
+  };
+
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const totalAmountPaise = rupeesToPaise(amount);
-    if (!partyId || !totalAmountPaise) {
-      setError("Select party and enter a valid amount.");
+
+    if (!partyId) {
+      setError("Select a party first.");
       return;
     }
-    if (totalAmountPaise === "0") {
-      setError("Enter an amount greater than zero.");
+
+    const methodSplit = Object.fromEntries(
+      PAYMENT_METHODS.map(([key]) => [key, "0"]),
+    ) as Record<PaymentMethodKey, string>;
+    let totalAmount = 0n;
+
+    for (const [index, row] of rows.entries()) {
+      if (!row.amount.trim()) continue;
+      const paise = rupeesToPaise(row.amount);
+      if (!paise || paise === "0") {
+        setError(`Enter a valid amount in payment row ${index + 1}.`);
+        return;
+      }
+      methodSplit[row.method] = (
+        BigInt(methodSplit[row.method]) + BigInt(paise)
+      ).toString();
+      totalAmount += BigInt(paise);
+    }
+
+    if (totalAmount === 0n) {
+      setError("Enter at least one payment amount.");
       return;
     }
+
+    if (direction !== "RECEIPT") {
+      for (const [key, label] of PAYMENT_METHODS) {
+        const requested = BigInt(methodSplit[key]);
+        if (requested > availableBalances[key]) {
+          setError(
+            `${label} balance is ${formatPaise(availableBalances[key])}. You cannot pay ${formatPaise(requested)} from that method.`,
+          );
+          return;
+        }
+      }
+    }
+
     setError(null);
     if (
       await onSubmit({
@@ -1096,18 +1288,14 @@ function PaymentForm({
         periodId: null,
         direction,
         occurredAt,
-        totalAmountPaise,
-        methodSplit: Object.fromEntries(
-          PAYMENT_METHODS.map(([key]) => [
-            key,
-            key === method ? totalAmountPaise : "0",
-          ]),
-        ),
+        totalAmountPaise: totalAmount.toString(),
+        methodSplit,
       })
     ) {
-      setAmount("");
+      setRows(initialPaymentRows());
     }
   };
+
   if (!workspace.parties.length)
     return (
       <WorkspaceCard title="Post a payment">
@@ -1116,6 +1304,7 @@ function PaymentForm({
         </EmptyState>
       </WorkspaceCard>
     );
+
   return (
     <WorkspaceCard title="Payment">
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
@@ -1125,7 +1314,10 @@ function PaymentForm({
             <select
               id="lottery-payment-party"
               value={partyId}
-              onChange={(event) => setPartyId(event.target.value)}
+              onChange={(event) => {
+                setPartyId(event.target.value);
+                setError(null);
+              }}
               className={CONTROL_CLASS}
             >
               <option value="">Select party</option>
@@ -1142,32 +1334,147 @@ function PaymentForm({
               id="lottery-payment-date"
               type="date"
               value={occurredAt}
-              onChange={(event) => setOccurredAt(event.target.value)}
+              onChange={(event) => {
+                setOccurredAt(event.target.value);
+                setError(null);
+              }}
               className={CONTROL_CLASS}
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label htmlFor="lottery-payment-amount">Amount (₹)</Label>
-            <input id="lottery-payment-amount" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} className={CONTROL_CLASS} />
+
+        {selectedParty && outstanding && (
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+            <p className="text-[9px] font-bold uppercase tracking-wide text-emerald-700">
+              {outstanding.label}
+            </p>
+            <p className="mt-1 text-xl font-black text-slate-900">
+              {formatPaise(outstanding.amountPaise)}
+            </p>
+            <p className="mt-1 text-[9px] text-slate-600">
+              Balance through {displayDate(`${occurredAt}T00:00:00.000Z`)} before this payment.
+            </p>
           </div>
+        )}
+
+        <div className="space-y-2 rounded-xl border border-emerald-100 bg-white p-3">
           <div>
-            <Label htmlFor="lottery-payment-method">Method</Label>
-            <select id="lottery-payment-method" value={method} onChange={(event) => setMethod(event.target.value as (typeof PAYMENT_METHODS)[number][0])} className={CONTROL_CLASS}>
-              {PAYMENT_METHODS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
+            <p className="text-[10px] font-black text-slate-900">Payment methods</p>
+            <p className="mt-1 text-[9px] text-slate-500">
+              Use one row for each method. Save once for the whole payment.
+            </p>
+          </div>
+
+          {rows.map((row, index) => (
+            <div
+              key={row.id}
+              className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded-xl bg-slate-50 p-2"
+            >
+              <div>
+                <Label htmlFor={`lottery-payment-method-${row.id}`}>
+                  Method {index + 1}
+                </Label>
+                <select
+                  id={`lottery-payment-method-${row.id}`}
+                  aria-label={`Payment method ${index + 1}`}
+                  value={row.method}
+                  onChange={(event) =>
+                    updateRow(row.id, {
+                      method: event.target.value as PaymentMethodKey,
+                    })
+                  }
+                  className={CONTROL_CLASS}
+                >
+                  {PAYMENT_METHODS.map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor={`lottery-payment-amount-${row.id}`}>
+                  Amount (₹)
+                </Label>
+                <input
+                  id={`lottery-payment-amount-${row.id}`}
+                  aria-label={`Payment amount ${index + 1}`}
+                  inputMode="decimal"
+                  value={row.amount}
+                  onChange={(event) =>
+                    updateRow(row.id, { amount: event.target.value })
+                  }
+                  className={CONTROL_CLASS}
+                />
+              </div>
+              <button
+                type="button"
+                aria-label={`Remove payment row ${index + 1}`}
+                disabled={rows.length === 1}
+                onClick={() => removeRow(row.id)}
+                className="h-[42px] rounded-xl border border-slate-200 px-2.5 text-[9px] font-bold text-slate-500 disabled:opacity-30"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+
+          <button
+            type="button"
+            onClick={addRow}
+            className="w-full rounded-xl border border-dashed border-emerald-300 px-3 py-2.5 text-[10px] font-bold text-emerald-700"
+          >
+            + Add payment row
+          </button>
+        </div>
+
+        <div className="rounded-xl border border-emerald-100 bg-slate-50 p-3">
+          <p className="text-[9px] font-bold uppercase text-slate-500">
+            Total payment
+          </p>
+          <p className="mt-1 text-lg font-black text-slate-900">
+            {formatPaise(previewTotal)}
+          </p>
+        </div>
+
+        <div>
+          <p className="mb-2 text-[10px] font-black text-slate-900">
+            Method balances on selected date
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {PAYMENT_METHODS.map(([key, label]) => (
+              <div
+                key={key}
+                className="rounded-xl border border-emerald-100 bg-white p-2.5"
+              >
+                <p className="text-[8px] font-bold uppercase text-slate-500">
+                  {label === "Cash" ? "Cash in hand" : label}
+                </p>
+                <p className="mt-1 text-xs font-black text-slate-900">
+                  {formatPaise(availableBalances[key])}
+                </p>
+                {selectedParty && previewSplit[key] > 0n && (
+                  <p className="mt-1 text-[8px] text-slate-500">
+                    After save: {formatPaise(projectedBalances[key])}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
         </div>
+
         <p className="rounded-xl bg-slate-50 p-3 text-[10px] text-slate-600">
-          <strong>{selectedParty ? directionLabel : "Select a party first"}</strong>. The ledger updates automatically after save.
+          <strong>{selectedParty ? directionLabel : "Select a party first"}</strong>.
+          {" "}Each method updates only its own balance and the party ledger updates once for the total.
         </p>
+
         <InlineError message={error} />
         <SubmitButton busy={busy}>Save payment</SubmitButton>
       </form>
     </WorkspaceCard>
   );
 }
+
 
 type StatementRow = {
   id: string;
@@ -1180,6 +1487,7 @@ type StatementRow = {
   amountPaise: string;
   paymentPaise: string;
   balancePaise: string | null;
+  methodSplit: Record<string, string> | null;
 };
 
 type DailyStockClearanceRow = {
@@ -1319,6 +1627,7 @@ function StatementPanel({
       netQuantity: entry.netPurchaseQuantity,
       amountPaise: entry.netPayablePaise,
       paymentPaise: "0",
+      methodSplit: null,
       balanceEffectPaise: BigInt(entry.netPayablePaise),
     })),
     ...visibleSales.map((sale) => ({
@@ -1331,6 +1640,7 @@ function StatementPanel({
       netQuantity: String(sale.netTickets),
       amountPaise: sale.netPayablePaise,
       paymentPaise: "0",
+      methodSplit: null,
       balanceEffectPaise: BigInt(sale.netPayablePaise),
     })),
     ...visiblePayments.map((payment) => ({
@@ -1348,13 +1658,57 @@ function StatementPanel({
       netQuantity: "—",
       amountPaise: "0",
       paymentPaise: payment.totalAmountPaise,
+      methodSplit: payment.methodSplit,
       balanceEffectPaise:
         payment.direction === "EXPENSE"
           ? 0n
           : -BigInt(payment.totalAmountPaise),
     })),
   ].sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+  const selectedStatementParty = workspace.parties.find(
+    (party) => party.id === partyId,
+  );
+  const beforeRange = (occurredAt: string) => new Date(occurredAt) < from;
   let runningBalance = 0n;
+  if (selectedStatementParty?.partyType === "SELLER") {
+    runningBalance += [...workspace.sales, ...workspace.draftSales]
+      .filter((sale) => sale.partyId === partyId && beforeRange(sale.occurredAt))
+      .reduce((total, sale) => total + BigInt(sale.netPayablePaise), 0n);
+    runningBalance -= workspace.payments
+      .filter(
+        (payment) =>
+          payment.partyId === partyId &&
+          payment.direction === "RECEIPT" &&
+          beforeRange(payment.occurredAt),
+      )
+      .reduce(
+        (total, payment) => total + BigInt(payment.totalAmountPaise),
+        0n,
+      );
+  } else if (
+    selectedStatementParty?.partyType === "STOCKIST" ||
+    selectedStatementParty?.partyType === "SERVICE_STOCKIST"
+  ) {
+    runningBalance += workspace.stockistEntries
+      .filter(
+        (entry) => entry.partyId === partyId && beforeRange(entry.occurredAt),
+      )
+      .reduce(
+        (total, entry) => total + BigInt(entry.netPayablePaise),
+        0n,
+      );
+    runningBalance -= workspace.payments
+      .filter(
+        (payment) =>
+          payment.partyId === partyId &&
+          payment.direction === "PAYMENT" &&
+          beforeRange(payment.occurredAt),
+      )
+      .reduce(
+        (total, payment) => total + BigInt(payment.totalAmountPaise),
+        0n,
+      );
+  }
   const rows: StatementRow[] = rawRows.map((row) => {
     runningBalance += row.balanceEffectPaise;
     return {
@@ -1474,7 +1828,7 @@ function StatementPanel({
                     "Amount",
                     "Payment",
                     "Balance",
-                    "Edit",
+                    "Details / Edit",
                   ].map((heading) => (
                     <th
                       key={heading}
@@ -1500,7 +1854,23 @@ function StatementPanel({
                       {row.balancePaise === null ? "Choose one party" : formatPaise(row.balancePaise)}
                     </td>
                     <td className="px-2 py-2">
-                      {partyId && row.category !== "Money received" && row.category !== "Money paid" && row.category !== "Expense" ? (
+                      {row.methodSplit ? (
+                        <details>
+                          <summary className="cursor-pointer rounded-lg border border-emerald-200 px-2 py-1 text-[8px] font-bold text-emerald-800">
+                            Details
+                          </summary>
+                          <div className="mt-2 min-w-[150px] space-y-1 rounded-lg bg-slate-50 p-2 text-[8px] text-slate-700">
+                            {PAYMENT_METHODS.filter(
+                              ([key]) => BigInt(row.methodSplit?.[key] || "0") > 0n,
+                            ).map(([key, label]) => (
+                              <p key={key}>
+                                <strong>{label}:</strong>{" "}
+                                {formatPaise(row.methodSplit?.[key] || "0")}
+                              </p>
+                            ))}
+                          </div>
+                        </details>
+                      ) : partyId ? (
                         <button type="button" className="rounded-lg border border-emerald-200 px-2 py-1 text-[8px] font-bold text-emerald-800" onClick={() => onEdit(workspace.parties.find((party) => party.id === partyId)?.partyType === "SELLER" ? "SALE" : "PURCHASE", partyId, row.occurredAt)}>Edit</button>
                       ) : "—"}
                     </td>

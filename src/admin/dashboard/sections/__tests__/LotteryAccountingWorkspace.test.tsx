@@ -287,6 +287,106 @@ describe("LotteryAccountingWorkspace", () => {
     expect(await screen.findByText("Seller sale")).toBeInTheDocument();
   });
 
+  it("shows date-wise outstanding and saves one split payment across methods", async () => {
+    const paymentWorkspace: LotteryWorkspace = {
+      ...workspace,
+      stockistEntries: [
+        {
+          id: "stockist-entry-payment",
+          partyId: STOCKIST_ID,
+          partyName: "Stockist A",
+          reference: "PUR-1",
+          purchaseQuantity: "100",
+          morningReturnQuantity: "0",
+          dayReturnQuantity: "0",
+          eveningReturnQuantity: "0",
+          totalReturnQuantity: "0",
+          netPurchaseQuantity: "100",
+          unitRatePaise: "600",
+          grossPurchasePaise: "60000",
+          commissionPaise: "0",
+          tdsRateBps: 0,
+          tdsPaise: "0",
+          netPayablePaise: "60000",
+          occurredAt: RECORDED_AT,
+          source: "DAILY",
+        },
+      ],
+      payments: [
+        {
+          ...workspace.payments[0],
+          methodSplit: {
+            cashPaise: "20000",
+            bankPaise: "20000",
+            upiPaise: "0",
+            chequePaise: "0",
+            pwtPaise: "10000",
+          },
+        },
+      ],
+    };
+    const api = createApi();
+    vi.mocked(api.loadWorkspace).mockResolvedValue(paymentWorkspace);
+
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+    expect(screen.getByText("Current money balances")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Payment" }));
+    fireEvent.change(screen.getByLabelText("Party"), {
+      target: { value: STOCKIST_ID },
+    });
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-08-30" },
+    });
+
+    expect(await screen.findByText("Outstanding to pay")).toBeInTheDocument();
+    expect(screen.getByText("₹600.00")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Payment amount 1"), {
+      target: { value: "100" },
+    });
+    fireEvent.change(screen.getByLabelText("Payment amount 2"), {
+      target: { value: "150" },
+    });
+    fireEvent.change(screen.getByLabelText("Payment amount 3"), {
+      target: { value: "50" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save payment" }));
+
+    await waitFor(() => expect(api.recordPayment).toHaveBeenCalled());
+    expect(api.recordPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        partyId: STOCKIST_ID,
+        direction: "PAYMENT",
+        totalAmountPaise: "30000",
+        methodSplit: {
+          cashPaise: "10000",
+          bankPaise: "15000",
+          upiPaise: "0",
+          chequePaise: "0",
+          pwtPaise: "5000",
+        },
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
+    fireEvent.change(screen.getByLabelText("From date"), {
+      target: { value: "2026-08-30" },
+    });
+    fireEvent.change(screen.getByLabelText("To date"), {
+      target: { value: "2026-08-30" },
+    });
+    fireEvent.change(screen.getByLabelText("Party"), {
+      target: { value: "party-1" },
+    });
+    fireEvent.click(await screen.findByText("Details"));
+    expect(screen.getByText("Cash:")).toBeInTheDocument();
+    expect(screen.getByText("Bank:")).toBeInTheDocument();
+    expect(screen.getByText("PWT:")).toBeInTheDocument();
+  });
+
   it("uses one selected stockist entry with timed returns", async () => {
     const api = createApi();
     render(<LotteryAccountingWorkspace api={api} />);

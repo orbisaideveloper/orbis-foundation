@@ -497,6 +497,102 @@ describe("Lottery Accounting Service", () => {
     ).rejects.toMatchObject({ code: "INVALID_STOCK_TYPE" });
   });
 
+  it("keeps cash, bank and PWT balances separate for stockist payments", async () => {
+    const prisma = createPrismaMock();
+    prisma.state.parties.push({
+      id: "stockist-payment",
+      organizationId: "org-1",
+      status: "ACTIVE",
+      partyType: "STOCKIST",
+      name: "Stockist Payment",
+      uniqueCode: "stockist-payment-code",
+      ticketRatePaise: 100n,
+    });
+    const service = createLotteryAccountingService({ prisma });
+
+    await service.recordPayment(
+      {
+        organizationId: "org-1",
+        partyId: "party-1",
+        reference: "PAY-IN-1",
+        direction: "RECEIPT",
+        totalAmountPaise: 700_000,
+        methodSplit: {
+          cashPaise: 200_000,
+          bankPaise: 300_000,
+          pwtPaise: 200_000,
+        },
+        occurredAt: "2026-09-02",
+      },
+      "admin-1",
+    );
+
+    const outgoing = await service.recordPayment(
+      {
+        organizationId: "org-1",
+        partyId: "stockist-payment",
+        reference: "PAY-OUT-1",
+        direction: "PAYMENT",
+        totalAmountPaise: 500_000,
+        methodSplit: {
+          cashPaise: 150_000,
+          bankPaise: 200_000,
+          pwtPaise: 150_000,
+        },
+        occurredAt: "2026-09-02",
+      },
+      "admin-1",
+    );
+
+    expect(outgoing.verifiedPayment.methodSplit).toMatchObject({
+      cashPaise: "150000",
+      bankPaise: "200000",
+      pwtPaise: "150000",
+    });
+    expect(prisma.state.ledger.slice(-4)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountCode: "PAYMENT_CASH",
+          side: "CREDIT",
+          amountPaise: 150_000n,
+        }),
+        expect.objectContaining({
+          accountCode: "PAYMENT_BANK",
+          side: "CREDIT",
+          amountPaise: 200_000n,
+        }),
+        expect.objectContaining({
+          accountCode: "PAYMENT_PWT",
+          side: "CREDIT",
+          amountPaise: 150_000n,
+        }),
+        expect.objectContaining({
+          accountCode: "PARTY_PAYABLE",
+          side: "DEBIT",
+          amountPaise: 500_000n,
+        }),
+      ]),
+    );
+
+    await expect(
+      service.recordPayment(
+        {
+          organizationId: "org-1",
+          partyId: "stockist-payment",
+          reference: "PAY-OUT-2",
+          direction: "PAYMENT",
+          totalAmountPaise: 60_000,
+          methodSplit: { pwtPaise: 60_000 },
+          occurredAt: "2026-09-02",
+        },
+        "admin-1",
+      ),
+    ).rejects.toMatchObject({
+      code: "INVALID_PAYMENT",
+      field: "methodSplit.pwtPaise",
+    });
+  });
+
   it("allocates receipts without exceeding the sale or payment balance", async () => {
     const prisma = createPrismaMock();
     const service = createLotteryAccountingService({ prisma });
