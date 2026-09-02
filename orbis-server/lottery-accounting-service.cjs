@@ -192,6 +192,34 @@ function normalizeLegacyMoney(entry) {
   return entry;
 }
 
+function clearanceScopeForStockMovement(movement) {
+  if (movement.movementType === "DISPATCH" || movement.movementType === "RETURN") {
+    return "SELLER";
+  }
+  if (
+    movement.movementType === "RECEIPT" ||
+    movement.movementType === "STOCKIST_RETURN"
+  ) {
+    return "STOCKIST";
+  }
+  return "ALL";
+}
+
+function rowWasCleared(clearances, row, scope) {
+  const rowChangedAt = new Date(row.updatedAt || row.createdAt || 0);
+  return clearances.some((clearance) => {
+    if (utcDateKey(clearance.occurredAt) !== utcDateKey(row.occurredAt)) {
+      return false;
+    }
+    if (clearance.scope !== "ALL" && clearance.scope !== scope) return false;
+    return rowChangedAt <= new Date(clearance.createdAt);
+  });
+}
+
+function visibleAfterClearances(clearances, rows, scope) {
+  return rows.filter((row) => !rowWasCleared(clearances, row, scope));
+}
+
 function createLotteryAccountingService({ prisma, now = () => new Date() }) {
   if (!prisma) throw new Error("A Prisma client is required.");
 
@@ -707,29 +735,48 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     const commissionPaise = optionalMoney(input?.commissionPaise, "commissionPaise");
 
     return prisma.$transaction(async (client) => {
-      const [party, organization, allStock, draftSales, dailyEntries, parties] = await Promise.all([
+      const [party, organization, allStock, allSales, dailyEntries, parties, clearances] = await Promise.all([
         ensureParty(client, organizationId, partyId),
         ensureOrganization(client, organizationId),
         client.foundationLotteryStockMovement.findMany({
           where: { organizationId },
         }),
-        client.foundationLotterySale.findMany({
-          where: { organizationId, status: "DRAFT" },
-        }),
+        client.foundationLotterySale.findMany({ where: { organizationId } }),
         client.foundationLotteryStockistEntry.findMany({
           where: { organizationId },
         }),
         client.foundationAccountingParty.findMany({
           where: { organizationId, status: "ACTIVE" },
         }),
+        client.foundationLotteryEntryClearance.findMany({
+          where: { organizationId },
+        }),
       ]);
       if (!new Set(["STOCKIST", "SERVICE_STOCKIST"]).has(party.partyType)) {
         throw accountingError("INVALID_STOCK_PARTY", "partyId");
       }
 
-      const effectiveEntries = effectiveStockistEntries(
-        allStock,
+      const visibleStock = allStock.filter(
+        (movement) =>
+          !rowWasCleared(
+            clearances,
+            movement,
+            clearanceScopeForStockMovement(movement),
+          ),
+      );
+      const visibleSales = visibleAfterClearances(
+        clearances,
+        allSales,
+        "SELLER",
+      );
+      const visibleDailyEntries = visibleAfterClearances(
+        clearances,
         dailyEntries,
+        "STOCKIST",
+      );
+      const effectiveEntries = effectiveStockistEntries(
+        visibleStock,
+        visibleDailyEntries,
         parties,
       );
       const existing = effectiveEntries.find(
@@ -737,31 +784,25 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           entry.partyId === partyId &&
           utcDateKey(entry.occurredAt) === entryDate,
       );
-      const sellerReturnBalance = allStock.reduce(
-        (total, movement) =>
-          movement.movementType === "RETURN"
-            ? total + BigInt(movement.quantity)
-            : total,
-        0n,
+      const existingDaily = dailyEntries.find(
+        (entry) =>
+          entry.partyId === partyId &&
+          utcDateKey(entry.occurredAt) === entryDate,
       );
-      const draftReturnBalance = draftSales.reduce(
-        (total, sale) => total + BigInt(sale.returnQuantity),
-        0n,
-      );
-      const alreadyReturned = effectiveEntries.reduce(
-        (total, entry) => total + BigInt(entry.totalReturnQuantity),
-        0n,
-      );
-      const editableReturnBalance =
-        sellerReturnBalance +
-        draftReturnBalance -
-        alreadyReturned +
-        BigInt(existing?.totalReturnQuantity || 0);
-      if (totalReturnQuantity > editableReturnBalance) {
-        throw accountingError(
-          "RETURN_EXCEEDS_AVAILABLE_STOCK",
-          "totalReturnQuantity",
-        );
+      for (const [session, field] of Object.entries({
+        MORNING: "morningReturnQuantity",
+        DAY: "dayReturnQuantity",
+        EVENING: "eveningReturnQuantity",
+      })) {
+        const sellerReturn = visibleSales
+          .filter((sale) => utcDateKey(sale.occurredAt) === entryDate)
+          .reduce((total, sale) => total + BigInt(sale[field]), 0n);
+        const alreadyReturned = visibleDailyEntries
+          .filter((entry) => entry.id !== existingDaily?.id && utcDateKey(entry.occurredAt) === entryDate)
+          .reduce((total, entry) => total + BigInt(entry[field]), 0n);
+        if (returns[session] > sellerReturn - alreadyReturned) {
+          throw accountingError("RETURN_EXCEEDS_AVAILABLE_STOCK", `${field}`);
+        }
       }
 
       const unitRatePaise = partyProfileFromRow(party).ticketRatePaise;
@@ -794,11 +835,6 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         occurredAt: range.startsAt,
         updatedByAdminId: actorAdminId,
       };
-      const existingDaily = dailyEntries.find(
-        (entry) =>
-          entry.partyId === partyId &&
-          utcDateKey(entry.occurredAt) === entryDate,
-      );
       const entry = existingDaily
         ? await client.foundationLotteryStockistEntry.update({
             where: { id: existingDaily.id },
@@ -832,6 +868,38 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         },
       });
       return serialize(entry);
+    });
+  }
+
+  async function clearDailyEntries(input, actorAdminId) {
+    const organizationId = requiredText(input?.organizationId, "organizationId");
+    const occurredAt = optionalDate(input?.occurredAt, "occurredAt", now());
+    const scope = requiredText(input?.scope, "scope").toUpperCase();
+    if (!new Set(["ALL", "SELLER", "STOCKIST", "PAYMENT"]).has(scope)) {
+      throw accountingError("INVALID_CLEARANCE_SCOPE", "scope");
+    }
+    const range = utcDayRange(occurredAt);
+    return prisma.$transaction(async (client) => {
+      await ensureOrganization(client, organizationId);
+      const clearance = await client.foundationLotteryEntryClearance.create({
+        data: {
+          organizationId,
+          occurredAt: range.startsAt,
+          scope,
+          createdByAdminId: actorAdminId,
+        },
+      });
+      await client.foundationLotteryAuditEvent.create({
+        data: {
+          organizationId,
+          eventType: "DAILY_ENTRIES_CLEARED",
+          entityType: "DAILY_ENTRY_CLEARANCE",
+          entityId: clearance.id,
+          actorAdminId,
+          metadata: { day: utcDateKey(range.startsAt), scope },
+        },
+      });
+      return serialize(clearance);
     });
   }
 
@@ -1001,14 +1069,23 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     return prisma.$transaction(async (client) => {
       const context = postingContext(input);
       const range = utcDayRange(context.occurredAt);
-      const existing = await client.foundationLotterySale.findFirst({
+      const [candidate, clearances] = await Promise.all([
+        client.foundationLotterySale.findFirst({
         where: {
           organizationId: context.organizationId,
           partyId: context.partyId,
           status: "DRAFT",
           occurredAt: { gte: range.startsAt, lt: range.endsAt },
         },
-      });
+        }),
+        client.foundationLotteryEntryClearance.findMany({
+          where: { organizationId: context.organizationId },
+        }),
+      ]);
+      const existing =
+        candidate && !rowWasCleared(clearances, candidate, "SELLER")
+          ? candidate
+          : null;
       if (existing) {
         return saveExistingDailySellerDraft(client, {
           existing,
@@ -1442,6 +1519,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       settlements,
       ledgerEntries,
       auditEvents,
+      clearances,
       summary,
     ] = await Promise.all([
       prisma.foundationAccountingParty.findMany({
@@ -1484,13 +1562,41 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         where: { organizationId: scopedOrganizationId },
         orderBy: { createdAt: "desc" },
       }),
+      prisma.foundationLotteryEntryClearance.findMany({
+        where: { organizationId: scopedOrganizationId },
+        orderBy: { createdAt: "desc" },
+      }),
       getVerifiedSummary({ organizationId: scopedOrganizationId }),
     ]);
 
     const partyNames = new Map(parties.map((party) => [party.id, party.name]));
-    const visibleStockistEntries = effectiveStockistEntries(
-      stockMovements,
+    const visibleStockMovements = stockMovements.filter(
+      (movement) =>
+        !rowWasCleared(
+          clearances,
+          movement,
+          clearanceScopeForStockMovement(movement),
+        ),
+    );
+    const visibleSales = visibleAfterClearances(clearances, sales, "SELLER");
+    const visibleDraftSales = visibleAfterClearances(
+      clearances,
+      draftSales,
+      "SELLER",
+    );
+    const visiblePayments = visibleAfterClearances(
+      clearances,
+      payments,
+      "PAYMENT",
+    );
+    const visibleDailyEntries = visibleAfterClearances(
+      clearances,
       stockistEntries,
+      "STOCKIST",
+    );
+    const visibleStockistEntries = effectiveStockistEntries(
+      visibleStockMovements,
+      visibleDailyEntries,
       parties,
     );
     const periodLabels = new Map(
@@ -1498,7 +1604,14 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     );
     const saleSettled = new Map();
     const paymentSettled = new Map();
-    for (const settlement of settlements) {
+    const visibleSaleIds = new Set(visibleSales.map((sale) => sale.id));
+    const visiblePaymentIds = new Set(visiblePayments.map((payment) => payment.id));
+    const visibleSettlements = settlements.filter(
+      (settlement) =>
+        visibleSaleIds.has(settlement.saleId) &&
+        visiblePaymentIds.has(settlement.paymentId),
+    );
+    for (const settlement of visibleSettlements) {
       saleSettled.set(
         settlement.saleId,
         (saleSettled.get(settlement.saleId) || 0n) +
@@ -1510,23 +1623,23 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           BigInt(settlement.amountPaise),
       );
     }
-    const salesById = new Map(sales.map((sale) => [sale.id, sale]));
+    const salesById = new Map(visibleSales.map((sale) => [sale.id, sale]));
     const paymentsById = new Map(
-      payments.map((payment) => [payment.id, payment]),
+      visiblePayments.map((payment) => [payment.id, payment]),
     );
 
     return serialize({
       organization,
       parties,
       periods,
-      stockMovements: stockMovements.map((movement) => ({
+      stockMovements: visibleStockMovements.map((movement) => ({
         ...movement,
         partyName: movement.partyId
           ? partyNames.get(movement.partyId) || UNKNOWN_PARTY_NAME
           : null,
       })),
       stockistEntries: visibleStockistEntries,
-      sales: sales.map((sale) => {
+      sales: visibleSales.map((sale) => {
         const settledPaise = saleSettled.get(sale.id) || 0n;
         return {
           ...sale,
@@ -1538,14 +1651,14 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           outstandingPaise: BigInt(sale.netPayablePaise) - settledPaise,
         };
       }),
-      draftSales: draftSales.map((sale) => ({
+      draftSales: visibleDraftSales.map((sale) => ({
         ...sale,
         partyName: partyNames.get(sale.partyId) || UNKNOWN_PARTY_NAME,
         periodLabel: sale.periodId
           ? periodLabels.get(sale.periodId) || null
           : null,
       })),
-      payments: payments.map((payment) => {
+      payments: visiblePayments.map((payment) => {
         const settledPaise = paymentSettled.get(payment.id) || 0n;
         return {
           ...payment,
@@ -1557,7 +1670,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           availablePaise: BigInt(payment.totalAmountPaise) - settledPaise,
         };
       }),
-      settlements: settlements.map((settlement) => ({
+      settlements: visibleSettlements.map((settlement) => ({
         ...settlement,
         saleReference:
           salesById.get(settlement.saleId)?.reference || "Unknown sale",
@@ -1578,7 +1691,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     if (from) occurredAt.gte = optionalDate(from, "from");
     if (to) occurredAt.lte = optionalDate(to, "to");
     const dateFilter = Object.keys(occurredAt).length ? { occurredAt } : {};
-    const [sales, payments, stockMovements, stockistEntries, parties] = await Promise.all([
+    const [sales, payments, stockMovements, stockistEntries, parties, clearances] = await Promise.all([
       prisma.foundationLotterySale.findMany({
         where: {
           organizationId: scopedOrganizationId,
@@ -1606,18 +1719,40 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       prisma.foundationAccountingParty.findMany({
         where: { organizationId: scopedOrganizationId, status: "ACTIVE" },
       }),
+      prisma.foundationLotteryEntryClearance.findMany({
+        where: { organizationId: scopedOrganizationId },
+      }),
     ]);
-    const effectiveEntries = effectiveStockistEntries(
-      stockMovements,
+    const visibleSales = visibleAfterClearances(clearances, sales, "SELLER");
+    const visiblePayments = visibleAfterClearances(
+      clearances,
+      payments,
+      "PAYMENT",
+    );
+    const visibleStockMovements = stockMovements.filter(
+      (movement) =>
+        !rowWasCleared(
+          clearances,
+          movement,
+          clearanceScopeForStockMovement(movement),
+        ),
+    );
+    const visibleStockistEntries = visibleAfterClearances(
+      clearances,
       stockistEntries,
+      "STOCKIST",
+    );
+    const effectiveEntries = effectiveStockistEntries(
+      visibleStockMovements,
+      visibleStockistEntries,
       parties,
     );
-    const nonStockistMovements = stockMovements.filter(
+    const nonStockistMovements = visibleStockMovements.filter(
       (movement) =>
         !movement.partyId ||
         !new Set(["RECEIPT", "STOCKIST_RETURN"]).has(movement.movementType),
     );
-    const saleInputs = sales.map((sale) => {
+    const saleInputs = visibleSales.map((sale) => {
       const input = {
         dispatchQuantity: sale.dispatchQuantity,
         returnQuantity: sale.returnQuantity,
@@ -1645,7 +1780,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     });
     return summarizeLotteryAccounting({
       sales: saleInputs,
-      payments: payments.map((payment) => ({
+      payments: visiblePayments.map((payment) => ({
         direction: payment.direction,
         totalAmountPaise: payment.totalAmountPaise,
         methodSplit: payment.methodSplit,
@@ -1674,6 +1809,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
 
   return {
     analyzeVerifiedAccounting,
+    clearDailyEntries,
     correctPostedSale,
     createDailySellerDraft,
     createOrganization,

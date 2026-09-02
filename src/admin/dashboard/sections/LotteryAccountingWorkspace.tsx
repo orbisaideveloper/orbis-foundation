@@ -3,7 +3,6 @@ import {
   LoaderCircle,
   Plus,
   RefreshCw,
-  ShieldCheck,
   WalletCards,
 } from "lucide-react";
 import { DailySellerEntry } from "./DailySellerEntry";
@@ -33,10 +32,15 @@ type WorkspaceTab =
   | "setup"
   | "seller"
   | "entry"
-  | "statements"
-  | "analysis";
-type EntryKind = "payment" | "settlement";
+  | "statements";
 type DailyOperation = "SALE" | "PURCHASE";
+
+type DailyEditRequest = {
+  operation: DailyOperation;
+  partyId: string;
+  occurredAt: string;
+  token: number;
+};
 
 const WORKSPACE_TABS: Array<[WorkspaceTab, string]> = [
   ["dashboard", "Dashboard"],
@@ -44,12 +48,6 @@ const WORKSPACE_TABS: Array<[WorkspaceTab, string]> = [
   ["seller", "Daily entry"],
   ["entry", "Payment"],
   ["statements", "Ledger"],
-  ["analysis", "AI analysis"],
-];
-
-const ENTRY_KINDS: Array<[EntryKind, string]> = [
-  ["payment", "Payment"],
-  ["settlement", "Settlement"],
 ];
 
 const PARTY_TYPES: Array<[LotteryPartyType, string]> = [
@@ -71,26 +69,6 @@ function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function currentFinancialYearStart() {
-  const today = new Date();
-  return today.getUTCMonth() >= 3
-    ? today.getUTCFullYear()
-    : today.getUTCFullYear() - 1;
-}
-
-function financialYearLabel(startYear: string) {
-  const start = Number(startYear);
-  return Number.isInteger(start)
-    ? `FY${String(start).slice(-2)}-${String(start + 1).slice(-2)}`
-    : "Financial year";
-}
-
-function isFinancialYearPeriod(
-  period: LotteryWorkspace["periods"][number],
-) {
-  return /^FY\d{2}-\d{2}$/.test(period.label);
-}
-
 function paiseToRupeesInput(value: string) {
   const paise = BigInt(value);
   return `${paise / 100n}.${(paise % 100n).toString().padStart(2, "0")}`;
@@ -100,10 +78,6 @@ function friendlyError(error: unknown) {
   return error instanceof Error
     ? error.message
     : "The Accounting workspace could not be updated.";
-}
-
-function friendlyEvent(value: string) {
-  return value.replace(/_/g, " ").toLowerCase();
 }
 
 function displayDate(value: string) {
@@ -212,8 +186,9 @@ export function LotteryAccountingWorkspace({
   const [organizationId, setOrganizationId] = useState("");
   const [workspace, setWorkspace] = useState<LotteryWorkspace | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>("dashboard");
-  const [entryKind, setEntryKind] = useState<EntryKind>("payment");
   const [dailyOperation, setDailyOperation] = useState<DailyOperation>("SALE");
+  const [dailyEditRequest, setDailyEditRequest] =
+    useState<DailyEditRequest | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [workingAction, setWorkingAction] = useState<string | null>(null);
@@ -456,7 +431,12 @@ export function LotteryAccountingWorkspace({
         />
       ) : (
         <>
-          {tab === "dashboard" && <DashboardPanel workspace={workspace} />}
+          {tab === "dashboard" && (
+            <DashboardPanel
+              workspace={workspace}
+              onOpenLedger={() => setTab("statements")}
+            />
+          )}
           {tab === "setup" && (
             <SetupPanel
               workspace={workspace}
@@ -505,6 +485,7 @@ export function LotteryAccountingWorkspace({
               {dailyOperation === "SALE" ? <DailySellerEntry
               organizationId={organizationId}
               workspace={workspace}
+              editRequest={dailyEditRequest?.operation === "SALE" ? dailyEditRequest : null}
               onSaveDraft={(payload) =>
                 runDailyDraftAction(() => api.saveDailySellerDraft(payload))
               }
@@ -538,18 +519,28 @@ export function LotteryAccountingWorkspace({
               /> : <DailyStockistEntry
                 organizationId={organizationId}
                 workspace={workspace}
+                editRequest={dailyEditRequest?.operation === "PURCHASE" ? dailyEditRequest : null}
                 onSave={(payload) =>
                   runDailyDraftAction(() => api.saveDailyStockistEntry(payload))
                 }
               />}
+              <DailyCleanupPanel
+                organizationId={organizationId}
+                busy={workingAction === "daily-clear"}
+                onClear={(payload) =>
+                  runAction(
+                    "daily-clear",
+                    () => api.clearDailyEntries(payload),
+                    "The selected day's entries are cleared. Party profiles remain safe.",
+                  )
+                }
+              />
             </div>
           )}
           {tab === "entry" && (
             <EntryPanel
               workspace={workspace}
               organizationId={organizationId}
-              entryKind={entryKind}
-              setEntryKind={setEntryKind}
               workingAction={workingAction}
               onPayment={(payload) =>
                 runAction(
@@ -558,17 +549,18 @@ export function LotteryAccountingWorkspace({
                   "Payment posted with its method split.",
                 )
               }
-              onSettlement={(payload) =>
-                runAction(
-                  "settlement",
-                  () => api.recordSettlement(payload),
-                  "Receipt settled against the selected sale.",
-                )
-              }
             />
           )}
-          {tab === "statements" && <StatementPanel workspace={workspace} />}
-          {tab === "analysis" && <AnalysisPanel workspace={workspace} />}
+          {tab === "statements" && (
+            <StatementPanel
+              workspace={workspace}
+              onEdit={(operation, partyId, occurredAt) => {
+                setDailyOperation(operation);
+                setDailyEditRequest({ operation, partyId, occurredAt, token: Date.now() });
+                setTab("seller");
+              }}
+            />
+          )}
         </>
       )}
     </section>
@@ -577,7 +569,8 @@ export function LotteryAccountingWorkspace({
 
 function DashboardPanel({
   workspace,
-}: Readonly<{ workspace: LotteryWorkspace }>) {
+  onOpenLedger,
+}: Readonly<{ workspace: LotteryWorkspace; onOpenLedger: () => void }>) {
   const [range, setRange] = useState<"today" | "yesterday" | "week" | "custom">("today");
   const [partyFilter, setPartyFilter] = useState<"ALL" | LotteryPartyType>("ALL");
   const [customFrom, setCustomFrom] = useState(todayInputValue());
@@ -635,44 +628,12 @@ function DashboardPanel({
     visibleStockistEntries.map((entry) => entry.totalReturnQuantity),
   );
   const netSold = dispatch - returns;
-  const salesAtRangeEnd = [...workspace.sales, ...workspace.draftSales].filter(
-    (sale) => new Date(sale.occurredAt) < bounds.to,
+  const dailyChecks = dailyStockClearanceRows(
+    workspace,
+    bounds.from.toISOString().slice(0, 10),
+    new Date(bounds.to.getTime() - 1).toISOString().slice(0, 10),
   );
-  const stockAtRangeEnd = workspace.stockMovements.filter(
-    (movement) => new Date(movement.occurredAt) < bounds.to,
-  );
-  const stockistEntriesAtRangeEnd = workspace.stockistEntries.filter(
-    (entry) => new Date(entry.occurredAt) < bounds.to,
-  );
-  const purchasedAtRangeEnd = sum(
-    [
-      ...stockistEntriesAtRangeEnd.map((entry) => entry.purchaseQuantity),
-      ...stockAtRangeEnd
-        .filter(
-          (movement) =>
-            movement.movementType === "RECEIPT" && !movement.partyId,
-        )
-        .map((movement) => movement.quantity),
-    ],
-  );
-  const dispatchedAtRangeEnd = sum(
-    salesAtRangeEnd.map((sale) => sale.dispatchQuantity),
-  );
-  const sellerReturnsAtRangeEnd = sum(
-    salesAtRangeEnd.map((sale) => sale.returnQuantity),
-  );
-  const stockistReturnsAtRangeEnd = sum(
-    stockistEntriesAtRangeEnd.map((entry) => entry.totalReturnQuantity),
-  );
-  const adjustmentAtRangeEnd = sum(
-    stockAtRangeEnd
-      .filter((movement) => movement.movementType === "ADJUSTMENT")
-      .map((movement) => movement.quantity),
-  );
-  const newStockInHand =
-    purchasedAtRangeEnd - dispatchedAtRangeEnd + adjustmentAtRangeEnd;
-  const returnWaiting = sellerReturnsAtRangeEnd - stockistReturnsAtRangeEnd;
-  const totalStockInHand = newStockInHand + returnWaiting;
+  const openDays = dailyChecks.filter((row) => row.totalStock !== 0n);
   return (
     <div className="space-y-3">
       <WorkspaceCard title={`${workspace.organization.name} dashboard`}>
@@ -698,24 +659,24 @@ function DashboardPanel({
           <Metric label="Money received" value={formatPaise(received)} />
           <Metric label="Paid / expense" value={formatPaise(outgoing + expenses)} tone="orange" />
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <Metric label="New stock in hand" value={newStockInHand.toString()} tone={newStockInHand === 0n ? "emerald" : "orange"} />
-          <Metric label="Return waiting" value={returnWaiting.toString()} tone={returnWaiting === 0n ? "emerald" : "orange"} />
-          <Metric label="Total stock in hand" value={totalStockInHand.toString()} tone={totalStockInHand === 0n ? "emerald" : "orange"} />
-        </div>
-        <p className="mt-2 text-[9px] leading-relaxed text-slate-500">
-          These three stock balances are carried forward up to the end of the selected date, so they include earlier dates even when Today has no new entry.
-        </p>
-        {newStockInHand < 0n && (
-          <p className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-[10px] font-bold text-orange-800">
-            Purchase mismatch: {(-newStockInHand).toString()} ticket(s) were given to sellers without a matching purchase/opening entry.
+        <div className="mt-3 rounded-xl border border-emerald-100 bg-slate-50 p-3">
+          <p className="text-[10px] font-black text-slate-900">Daily lottery check</p>
+          <p className="mt-1 text-[9px] text-slate-600">
+            Every date must close separately: purchase = seller dispatch, and seller return = stockist return. Nothing carries to tomorrow.
           </p>
-        )}
-        <p className={`mt-3 rounded-xl border p-3 text-[10px] font-bold ${returnWaiting === 0n ? "border-emerald-100 bg-emerald-50 text-emerald-800" : "border-orange-200 bg-orange-50 text-orange-800"}`}>
-          {returnWaiting === 0n
-            ? "Seller return is clear: nothing is waiting to go back to a stockist."
-            : `${returnWaiting.toString()} returned ticket(s) are still waiting to be sent back to a stockist.`}
-        </p>
+          {openDays.length ? (
+            <ul className="mt-2 space-y-1.5 text-[9px] font-bold text-orange-800">
+              {openDays.map((row) => (
+                <li key={row.day} className="rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-2">
+                  {displayDate(`${row.day}T00:00:00.000Z`)}: {row.newStock !== 0n ? `${row.newStock.toString()} dispatch mismatch` : `${row.returnWaiting.toString()} return waiting`}
+                </li>
+              ))}
+            </ul>
+          ) : <p className="mt-2 text-[9px] font-bold text-emerald-800">Every selected day is clear.</p>}
+        </div>
+        <button type="button" onClick={onOpenLedger} className="mt-3 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-[10px] font-bold text-emerald-800">
+          Open party ledger
+        </button>
       </WorkspaceCard>
     </div>
   );
@@ -728,7 +689,6 @@ function SetupPanel({
   onCreateParty,
   onUpdatePartyProfile,
   onUpdateUserLedgerStorage,
-  onCreateFinancialYearPeriod,
   workingAction,
 }: Readonly<{
   workspace: LotteryWorkspace | null;
@@ -750,11 +710,7 @@ function SetupPanel({
   const [phone, setPhone] = useState("");
   const [ticketRate, setTicketRate] = useState("");
   const [profilePartyId, setProfilePartyId] = useState("");
-  const [financialYearStart, setFinancialYearStart] = useState(
-    String(currentFinancialYearStart()),
-  );
   const [localError, setLocalError] = useState<string | null>(null);
-  const fixedFinancialYear = workspace?.periods.find(isFinancialYearPeriod);
 
   const submitOrganization = async (
     event: React.FormEvent<HTMLFormElement>,
@@ -791,19 +747,6 @@ function SetupPanel({
       setPhone("");
       setTicketRate("");
     }
-  };
-
-  const submitPeriod = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!/^\d{4}$/.test(financialYearStart)) {
-      setLocalError("Choose a valid financial year.");
-      return;
-    }
-    setLocalError(null);
-    await onCreateFinancialYearPeriod({
-      organizationId,
-      financialYearStart,
-    });
   };
 
   const submitPartyProfile = async (
@@ -1016,130 +959,87 @@ function SetupPanel({
             </div>
           </WorkspaceCard>
 
-          <WorkspaceCard title="Financial year periods">
-            {fixedFinancialYear ? (
-              <p className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-[10px] leading-relaxed text-emerald-900">
-                <strong>Fixed financial year: {fixedFinancialYear.label}</strong>
-                <br />
-                {displayDate(fixedFinancialYear.startsAt)} – {displayDate(fixedFinancialYear.endsAt)}.
-                This workspace keeps the year selected during setup; it will not
-                reset or change while you enter current or backdated data.
-              </p>
-            ) : (
-              <form
-                className="space-y-3"
-                onSubmit={(event) => void submitPeriod(event)}
-              >
-                <div>
-                  <Label htmlFor="lottery-financial-year">Financial year</Label>
-                  <select
-                    id="lottery-financial-year"
-                    value={financialYearStart}
-                    onChange={(event) =>
-                      setFinancialYearStart(event.target.value)
-                    }
-                    className={CONTROL_CLASS}
-                  >
-                    {[
-                      currentFinancialYearStart() - 1,
-                      currentFinancialYearStart(),
-                      currentFinancialYearStart() + 1,
-                    ].map((year) => (
-                      <option key={year} value={String(year)}>
-                        {financialYearLabel(String(year))} · 01 Apr {year} – 31
-                        Mar {year + 1}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <SubmitButton busy={workingAction === "financial-year"}>
-                  Set financial year
-                </SubmitButton>
-              </form>
-            )}
-            <EntityList
-              items={workspace.periods.map(
-                (period) =>
-                  `${period.label} · ${displayDate(period.startsAt)} – ${displayDate(period.endsAt)}`,
-              )}
-              empty="No accounting period created yet."
-            />
-          </WorkspaceCard>
         </>
       )}
     </div>
   );
 }
 
-function EntityList({
-  items,
-  empty,
-}: Readonly<{ items: string[]; empty: string }>) {
-  if (!items.length) return <EmptyState>{empty}</EmptyState>;
-  return (
-    <ul className="mt-3 space-y-1.5 text-[9px] text-slate-600">
-      {items.map((item) => (
-        <li key={item} className="rounded-lg bg-slate-50 px-2.5 py-2">
-          {item}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 function EntryPanel({
   workspace,
   organizationId,
-  entryKind,
-  setEntryKind,
   workingAction,
   onPayment,
-  onSettlement,
 }: Readonly<{
   workspace: LotteryWorkspace;
   organizationId: string;
-  entryKind: EntryKind;
-  setEntryKind: (value: EntryKind) => void;
   workingAction: string | null;
   onPayment: (payload: Record<string, unknown>) => Promise<boolean>;
-  onSettlement: (payload: Record<string, unknown>) => Promise<boolean>;
 }>) {
   return (
     <div className="space-y-3">
-      <WorkspaceCard title="Post a new accounting entry">
-        <div
-          className="flex gap-2 overflow-x-auto pb-1"
-          aria-label="Entry type"
-        >
-          {ENTRY_KINDS.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setEntryKind(value)}
-              className={`shrink-0 rounded-xl px-3 py-2 text-[10px] font-bold ${entryKind === value ? "bg-emerald-600 text-white" : "border border-emerald-100 bg-white text-slate-600"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </WorkspaceCard>
-      {entryKind === "payment" && (
-        <PaymentForm
-          organizationId={organizationId}
-          workspace={workspace}
-          busy={workingAction === "payment"}
-          onSubmit={onPayment}
-        />
-      )}
-      {entryKind === "settlement" && (
-        <SettlementForm
-          organizationId={organizationId}
-          workspace={workspace}
-          busy={workingAction === "settlement"}
-          onSubmit={onSettlement}
-        />
-      )}
+      <PaymentForm
+        organizationId={organizationId}
+        workspace={workspace}
+        busy={workingAction === "payment"}
+        onSubmit={onPayment}
+      />
     </div>
+  );
+}
+
+function DailyCleanupPanel({
+  organizationId,
+  busy,
+  onClear,
+}: Readonly<{
+  organizationId: string;
+  busy: boolean;
+  onClear: (payload: {
+    organizationId: string;
+    occurredAt: string;
+    scope: "ALL" | "SELLER" | "STOCKIST" | "PAYMENT";
+  }) => Promise<boolean>;
+}>) {
+  const [occurredAt, setOccurredAt] = useState(todayInputValue());
+  const [scope, setScope] = useState<"ALL" | "SELLER" | "STOCKIST" | "PAYMENT">("ALL");
+  const [confirmed, setConfirmed] = useState(false);
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!confirmed) return;
+    await onClear({ organizationId, occurredAt, scope });
+    setConfirmed(false);
+  };
+  return (
+    <WorkspaceCard title="Correct or clear one date">
+      <p className="text-[10px] leading-relaxed text-slate-600">
+        Use this only when an entire day was entered wrongly. Party profiles stay safe. You can immediately enter the same date again; the newest saved entry will be used.
+      </p>
+      <form className="mt-3 space-y-3" onSubmit={(event) => void submit(event)}>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label htmlFor="daily-clear-date">Date</Label>
+            <input id="daily-clear-date" type="date" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} className={CONTROL_CLASS} />
+          </div>
+          <div>
+            <Label htmlFor="daily-clear-scope">Clear</Label>
+            <select id="daily-clear-scope" value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} className={CONTROL_CLASS}>
+              <option value="ALL">All entries for this date</option>
+              <option value="SELLER">Seller entries only</option>
+              <option value="STOCKIST">Stockist purchase / return only</option>
+              <option value="PAYMENT">Payments only</option>
+            </select>
+          </div>
+        </div>
+        <label className="flex items-start gap-2 rounded-xl border border-orange-100 bg-orange-50 p-3 text-[10px] text-orange-800">
+          <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-0.5" />
+          I want to clear these entries and enter this date again.
+        </label>
+        <button type="submit" disabled={!confirmed || busy} className="min-h-[42px] rounded-xl border border-orange-200 bg-white px-4 text-[10px] font-bold text-orange-800 disabled:opacity-50">
+          {busy ? "Clearing…" : "Clear selected date"}
+        </button>
+      </form>
+    </WorkspaceCard>
   );
 }
 
@@ -1157,32 +1057,35 @@ function PaymentForm({
   onSubmit,
 }: Readonly<AccountingFormProps>) {
   const [partyId, setPartyId] = useState("");
-  const [periodId, setPeriodId] = useState("");
-  const [direction, setDirection] = useState("RECEIPT");
   const [occurredAt, setOccurredAt] = useState(todayInputValue());
-  const [splits, setSplits] = useState<Record<string, string>>({
-    cashPaise: "",
-    bankPaise: "",
-    upiPaise: "",
-    chequePaise: "",
-    pwtPaise: "",
-  });
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState<(typeof PAYMENT_METHODS)[number][0]>(
+    "cashPaise",
+  );
   const [error, setError] = useState<string | null>(null);
+  const selectedParty = workspace.parties.find((party) => party.id === partyId);
+  const direction =
+    selectedParty?.partyType === "STOCKIST" ||
+    selectedParty?.partyType === "SERVICE_STOCKIST"
+      ? "PAYMENT"
+      : selectedParty?.partyType === "SELLER"
+        ? "RECEIPT"
+        : "EXPENSE";
+  const directionLabel =
+    direction === "PAYMENT"
+      ? "Money paid to stockist"
+      : direction === "RECEIPT"
+        ? "Money received from seller"
+        : "Expense";
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const parsed = Object.fromEntries(
-      PAYMENT_METHODS.map(([key]) => [
-        key,
-        splits[key].trim() ? rupeesToPaise(splits[key]) : "0",
-      ]),
-    );
-    if (!partyId || Object.values(parsed).some((value) => !value)) {
-      setError("Select party and enter valid payment amounts.");
+    const totalAmountPaise = rupeesToPaise(amount);
+    if (!partyId || !totalAmountPaise) {
+      setError("Select party and enter a valid amount.");
       return;
     }
-    const totalAmountPaise = sumPaise(Object.values(parsed) as string[]);
     if (totalAmountPaise === "0") {
-      setError("Enter at least one payment amount.");
+      setError("Enter an amount greater than zero.");
       return;
     }
     setError(null);
@@ -1190,28 +1093,21 @@ function PaymentForm({
       await onSubmit({
         organizationId,
         partyId,
-        periodId: periodId || null,
+        periodId: null,
         direction,
         occurredAt,
         totalAmountPaise,
-        methodSplit: parsed,
+        methodSplit: Object.fromEntries(
+          PAYMENT_METHODS.map(([key]) => [
+            key,
+            key === method ? totalAmountPaise : "0",
+          ]),
+        ),
       })
     ) {
-      setSplits({
-        cashPaise: "",
-        bankPaise: "",
-        upiPaise: "",
-        chequePaise: "",
-        pwtPaise: "",
-      });
+      setAmount("");
     }
   };
-  const total = useMemo(() => {
-    const values = Object.values(splits).map((value) =>
-      value.trim() ? rupeesToPaise(value) : "0",
-    );
-    return values.some((value) => !value) ? null : sumPaise(values as string[]);
-  }, [splits]);
   if (!workspace.parties.length)
     return (
       <WorkspaceCard title="Post a payment">
@@ -1221,7 +1117,7 @@ function PaymentForm({
       </WorkspaceCard>
     );
   return (
-    <WorkspaceCard title="Receipt, payment or expense">
+    <WorkspaceCard title="Payment">
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -1241,35 +1137,6 @@ function PaymentForm({
             </select>
           </div>
           <div>
-            <Label htmlFor="lottery-payment-direction">Direction</Label>
-            <select
-              id="lottery-payment-direction"
-              value={direction}
-              onChange={(event) => setDirection(event.target.value)}
-              className={CONTROL_CLASS}
-            >
-              <option>RECEIPT</option>
-              <option>PAYMENT</option>
-              <option>EXPENSE</option>
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="lottery-payment-period">Period</Label>
-            <select
-              id="lottery-payment-period"
-              value={periodId}
-              onChange={(event) => setPeriodId(event.target.value)}
-              className={CONTROL_CLASS}
-            >
-              <option value="">No period</option>
-              {workspace.periods.map((period) => (
-                <option key={period.id} value={period.id}>
-                  {period.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
             <Label htmlFor="lottery-payment-date">Date</Label>
             <input
               id="lottery-payment-date"
@@ -1281,125 +1148,22 @@ function PaymentForm({
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          {PAYMENT_METHODS.map(([key, label]) => (
-            <div key={key}>
-              <Label htmlFor={`lottery-${key}`}>{label} (₹)</Label>
-              <input
-                id={`lottery-${key}`}
-                inputMode="decimal"
-                value={splits[key]}
-                onChange={(event) =>
-                  setSplits((current) => ({
-                    ...current,
-                    [key]: event.target.value,
-                  }))
-                }
-                className={CONTROL_CLASS}
-              />
-            </div>
-          ))}
+          <div>
+            <Label htmlFor="lottery-payment-amount">Amount (₹)</Label>
+            <input id="lottery-payment-amount" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} className={CONTROL_CLASS} />
+          </div>
+          <div>
+            <Label htmlFor="lottery-payment-method">Method</Label>
+            <select id="lottery-payment-method" value={method} onChange={(event) => setMethod(event.target.value as (typeof PAYMENT_METHODS)[number][0])} className={CONTROL_CLASS}>
+              {PAYMENT_METHODS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </div>
         </div>
         <p className="rounded-xl bg-slate-50 p-3 text-[10px] text-slate-600">
-          The server creates the payment reference automatically. <br />
-          Method split total:{" "}
-          <strong>{total ? formatPaise(total) : "Enter valid ₹ values"}</strong>
+          <strong>{selectedParty ? directionLabel : "Select a party first"}</strong>. The ledger updates automatically after save.
         </p>
         <InlineError message={error} />
-        <SubmitButton busy={busy}>Post payment</SubmitButton>
-      </form>
-    </WorkspaceCard>
-  );
-}
-
-function SettlementForm({
-  organizationId,
-  workspace,
-  busy,
-  onSubmit,
-}: Readonly<AccountingFormProps>) {
-  const [saleId, setSaleId] = useState("");
-  const [paymentId, setPaymentId] = useState("");
-  const [amount, setAmount] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const openSales = workspace.sales.filter(
-    (sale) => BigInt(sale.outstandingPaise) > 0n,
-  );
-  const openPayments = workspace.payments.filter(
-    (payment) =>
-      payment.direction === "RECEIPT" && BigInt(payment.availablePaise) > 0n,
-  );
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const amountPaise = rupeesToPaise(amount);
-    if (!saleId || !paymentId || !amountPaise || amountPaise === "0") {
-      setError("Select an open sale, a receipt and a valid amount.");
-      return;
-    }
-    setError(null);
-    if (await onSubmit({ organizationId, saleId, paymentId, amountPaise })) {
-      setAmount("");
-    }
-  };
-  if (!openSales.length || !openPayments.length)
-    return (
-      <WorkspaceCard title="Settle a receipt">
-        <EmptyState>
-          Post at least one outstanding sale and one unallocated receipt before
-          settlement.
-        </EmptyState>
-      </WorkspaceCard>
-    );
-  return (
-    <WorkspaceCard title="Settle receipt against sale">
-      <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-        <div>
-          <Label htmlFor="lottery-settlement-sale">Open sale</Label>
-          <select
-            id="lottery-settlement-sale"
-            value={saleId}
-            onChange={(event) => setSaleId(event.target.value)}
-            className={CONTROL_CLASS}
-          >
-            <option value="">Select sale</option>
-            {openSales.map((sale) => (
-              <option key={sale.id} value={sale.id}>
-                {sale.reference} · {sale.partyName} · due{" "}
-                {formatPaise(sale.outstandingPaise)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label htmlFor="lottery-settlement-payment">Available receipt</Label>
-          <select
-            id="lottery-settlement-payment"
-            value={paymentId}
-            onChange={(event) => setPaymentId(event.target.value)}
-            className={CONTROL_CLASS}
-          >
-            <option value="">Select receipt</option>
-            {openPayments.map((payment) => (
-              <option key={payment.id} value={payment.id}>
-                {payment.reference} · available{" "}
-                {formatPaise(payment.availablePaise)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label htmlFor="lottery-settlement-amount">
-            Settlement amount (₹)
-          </Label>
-          <input
-            id="lottery-settlement-amount"
-            inputMode="decimal"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            className={CONTROL_CLASS}
-          />
-        </div>
-        <InlineError message={error} />
-        <SubmitButton busy={busy}>Post settlement</SubmitButton>
+        <SubmitButton busy={busy}>Save payment</SubmitButton>
       </form>
     </WorkspaceCard>
   );
@@ -1455,42 +1219,6 @@ function dailyStockClearanceRows(
   const to = inputDateKey(toDate);
   if (!from || !to || to < from) return [];
 
-  const earlierMovements = workspace.stockMovements.filter(
-    (movement) => occurredDateKey(movement.occurredAt) < from,
-  );
-  const earlierSales = [...workspace.sales, ...workspace.draftSales].filter(
-    (sale) => occurredDateKey(sale.occurredAt) < from,
-  );
-  const earlierStockistEntries = workspace.stockistEntries.filter(
-    (entry) => occurredDateKey(entry.occurredAt) < from,
-  );
-  let newStock =
-    earlierMovements
-      .filter(
-        (movement) =>
-          movement.movementType === "RECEIPT" && !movement.partyId,
-      )
-      .reduce((total, movement) => total + BigInt(movement.quantity), 0n) -
-    earlierSales.reduce(
-      (total, sale) => total + BigInt(sale.dispatchQuantity),
-      0n,
-    ) +
-    earlierMovements
-      .filter((movement) => movement.movementType === "ADJUSTMENT")
-      .reduce((total, movement) => total + BigInt(movement.quantity), 0n) +
-    earlierStockistEntries.reduce(
-      (total, entry) => total + BigInt(entry.purchaseQuantity),
-      0n,
-    );
-  let returnWaiting =
-    earlierSales.reduce(
-      (total, sale) => total + BigInt(sale.returnQuantity),
-      0n,
-    ) -
-    earlierStockistEntries.reduce(
-      (total, entry) => total + BigInt(entry.totalReturnQuantity),
-      0n,
-    );
   const rows: DailyStockClearanceRow[] = [];
 
   for (let day = from; day <= to; day = nextInputDate(day)) {
@@ -1529,8 +1257,8 @@ function dailyStockClearanceRows(
     const adjustment = movements
       .filter((movement) => movement.movementType === "ADJUSTMENT")
       .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
-    newStock += purchased - dispatched + adjustment;
-    returnWaiting += returned - stockistReturned;
+    const newStock = purchased - dispatched + adjustment;
+    const returnWaiting = returned - stockistReturned;
     rows.push({
       day,
       purchased,
@@ -1548,10 +1276,14 @@ function dailyStockClearanceRows(
 
 function StatementPanel({
   workspace,
-}: Readonly<{ workspace: LotteryWorkspace }>) {
+  onEdit,
+}: Readonly<{
+  workspace: LotteryWorkspace;
+  onEdit: (operation: "SALE" | "PURCHASE", partyId: string, occurredAt: string) => void;
+}>) {
   const [fromDate, setFromDate] = useState(todayInputValue());
   const [toDate, setToDate] = useState(todayInputValue());
-  const [partyId, setPartyId] = useState("ALL");
+  const [partyId, setPartyId] = useState("");
   const from = new Date(`${fromDate}T00:00:00Z`);
   const endCandidate = new Date(`${toDate || fromDate}T00:00:00Z`);
   const to =
@@ -1563,7 +1295,7 @@ function StatementPanel({
     return date >= from && date < to;
   };
   const includesParty = (entryPartyId: string | null) =>
-    partyId === "ALL" || entryPartyId === partyId;
+    Boolean(partyId) && entryPartyId === partyId;
   const visibleStock = workspace.stockMovements.filter(
     (movement) => inRange(movement.occurredAt) && includesParty(movement.partyId),
   );
@@ -1627,7 +1359,7 @@ function StatementPanel({
     runningBalance += row.balanceEffectPaise;
     return {
       ...row,
-      balancePaise: partyId === "ALL" ? null : runningBalance.toString(),
+      balancePaise: partyId ? runningBalance.toString() : null,
     };
   });
   const purchased = visibleStockistEntries.reduce(
@@ -1663,10 +1395,6 @@ function StatementPanel({
     visiblePayments
       .filter((payment) => payment.direction === "EXPENSE")
       .map((payment) => payment.totalAmountPaise),
-  );
-  const stockClearanceRows = useMemo(
-    () => dailyStockClearanceRows(workspace, fromDate, toDate),
-    [fromDate, toDate, workspace],
   );
 
   return (
@@ -1705,7 +1433,7 @@ function StatementPanel({
               onChange={(event) => setPartyId(event.target.value)}
               className={CONTROL_CLASS}
             >
-              <option value="ALL">All parties</option>
+              <option value="">Choose a party</option>
               {workspace.parties.map((party) => (
                 <option key={party.id} value={party.id}>
                   {party.name} · {party.partyType.toLowerCase()}
@@ -1730,68 +1458,6 @@ function StatementPanel({
         />
       </div>
 
-      <WorkspaceCard title="Daily stock check">
-        <p className="text-[10px] leading-relaxed text-slate-600">
-          New stock and seller-return stock are shown separately. Orange means
-          something is still in hand or a purchase entry is missing.
-        </p>
-        <div className="mt-3 overflow-x-auto rounded-xl border border-emerald-100">
-          <table className="min-w-[820px] border-collapse text-left text-[10px]">
-            <thead className="bg-emerald-50 text-[8px] uppercase tracking-wide text-slate-600">
-              <tr>
-                {[
-                  "Date",
-                  "Purchase",
-                  "Dispatch",
-                  "Return",
-                  "To stockist",
-                  "Adjustment",
-                  "New stock",
-                  "Return waiting",
-                  "Total in hand",
-                  "Status",
-                ].map((heading) => (
-                  <th
-                    key={heading}
-                    className="border-b border-emerald-100 px-2 py-2 font-black"
-                  >
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {stockClearanceRows.map((row) => {
-                const clear = row.totalStock === 0n;
-                return (
-                  <tr
-                    key={row.day}
-                    className={`border-b border-slate-100 last:border-0 ${clear ? "bg-white" : "bg-orange-50/70"}`}
-                  >
-                    <td className="px-2 py-2">{displayDate(`${row.day}T00:00:00.000Z`)}</td>
-                    <td className="px-2 py-2">
-                      {row.purchased === 0n ? "No purchase" : row.purchased.toString()}
-                    </td>
-                    <td className="px-2 py-2">{row.dispatched.toString()}</td>
-                    <td className="px-2 py-2">{row.returned.toString()}</td>
-                    <td className="px-2 py-2">{row.stockistReturned.toString()}</td>
-                    <td className="px-2 py-2">{row.adjustment.toString()}</td>
-                    <td className="px-2 py-2 font-black">{row.newStock.toString()}</td>
-                    <td className="px-2 py-2 font-black">{row.returnWaiting.toString()}</td>
-                    <td className="px-2 py-2 font-black">{row.totalStock.toString()}</td>
-                    <td className="px-2 py-2 font-bold">
-                      {clear
-                        ? "Clear"
-                        : `${row.totalStock.toString()} in hand`}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </WorkspaceCard>
-
       <WorkspaceCard title="Day-wise ledger">
         {rows.length ? (
           <div className="overflow-x-auto rounded-xl border border-emerald-100">
@@ -1808,6 +1474,7 @@ function StatementPanel({
                     "Amount",
                     "Payment",
                     "Balance",
+                    "Edit",
                   ].map((heading) => (
                     <th
                       key={heading}
@@ -1832,6 +1499,11 @@ function StatementPanel({
                     <td className="px-2 py-2 font-black">
                       {row.balancePaise === null ? "Choose one party" : formatPaise(row.balancePaise)}
                     </td>
+                    <td className="px-2 py-2">
+                      {partyId && row.category !== "Money received" && row.category !== "Money paid" && row.category !== "Expense" ? (
+                        <button type="button" className="rounded-lg border border-emerald-200 px-2 py-1 text-[8px] font-bold text-emerald-800" onClick={() => onEdit(workspace.parties.find((party) => party.id === partyId)?.partyType === "SELLER" ? "SALE" : "PURCHASE", partyId, row.occurredAt)}>Edit</button>
+                      ) : "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1841,78 +1513,6 @@ function StatementPanel({
           <EmptyState>No saved accounting row matches this date and party.</EmptyState>
         )}
       </WorkspaceCard>
-    </div>
-  );
-}
-
-function AnalysisPanel({
-  workspace,
-}: Readonly<{ workspace: LotteryWorkspace }>) {
-  const { summary } = workspace;
-  return (
-    <div className="space-y-3">
-      <WorkspaceCard title="Verified accounting AI">
-        <p className="text-[10px] leading-relaxed text-slate-600">
-          These results use only recalculated, verified private entries. This AI
-          cannot write records or search the web.
-        </p>
-        <div className="mt-3 space-y-2">
-          {workspace.insights.map((insight) => (
-            <div
-              key={insight.skill}
-              className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] font-black capitalize text-slate-900">
-                  {insight.skill.replace(/-/g, " ")}
-                </p>
-                <span className="rounded-full bg-white px-2 py-1 text-[8px] font-bold text-emerald-700">
-                  {insight.status}
-                </span>
-              </div>
-              {insight.amountPaise && (
-                <p className="mt-1 text-sm font-black text-slate-900">
-                  {formatPaise(insight.amountPaise)}
-                </p>
-              )}
-              {insight.commissionPaise && (
-                <p className="mt-1 text-[9px] text-slate-600">
-                  Commission {formatPaise(insight.commissionPaise)} · TDS{" "}
-                  {formatPaise(insight.tdsPaise || "0")}
-                </p>
-              )}
-              {insight.findings?.length ? (
-                <p className="mt-1 text-[9px] text-orange-700">
-                  {insight.findings.map(friendlyEvent).join(", ")}
-                </p>
-              ) : null}
-              <p className="mt-1 text-[8px] text-slate-400">
-                From: {insight.sourceFields.join(", ")}
-              </p>
-            </div>
-          ))}
-        </div>
-      </WorkspaceCard>
-      <WorkspaceCard title="Verified totals">
-        <div className="grid grid-cols-2 gap-2">
-          <Metric
-            label="Commission"
-            value={formatPaise(summary.commissionPaise)}
-          />
-          <Metric label="TDS" value={formatPaise(summary.tdsPaise)} />
-          <Metric label="Expense" value={formatPaise(summary.expensePaise)} />
-          <Metric
-            label="Anomalies"
-            value={String(summary.anomalies.length)}
-            tone={summary.anomalies.length ? "orange" : "emerald"}
-          />
-        </div>
-      </WorkspaceCard>
-      <div className="rounded-[22px] border border-orange-100 bg-orange-50 p-4 text-[10px] leading-relaxed text-orange-800">
-        <ShieldCheck className="mb-2 h-4 w-4" /> Analysis is read-only. The
-        browser never receives direct table permissions; all results come
-        through the authenticated Admin server route.
-      </div>
     </div>
   );
 }

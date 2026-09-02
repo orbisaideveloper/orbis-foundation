@@ -87,6 +87,11 @@ export interface LotteryAccountingClient {
   saveDailyStockistEntry: (
     payload: Record<string, unknown>,
   ) => Promise<LotteryDailyStockistEntryIdentity>;
+  clearDailyEntries: (payload: {
+    organizationId: string;
+    occurredAt: string;
+    scope: "ALL" | "SELLER" | "STOCKIST" | "PAYMENT";
+  }) => Promise<void>;
   previewSale: (
     payload: Record<string, unknown>,
   ) => Promise<LotterySalePreview>;
@@ -164,6 +169,9 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
       entry: LotteryDailyStockistEntryIdentity;
     }>("/daily-stockist-entries", payload);
     return body.entry;
+  },
+  async clearDailyEntries(payload) {
+    await postLottery("/daily-entry-clearances", payload);
   },
   async previewSale(payload) {
     return postLottery<LotterySalePreview>("/sales/preview", payload);

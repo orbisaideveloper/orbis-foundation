@@ -159,17 +159,6 @@ function clearPending(organizationId: string, partyId: string, day: string) {
   }
 }
 
-function currentReturnBalance(workspace: LotteryWorkspace) {
-  const sellerReturns = [...workspace.sales, ...workspace.draftSales].reduce(
-    (total, sale) => total + BigInt(sale.returnQuantity),
-    0n,
-  );
-  return workspace.stockistEntries.reduce(
-    (total, entry) => total - BigInt(entry.totalReturnQuantity),
-    sellerReturns,
-  );
-}
-
 function selectedSessionBalance(
   workspace: LotteryWorkspace,
   selectedDate: string,
@@ -212,6 +201,7 @@ type Props = {
   onSave: (
     payload: Record<string, unknown>,
   ) => Promise<LotteryDailyStockistEntryIdentity | null>;
+  editRequest?: { partyId: string; occurredAt: string; token: number } | null;
 };
 
 function stockistEntryPayload({
@@ -273,8 +263,10 @@ export function DailyStockistEntry({
   organizationId,
   workspace,
   onSave,
+  editRequest,
 }: Readonly<Props>) {
   const [selectedDate, setSelectedDate] = useState(todayInputValue());
+  const [selectedPartyId, setSelectedPartyId] = useState("");
   const stockists = useMemo(
     () =>
       workspace.parties.filter(
@@ -322,6 +314,16 @@ export function DailyStockistEntry({
     versionsRef.current = new Map(recovered.map((partyId) => [partyId, 1]));
     if (recovered.length) setAutosaveVersion((version) => version + 1);
   }, [organizationId, selectedDate, stockistKey]);
+
+  useEffect(() => {
+    if (!selectedPartyId && stockists[0]) setSelectedPartyId(stockists[0].id);
+  }, [selectedPartyId, stockistKey, stockists]);
+
+  useEffect(() => {
+    if (!editRequest) return;
+    setSelectedDate(editRequest.occurredAt.slice(0, 10));
+    setSelectedPartyId(editRequest.partyId);
+  }, [editRequest]);
 
   if (!stockists.length) {
     return (
@@ -437,7 +439,7 @@ export function DailyStockistEntry({
     };
   }, [selectedDate, stockistKey]);
 
-  const calculations = stockists.map((party) => ({
+  const calculations = stockists.filter((party) => party.id === selectedPartyId).map((party) => ({
     party,
     row: rows[party.id] || blankRow(party.id),
     calculation: calculateRow(
@@ -455,7 +457,6 @@ export function DailyStockistEntry({
     net: sumValues(calculations.map(({ calculation }) => calculation.netPurchase)),
     payable: sumValues(calculations.map(({ calculation }) => calculation.payable)),
   };
-  const availableReturns = currentReturnBalance(workspace);
   const sessions = (["MORNING", "DAY", "EVENING"] as const).map((session) => ({
     session,
     ...selectedSessionBalance(workspace, selectedDate, session),
@@ -463,12 +464,7 @@ export function DailyStockistEntry({
 
   const saveTable = async () => {
     setLocalError(null);
-    for (const party of stockistsRef.current) {
-      const row = rowsRef.current[party.id];
-      if (row && (!rowIsZero(row) || row.saved)) {
-        await persistRef.current(party.id, true);
-      }
-    }
+    if (selectedPartyId) await persistRef.current(selectedPartyId, true);
   };
 
   return (
@@ -492,8 +488,7 @@ export function DailyStockistEntry({
           />
         </label>
         <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3">
-          <p className="text-[9px] font-bold uppercase text-orange-700">Return waiting now</p>
-          <p className="mt-1 text-lg font-black text-orange-900">{availableReturns.toString()} tickets</p>
+          <p className="text-[9px] font-bold uppercase text-orange-700">Return waiting for this date</p>
           <div className="mt-2 grid grid-cols-3 gap-2">
             {sessions.map(({ session, sellerReturn, stockistReturn, waiting }) => (
               <div key={session} className="rounded-lg bg-white/70 p-2 text-[8px] text-orange-900">
@@ -507,6 +502,26 @@ export function DailyStockistEntry({
         </div>
       </header>
 
+      <div className="block rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm">
+        <label
+          htmlFor="daily-stockist-party"
+          className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500"
+        >
+          Stockist
+        </label>
+        <select
+          id="daily-stockist-party"
+          aria-label="Stockist"
+          value={selectedPartyId}
+          className={CONTROL_CLASS}
+          onChange={({ target }) => setSelectedPartyId(target.value)}
+        >
+          {stockists.map(({ id, name }) => (
+            <option key={id} value={id}>{name}</option>
+          ))}
+        </select>
+      </div>
+
       {localError && (
         <p role="alert" className="rounded-xl border border-orange-100 bg-orange-50 p-3 text-[10px] text-orange-800">
           {localError}
@@ -515,7 +530,7 @@ export function DailyStockistEntry({
 
       <section className="rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm">
         <div className="flex items-center justify-between gap-2">
-          <h5 className="text-xs font-black text-slate-900">Stockist grid</h5>
+          <h5 className="text-xs font-black text-slate-900">Stockist entry</h5>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1 text-[9px] text-slate-500">Scroll sideways <ChevronDown className="h-3 w-3 rotate-[-90deg]" /></span>
             <button

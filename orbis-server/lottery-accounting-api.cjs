@@ -10,6 +10,7 @@ const CLIENT_ERROR_CODES = new Set([
   "DRAFT_SALE_NOT_FOUND",
   "INVALID_FINANCIAL_YEAR",
   "INVALID_DATE",
+  "INVALID_CLEARANCE_SCOPE",
   "INVALID_INTEGER",
   "INVALID_PAYMENT",
   "INVALID_PAYMENT_DIRECTION",
@@ -202,6 +203,18 @@ function createLotteryAccountingRouter({
         req.adminUser?.id,
       );
       return res.status(200).json({ entry });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.post("/daily-entry-clearances", async (req, res) => {
+    try {
+      const clearance = await service.clearDailyEntries(
+        req.body,
+        req.adminUser?.id,
+      );
+      return res.status(201).json({ clearance });
     } catch (error) {
       return sendAccountingError(res, error);
     }

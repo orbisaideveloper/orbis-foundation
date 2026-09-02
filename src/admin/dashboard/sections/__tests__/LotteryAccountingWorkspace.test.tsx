@@ -8,7 +8,6 @@ import type { LotteryWorkspace } from "../../../models/lotteryAccountingTypes";
 const ORGANIZATION_NAME = "Demo Lottery";
 const ORGANIZATION_OVERVIEW = `${ORGANIZATION_NAME} dashboard`;
 const SELLER_DISPATCH_LABEL = "Seller A dispatch";
-const DAILY_SELLERS_TAB = "Daily entry";
 const DAILY_SELLER_ENTRY = "Daily seller entry";
 const MORNING_RETURN_LABEL = "Seller A morning return";
 const DAY_RETURN_LABEL = "Seller A day return";
@@ -271,45 +270,32 @@ function createApi(): LotteryAccountingClient {
 }
 
 describe("LotteryAccountingWorkspace", () => {
-  it("shows a simple dashboard, party ledger and read-only AI insights", async () => {
+  it("shows the simple dashboard and opens a party-only ledger", async () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
     expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Today" })).toBeInTheDocument();
-    expect(screen.getByText("Return waiting")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Records" })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "AI analysis" }));
-    expect(
-      await screen.findByText("Verified accounting AI"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/This AI cannot write records/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Daily lottery check")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "AI analysis" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
     expect(await screen.findByText("Party ledger")).toBeInTheDocument();
     expect(screen.getByText("Day-wise ledger")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("From date"), {
-      target: { value: "2026-08-29" },
-    });
-    fireEvent.change(screen.getByLabelText("To date"), {
-      target: { value: "2026-08-30" },
-    });
-    expect(screen.getByText("Daily stock check")).toBeInTheDocument();
-    expect(screen.getByText("40 in hand")).toBeInTheDocument();
-    expect(screen.getByText("No purchase")).toBeInTheDocument();
+    expect(screen.queryByText("Daily stock check")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("From date"), { target: { value: "2026-08-30" } });
+    fireEvent.change(screen.getByLabelText("To date"), { target: { value: "2026-08-30" } });
+    fireEvent.change(screen.getByLabelText("Party"), { target: { value: "party-1" } });
+    expect(await screen.findByText("Seller sale")).toBeInTheDocument();
   });
 
-  it("uses one seller-style stockist grid for purchase and timed returns", async () => {
+  it("uses one selected stockist entry with timed returns", async () => {
     const api = createApi();
     render(<LotteryAccountingWorkspace api={api} />);
     await screen.findByText(ORGANIZATION_OVERVIEW);
-    fireEvent.click(screen.getByRole("button", { name: DAILY_SELLERS_TAB }));
+    fireEvent.click(screen.getByRole("button", { name: "Daily entry" }));
     fireEvent.click(screen.getByRole("button", { name: "Stockist purchase" }));
 
     expect(await screen.findByText("Daily purchase and stockist return")).toBeInTheDocument();
-    expect(screen.getByText("Stockist grid")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Original purchase receipt")).not.toBeInTheDocument();
+    expect(screen.getByText("Stockist entry")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Stockist A purchase"), {
       target: { value: "100" },
     });
@@ -335,17 +321,17 @@ describe("LotteryAccountingWorkspace", () => {
     );
   });
 
-  it("shows the mobile seller table with shared date, three returns and daily totals", async () => {
+  it("keeps the selected seller's backdated latest draft on screen", async () => {
     const api = createApi();
     render(<LotteryAccountingWorkspace api={api} />);
     await screen.findByText(ORGANIZATION_OVERVIEW);
-    fireEvent.click(screen.getByRole("button", { name: DAILY_SELLERS_TAB }));
+    fireEvent.click(screen.getByRole("button", { name: "Daily entry" }));
 
     expect(await screen.findByText(DAILY_SELLER_ENTRY)).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Table view" }),
-    ).toBeInTheDocument();
     expect(screen.getByText(/Daily saved total/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Entry date for all sellers"), {
+      target: { value: BACKDATED_ENTRY_DATE },
+    });
     fireEvent.change(screen.getByLabelText(SELLER_DISPATCH_LABEL), {
       target: { value: "100" },
     });
@@ -368,7 +354,7 @@ describe("LotteryAccountingWorkspace", () => {
       expect.objectContaining({
         organizationId: "org-1",
         partyId: "party-1",
-        periodId: "period-1",
+        periodId: null,
         dispatchQuantity: "100",
         morningReturnQuantity: "10",
         dayReturnQuantity: "20",
@@ -376,122 +362,5 @@ describe("LotteryAccountingWorkspace", () => {
         commissionPaise: "10000",
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Grid view" }));
-    expect(await screen.findByText(/Fixed rate ₹10\.00/)).toBeInTheDocument();
-  });
-
-  it("keeps a seller row on screen when the Admin server rejects its draft", async () => {
-    const api = createApi();
-    vi.mocked(api.saveDailySellerDraft).mockRejectedValueOnce(
-      new Error("PARTY_PROFILE_REQUIRED"),
-    );
-    render(<LotteryAccountingWorkspace api={api} />);
-    await screen.findByText(ORGANIZATION_OVERVIEW);
-    fireEvent.click(screen.getByRole("button", { name: DAILY_SELLERS_TAB }));
-    await screen.findByText(DAILY_SELLER_ENTRY);
-    fireEvent.change(screen.getByLabelText(SELLER_DISPATCH_LABEL), {
-      target: { value: "10" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: SAVE_TABLE_BUTTON }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "PARTY_PROFILE_REQUIRED",
-    );
-    expect(screen.getByLabelText(SELLER_DISPATCH_LABEL)).toHaveValue("10");
-  });
-
-  it("replaces a backdated seller value and keeps the latest draft on screen", async () => {
-    const api = createApi();
-    render(<LotteryAccountingWorkspace api={api} />);
-    await screen.findByText(ORGANIZATION_OVERVIEW);
-    fireEvent.click(screen.getByRole("button", { name: DAILY_SELLERS_TAB }));
-    await screen.findByText(DAILY_SELLER_ENTRY);
-
-    fireEvent.change(screen.getByLabelText("Entry date for all sellers"), {
-      target: { value: BACKDATED_ENTRY_DATE },
-    });
-    const dispatch = screen.getByLabelText(SELLER_DISPATCH_LABEL);
-    fireEvent.focus(dispatch);
-    fireEvent.change(dispatch, { target: { value: "100" } });
-    fireEvent.change(screen.getByLabelText(MORNING_RETURN_LABEL), {
-      target: { value: "10" },
-    });
-    fireEvent.change(screen.getByLabelText(DAY_RETURN_LABEL), {
-      target: { value: "0" },
-    });
-    fireEvent.change(screen.getByLabelText(EVENING_RETURN_LABEL), {
-      target: { value: "0" },
-    });
-    fireEvent.change(screen.getByLabelText(COMMISSION_LABEL), {
-      target: { value: "10" },
-    });
-
-    await waitFor(() =>
-      expect(api.saveDailySellerDraft).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          occurredAt: BACKDATED_ENTRY_DATE,
-          dispatchQuantity: "100",
-        }),
-      ),
-      { timeout: 2_000 },
-    );
-    fireEvent.focus(dispatch);
-    fireEvent.change(dispatch, { target: { value: "125" } });
-
-    await waitFor(() =>
-      expect(api.updateDailySellerDraft).toHaveBeenLastCalledWith(
-        "draft-1",
-        expect.objectContaining({
-          occurredAt: BACKDATED_ENTRY_DATE,
-          dispatchQuantity: "125",
-        }),
-      ),
-      { timeout: 2_000 },
-    );
-    expect(dispatch).toHaveValue("125");
-  });
-
-  it("removes an existing daily draft when every value is reset to zero", async () => {
-    const api = createApi();
-    const savedDraft: LotteryWorkspace = {
-      ...workspace,
-      sales: [],
-      draftSales: [
-        {
-          ...workspace.sales[0],
-          status: "DRAFT",
-          correctionOfSaleId: null,
-        },
-      ],
-    };
-    vi.mocked(api.loadWorkspace).mockResolvedValue(savedDraft);
-    render(<LotteryAccountingWorkspace api={api} />);
-    await screen.findByText(ORGANIZATION_OVERVIEW);
-    fireEvent.click(screen.getByRole("button", { name: DAILY_SELLERS_TAB }));
-    await screen.findByText(DAILY_SELLER_ENTRY);
-    fireEvent.change(screen.getByLabelText("Entry date for all sellers"), {
-      target: { value: "2026-08-30" },
-    });
-
-    for (const label of [
-      SELLER_DISPATCH_LABEL,
-      MORNING_RETURN_LABEL,
-      DAY_RETURN_LABEL,
-      EVENING_RETURN_LABEL,
-      COMMISSION_LABEL,
-    ]) {
-      const input = screen.getByLabelText(label);
-      fireEvent.focus(input);
-      fireEvent.change(input, { target: { value: "0" } });
-    }
-
-    await waitFor(
-      () =>
-        expect(api.deleteDailySellerDraft).toHaveBeenCalledWith("sale-1", {
-          organizationId: "org-1",
-        }),
-      { timeout: 2_000 },
-    );
-    expect(screen.getByLabelText(SELLER_DISPATCH_LABEL)).toHaveValue("0");
   });
 });

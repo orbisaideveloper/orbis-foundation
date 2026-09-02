@@ -173,6 +173,7 @@ model FoundationAccountingOrganization {
   settlements       FoundationLotterySettlement[]
   ledgerEntries     FoundationLotteryLedgerEntry[]
   auditEvents       FoundationLotteryAuditEvent[]
+  entryClearances   FoundationLotteryEntryClearance[]
 }
 
 model FoundationAccountingParty {
@@ -408,6 +409,22 @@ model FoundationLotteryAuditEvent {
 
   @@index([organizationId, createdAt])
   @@index([entityType, entityId])
+}
+
+// A clearance never deletes a party or an immutable accounting row. It marks
+// a selected day's operational entries as replaced, so a new correction for
+// that same date can be saved cleanly and the audit trail stays intact.
+model FoundationLotteryEntryClearance {
+  id               String   @id @default(uuid())
+  organizationId   String
+  occurredAt       DateTime
+  scope            String
+  createdByAdminId String
+  createdAt        DateTime @default(now())
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, occurredAt, scope])
 }
 
 // Audit events contain only release metadata. They never contain financial

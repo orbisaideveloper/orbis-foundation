@@ -39,6 +39,7 @@ function createPrismaMock() {
     sales: [],
     payments: [],
     settlements: [],
+    clearances: [],
     ledger: [],
     audits: [],
   };
@@ -152,6 +153,15 @@ function createPrismaMock() {
       },
       findMany: async ({ where = {} }) =>
         state.stockistEntries.filter((row) => within(row, where)),
+    },
+    foundationLotteryEntryClearance: {
+      create: async ({ data }) => {
+        const row = created("clearance", data);
+        state.clearances.push(row);
+        return row;
+      },
+      findMany: async ({ where = {} }) =>
+        state.clearances.filter((row) => within(row, where)),
     },
     foundationLotterySale: {
       create: async ({ data }) => {
@@ -726,13 +736,17 @@ describe("Lottery Accounting Service", () => {
       uniqueCode: "stockist-code-1",
       ticketRatePaise: 100n,
     });
-    prisma.state.stocks.push({
+    prisma.state.sales.push({
       id: "seller-return-1",
       organizationId: "org-1",
-      partyId: null,
-      movementType: "RETURN",
-      quantity: 2_000n,
-      occurredAt: new Date("2026-08-31T00:00:00.000Z"),
+      partyId: "party-1",
+      status: "DRAFT",
+      dispatchQuantity: 2_000n,
+      morningReturnQuantity: 1_000n,
+      dayReturnQuantity: 500n,
+      eveningReturnQuantity: 500n,
+      returnQuantity: 2_000n,
+      occurredAt: new Date("2026-09-01T00:00:00.000Z"),
     });
     const service = createLotteryAccountingService({ prisma });
     const first = await service.saveDailyStockistEntry(
@@ -787,9 +801,9 @@ describe("Lottery Accounting Service", () => {
     });
     expect(summary.stock).toMatchObject({
       received: "6500",
-      returned: "2000",
+      returned: "0",
       stockistReturned: "1500",
-      closing: "7000",
+      closing: "5000",
     });
   });
 

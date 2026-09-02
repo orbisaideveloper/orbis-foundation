@@ -1,10 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CheckCircle2,
   ChevronDown,
   FilePenLine,
-  Grid2X2,
-  List,
 } from "lucide-react";
 import {
   formatPaise,
@@ -19,8 +16,6 @@ import type {
   LotterySale,
   LotteryWorkspace,
 } from "../../models/lotteryAccountingTypes";
-
-type DailyViewMode = "table" | "grid";
 
 type DailySellerRow = {
   saleId?: string;
@@ -59,26 +54,6 @@ function isSameEntryDate(value: string, day: string) {
   const parsed = new Date(value);
   return (
     !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === day
-  );
-}
-
-function dateKey(value: string) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
-}
-
-function financialYearForDate(
-  periods: LotteryWorkspace["periods"],
-  selectedDate: string,
-) {
-  const matchingPeriods = periods.filter(
-    (period) =>
-      dateKey(period.startsAt) <= selectedDate &&
-      dateKey(period.endsAt) >= selectedDate,
-  );
-  return (
-    matchingPeriods.find((period) => /^FY\d{2}-\d{2}$/.test(period.label)) ||
-    matchingPeriods[0]
   );
 }
 
@@ -413,6 +388,7 @@ export interface DailySellerEntryProps {
     saleId: string,
   ) => Promise<LotteryDailySellerDraftIdentity | null>;
   onUpdateTdsRate: (tdsRateBps: number) => Promise<boolean>;
+  editRequest?: { partyId: string; occurredAt: string; token: number } | null;
 }
 
 export function DailySellerEntry({
@@ -423,9 +399,10 @@ export function DailySellerEntry({
   onDeleteDraft,
   onCorrectPosted,
   onUpdateTdsRate,
+  editRequest,
 }: Readonly<DailySellerEntryProps>) {
-  const [viewMode, setViewMode] = useState<DailyViewMode>("table");
   const [selectedDate, setSelectedDate] = useState(todayInputValue());
+  const [selectedPartyId, setSelectedPartyId] = useState("");
   const globalTdsRateBps = workspace.organization.tdsRateBps ?? 200;
   const [tdsPercent, setTdsPercent] = useState(
     (globalTdsRateBps / 100).toFixed(2),
@@ -456,10 +433,6 @@ export function DailySellerEntry({
   const sellerKey = sellers
     .map((party) => `${party.id}:${party.name}:${party.ticketRatePaise}`)
     .join("|");
-  const activeFinancialYear = useMemo(
-    () => financialYearForDate(workspace.periods, selectedDate),
-    [selectedDate, workspace.periods],
-  );
 
   rowsRef.current = rows;
   workspaceRef.current = workspace;
@@ -499,6 +472,16 @@ export function DailySellerEntry({
       setAutosaveVersion((current) => current + 1);
     }
   }, [organizationId, selectedDate, sellerKey]);
+
+  useEffect(() => {
+    if (!selectedPartyId && sellers[0]) setSelectedPartyId(sellers[0].id);
+  }, [selectedPartyId, sellerKey, sellers]);
+
+  useEffect(() => {
+    if (!editRequest) return;
+    setSelectedDate(editRequest.occurredAt.slice(0, 10));
+    setSelectedPartyId(editRequest.partyId);
+  }, [editRequest]);
 
   const postedSales = useMemo(
     () =>
@@ -575,18 +558,13 @@ export function DailySellerEntry({
         "Enter a commission amount that is not greater than the net amount.",
       );
     }
-    if (!activeFinancialYear) {
-      throw new Error(
-        "Set the financial year once in Setup before saving seller entry.",
-      );
-    }
     if (BigInt(party.ticketRatePaise || "0") <= 0n) {
       throw new Error(`Set the fixed rate profile for ${party.name} first.`);
     }
     return {
       organizationId,
       partyId: party.id,
-      periodId: activeFinancialYear.id,
+      periodId: null,
       occurredAt: selectedDate,
       dispatchQuantity: row.dispatchQuantity,
       morningReturnQuantity: row.morningReturnQuantity,
@@ -723,15 +701,6 @@ export function DailySellerEntry({
     await persistRowRef.current(party.id, true);
   };
 
-  const saveTable = async () => {
-    setLocalError(null);
-    for (const party of sellersRef.current) {
-      const row = rowsRef.current[party.id];
-      if (!row || (rowIsZero(row) && !row.saleId)) continue;
-      await persistRowRef.current(party.id, true);
-    }
-  };
-
   useEffect(() => {
     if (!autosaveVersion) return undefined;
     const timer = window.setTimeout(() => {
@@ -769,12 +738,15 @@ export function DailySellerEntry({
     await onUpdateTdsRate(Number(tdsRateBps));
   };
   const sellerViewProps = {
-    sellers,
+    sellers: sellers.filter((party) => party.id === selectedPartyId),
     rows,
     savingPartyIds,
     onChange: updateRow,
     onSave: saveRow,
-    onSaveTable: saveTable,
+    onSaveTable: async () => {
+      const party = sellersRef.current.find((item) => item.id === selectedPartyId);
+      if (party) await saveRow(party);
+    },
     tdsRateBps: globalTdsRateBps,
   };
 
@@ -814,7 +786,7 @@ export function DailySellerEntry({
           </span>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
           <label>
             <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">
               Entry date for all sellers
@@ -847,18 +819,6 @@ export function DailySellerEntry({
               </ActionButton>
             </div>
           </label>
-          <div>
-            <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">
-              Financial year
-            </span>
-            <p
-              className={`${CONTROL_CLASS} ${activeFinancialYear ? "bg-emerald-50 text-emerald-900" : "border-orange-200 bg-orange-50 text-orange-800"}`}
-            >
-              {activeFinancialYear
-                ? `${activeFinancialYear.label} · set once in Setup`
-                : "Set the financial year once in Setup"}
-            </p>
-          </div>
         </div>
         <p className="mt-2 text-[9px] text-slate-500">
           {dateCaption(selectedDate)} · Global TDS is currently{" "}
@@ -869,23 +829,12 @@ export function DailySellerEntry({
         </p>
       </header>
 
-      <div
-        className="flex gap-2 overflow-x-auto pb-1"
-        aria-label="Daily entry view"
-      >
-        <ActionButton
-          onClick={() => setViewMode("table")}
-          tone={viewMode === "table" ? "save" : "plain"}
-        >
-          <List className="h-3.5 w-3.5" /> Table view
-        </ActionButton>
-        <ActionButton
-          onClick={() => setViewMode("grid")}
-          tone={viewMode === "grid" ? "save" : "plain"}
-        >
-          <Grid2X2 className="h-3.5 w-3.5" /> Grid view
-        </ActionButton>
-      </div>
+      <label className="block rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm">
+        <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">Seller</span>
+        <select aria-label="Seller" value={selectedPartyId} onChange={(event) => setSelectedPartyId(event.target.value)} className={CONTROL_CLASS}>
+          {sellers.map((party) => <option key={party.id} value={party.id}>{party.name}</option>)}
+        </select>
+      </label>
 
       {localError && (
         <p
@@ -896,11 +845,7 @@ export function DailySellerEntry({
         </p>
       )}
 
-      {viewMode === "table" ? (
-        <DailySellerTable {...sellerViewProps} />
-      ) : (
-        <DailySellerGrid {...sellerViewProps} />
-      )}
+      <DailySellerTable {...sellerViewProps} />
 
       <DailyTotals
         title={`Daily saved total · ${dateCaption(selectedDate)}`}
@@ -925,14 +870,6 @@ interface SellerRowsProps {
   onSaveTable: () => Promise<void>;
 }
 
-type SellerActionProps = Pick<
-  SellerRowsProps,
-  "onSave" | "savingPartyIds"
-> & {
-  party: LotteryParty;
-  row: DailySellerRow;
-};
-
 type SellerQuantityProps = {
   party: LotteryParty;
   row: DailySellerRow;
@@ -946,32 +883,6 @@ type SellerQuantityProps = {
   label: string;
   onChange: SellerRowsProps["onChange"];
 };
-
-function SellerActionCell({
-  party,
-  row,
-  savingPartyIds,
-  onSave,
-}: Readonly<SellerActionProps>) {
-  const saving = savingPartyIds.has(party.id);
-  return (
-    <div className="flex flex-wrap gap-1">
-      {row.status === "POSTED" && (
-        <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-[8px] font-bold text-emerald-800">
-          <CheckCircle2 className="h-3 w-3" /> Final saved
-        </span>
-      )}
-      <ActionButton
-        disabled={saving}
-        onClick={() => void onSave(party)}
-        tone="save"
-      >
-        <FilePenLine className="h-3 w-3" />{" "}
-        {saving ? "Saving" : row.saleId ? "Save latest" : "Save draft"}
-      </ActionButton>
-    </div>
-  );
-}
 
 function DailySellerTable({
   sellers,
@@ -1248,165 +1159,6 @@ function CommissionCell({
   );
 }
 
-function DailySellerGrid({
-  sellers,
-  rows,
-  savingPartyIds,
-  tdsRateBps,
-  onChange,
-  onSave,
-}: Readonly<SellerRowsProps>) {
-  return (
-    <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-      {sellers.map((party) => {
-        const row = rows[party.id] || blankRow(party.id);
-        const calculation = calculateRow(row, party, tdsRateBps);
-        return (
-          <article
-            key={party.id}
-            className="rounded-[22px] border border-emerald-100 bg-white p-4 shadow-sm"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h5 className="text-sm font-black text-slate-900">
-                  {party.name}
-                </h5>
-                <p className="mt-1 text-[9px] leading-relaxed text-slate-500">
-                  Fixed rate {formatPaise(party.ticketRatePaise)} · Global TDS{" "}
-                  {formatPercentFromBasisPoints(tdsRateBps)} on commission
-                </p>
-              </div>
-              <span className="rounded-lg bg-emerald-50 px-2 py-1 text-[8px] font-bold text-emerald-800">
-                {row.reference || "Auto bill"}
-              </span>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <GridQuantity
-                party={party}
-                row={row}
-                field="dispatchQuantity"
-                label="Dispatch"
-                onChange={onChange}
-              />
-              <GridCommission
-                party={party}
-                row={row}
-                onChange={onChange}
-                invalid={calculation.hasInvalidCommission}
-              />
-              <GridQuantity
-                party={party}
-                row={row}
-                field="morningReturnQuantity"
-                label="Morning return"
-                onChange={onChange}
-              />
-              <GridQuantity
-                party={party}
-                row={row}
-                field="dayReturnQuantity"
-                label="Day return"
-                onChange={onChange}
-              />
-              <GridQuantity
-                party={party}
-                row={row}
-                field="eveningReturnQuantity"
-                label="Evening return"
-                onChange={onChange}
-              />
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <GridMetric
-                label="Total return"
-                value={calculation.totalReturn.toString()}
-                invalid={calculation.hasInvalidReturn}
-              />
-              <GridMetric
-                label="Net sale"
-                value={calculation.netSale.toString()}
-              />
-              <GridMetric
-                label="Net amount"
-                value={formatPaise(calculation.grossAmount)}
-              />
-              <GridMetric
-                label="Commission"
-                value={formatPaise(calculation.commission)}
-              />
-              <GridMetric
-                label="TDS on commission"
-                value={formatPaise(calculation.tds)}
-              />
-              <GridMetric
-                label="Party payable"
-                value={formatPaise(calculation.partyPayable)}
-              />
-            </div>
-            <div className="mt-3">
-              <SellerActionCell
-                party={party}
-                row={row}
-                savingPartyIds={savingPartyIds}
-                onSave={onSave}
-              />
-            </div>
-          </article>
-        );
-      })}
-    </section>
-  );
-}
-
-function GridQuantity({
-  party,
-  row,
-  field,
-  label,
-  onChange,
-}: Readonly<SellerQuantityProps>) {
-  return (
-    <label>
-      <span className="mb-1 block text-[8px] font-bold uppercase tracking-wide text-slate-500">
-        {label}
-      </span>
-      <SellerQuantityInput
-        party={party}
-        row={row}
-        field={field}
-        label={label.toLowerCase()}
-        onChange={onChange}
-      />
-    </label>
-  );
-}
-
-function GridCommission({
-  party,
-  row,
-  onChange,
-  invalid,
-}: Readonly<{
-  party: LotteryParty;
-  row: DailySellerRow;
-  onChange: SellerRowsProps["onChange"];
-  invalid: boolean;
-}>) {
-  return (
-    <label>
-      <span className="mb-1 block text-[8px] font-bold uppercase tracking-wide text-slate-500">
-        Commission (₹)
-      </span>
-      <SellerCommissionInput party={party} row={row} onChange={onChange} />
-      {invalid && (
-        <span className="mt-1 block text-[8px] font-bold text-orange-700">
-          Cannot exceed net amount
-        </span>
-      )}
-    </label>
-  );
-}
-
 function SellerQuantityInput({
   party,
   row,
@@ -1430,26 +1182,5 @@ function SellerQuantityInput({
       }}
       className={CONTROL_CLASS}
     />
-  );
-}
-
-function GridMetric({
-  label,
-  value,
-  invalid = false,
-}: Readonly<{ label: string; value: string; invalid?: boolean }>) {
-  return (
-    <div
-      className={`rounded-xl border p-2 ${invalid ? "border-orange-100 bg-orange-50" : "border-emerald-100 bg-emerald-50/45"}`}
-    >
-      <p className="text-[8px] font-bold uppercase tracking-wide text-slate-500">
-        {label}
-      </p>
-      <p
-        className={`mt-1 text-[11px] font-black ${invalid ? "text-orange-700" : "text-slate-900"}`}
-      >
-        {invalid ? "Check returns" : value}
-      </p>
-    </div>
   );
 }
