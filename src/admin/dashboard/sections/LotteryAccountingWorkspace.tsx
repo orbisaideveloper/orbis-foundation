@@ -229,9 +229,27 @@ function expenseOutstanding(
   profileId: string,
   through: string,
 ) {
-  const due = workspace.expenseBills
-    .filter((bill) => bill.profileId === profileId && throughDate(bill.occurredAt, through))
-    .reduce((total, bill) => total + BigInt(bill.amountPaise), 0n);
+  const profile = workspace.expenseProfiles.find((item) => item.id === profileId);
+  const bills = workspace.expenseBills.filter(
+    (bill) => bill.profileId === profileId && throughDate(bill.occurredAt, through),
+  );
+  let due = bills.reduce(
+    (total, bill) => total + BigInt(bill.amountPaise),
+    0n,
+  );
+  if (
+    profile?.scheduleType === "MONTHLY" &&
+    profile.recurringStartsAt &&
+    dateKey(profile.recurringStartsAt) <= through
+  ) {
+    const billingMonth = through.slice(0, 7);
+    const hasMaterializedBill = bills.some(
+      (bill) => bill.billingMonth === billingMonth,
+    );
+    if (!hasMaterializedBill) {
+      due += BigInt(profile.usualAmountPaise || "0");
+    }
+  }
   const paid = workspace.expensePayments
     .filter(
       (payment) =>
@@ -1315,7 +1333,7 @@ function ExpenseBillEntry({
   return (
     <SectionCard
       title="Expense Bill Entry"
-      hint="Create the bill first. Universal Payment pays the current outstanding later."
+      hint="One-time profiles need a bill here first. Monthly profiles create their regular due automatically; use this entry only for an extra one-time charge."
     >
       {!workspace.expenseCategories.length ? (
         <InlineNotice tone="orange">
@@ -1447,6 +1465,10 @@ function PaymentPanel({
   const after = outstanding - entered;
   const direction = kind === "SELLER" || kind === "CUSTOMER" ? "RECEIPT" : "PAYMENT";
   const balances = moneyMethodBalances(workspace, date);
+  const selectedExpenseProfile =
+    kind === "EXPENSE"
+      ? workspace.expenseProfiles.find((profile) => profile.id === accountId) || null
+      : null;
   const latestExpenseBill =
     kind === "EXPENSE"
       ? workspace.expenseBills
@@ -1465,6 +1487,19 @@ function PaymentPanel({
           )
           .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))[0]
       : null;
+  const currentExpenseBill =
+    kind === "EXPENSE" && selectedExpenseProfile?.scheduleType === "MONTHLY"
+      ? workspace.expenseBills.find(
+          (bill) =>
+            bill.profileId === accountId &&
+            bill.billingMonth === date.slice(0, 7),
+        ) || null
+      : latestExpenseBill;
+  const currentExpenseBillAmount =
+    currentExpenseBill?.amountPaise ||
+    (selectedExpenseProfile?.scheduleType === "MONTHLY"
+      ? selectedExpenseProfile.usualAmountPaise
+      : "0");
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1580,17 +1615,35 @@ function PaymentPanel({
             <Metric
               label="Last Paid"
               value={formatPaise(latestExpensePayment?.totalAmountPaise || "0")}
-            />
+            >
+              <p className="mt-1 text-[7px] text-slate-500">
+                {latestExpensePayment
+                  ? displayDate(latestExpensePayment.occurredAt)
+                  : "No payment yet"}
+              </p>
+            </Metric>
             <Metric
               label="Current Bill"
-              value={formatPaise(latestExpenseBill?.amountPaise || "0")}
+              value={formatPaise(currentExpenseBillAmount)}
               tone="blue"
-            />
+            >
+              <p className="mt-1 text-[7px] text-slate-500">
+                {selectedExpenseProfile?.scheduleType === "MONTHLY"
+                  ? `Monthly · ${date.slice(0, 7)}`
+                  : "Latest one-time bill"}
+              </p>
+            </Metric>
             <Metric
               label="Pending"
               value={formatPaise(outstanding)}
               tone="orange"
-            />
+            >
+              <p className="mt-1 text-[7px] text-slate-500">
+                {selectedExpenseProfile?.scheduleType === "MONTHLY"
+                  ? "Carries forward until fully paid"
+                  : "Bill minus payments"}
+              </p>
+            </Metric>
           </div>
         ) : (
           <Metric
@@ -2958,6 +3011,9 @@ function MastersPanel({
   const [expenseEditorOpen, setExpenseEditorOpen] = useState(false);
   const [expenseName, setExpenseName] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseScheduleType, setExpenseScheduleType] = useState<
+    "ONE_TIME" | "MONTHLY"
+  >("ONE_TIME");
   const [expenseNote, setExpenseNote] = useState("");
   const [tdsPercent, setTdsPercent] = useState(
     ((workspace?.organization.tdsRateBps || 200) / 100).toFixed(2),
@@ -2995,6 +3051,7 @@ function MastersPanel({
         ? paiseInput(BigInt(profile.usualAmountPaise))
         : "",
     );
+    setExpenseScheduleType(profile.scheduleType || "ONE_TIME");
     setExpenseNote(profile.note || "");
     setExpenseEditorOpen(true);
   }, []);
@@ -3130,6 +3187,7 @@ function MastersPanel({
       categoryId: expenseCategoryId,
       name: expenseName.trim(),
       usualAmountPaise: (parseAmount(expenseAmount) || 0n).toString(),
+      scheduleType: expenseScheduleType,
       note: expenseNote.trim() || undefined,
     };
     const ok = expenseProfileId
@@ -3148,6 +3206,7 @@ function MastersPanel({
       setExpenseProfileId("");
       setExpenseName("");
       setExpenseAmount("");
+      setExpenseScheduleType("ONE_TIME");
       setExpenseNote("");
     }
   };
@@ -3320,6 +3379,7 @@ function MastersPanel({
                 setExpenseProfileId("");
                 setExpenseName("");
                 setExpenseAmount("");
+                setExpenseScheduleType("ONE_TIME");
                 setExpenseNote("");
                 setExpenseEditorOpen(true);
               }}
@@ -3341,13 +3401,30 @@ function MastersPanel({
                   className={`${CONTROL} col-span-2`}
                   placeholder="e.g. Raju"
                 />
+                <select
+                  aria-label="Expense payment type"
+                  value={expenseScheduleType}
+                  onChange={(event) =>
+                    setExpenseScheduleType(
+                      event.target.value as "ONE_TIME" | "MONTHLY",
+                    )
+                  }
+                  className={CONTROL}
+                >
+                  <option value="ONE_TIME">One-time bill</option>
+                  <option value="MONTHLY">Monthly recurring</option>
+                </select>
                 <input
                   aria-label="Expense usual amount"
                   value={expenseAmount}
                   onChange={(event) => setExpenseAmount(event.target.value)}
                   inputMode="decimal"
                   className={CONTROL}
-                  placeholder="Usual amount ₹"
+                  placeholder={
+                    expenseScheduleType === "MONTHLY"
+                      ? "Monthly amount ₹"
+                      : "Usual/default amount ₹"
+                  }
                 />
                 <input
                   aria-label="Expense profile note"

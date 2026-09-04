@@ -450,15 +450,17 @@ model FoundationAccountingExpenseCategory {
 }
 
 model FoundationAccountingExpenseProfile {
-  id               String   @id @default(uuid())
-  organizationId   String
-  categoryId       String
-  name             String
-  usualAmountPaise BigInt   @default(0)
-  note             String?
-  status           String   @default("ACTIVE")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                String   @id @default(uuid())
+  organizationId    String
+  categoryId        String
+  name              String
+  usualAmountPaise  BigInt   @default(0)
+  scheduleType      String   @default("ONE_TIME")
+  recurringStartsAt DateTime?
+  note              String?
+  status            String   @default("ACTIVE")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   organization FoundationAccountingOrganization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   category     FoundationAccountingExpenseCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -467,6 +469,7 @@ model FoundationAccountingExpenseProfile {
 
   @@unique([organizationId, categoryId, name])
   @@index([organizationId, status])
+  @@index([organizationId, scheduleType, status])
   @@index([categoryId])
 }
 
@@ -476,6 +479,7 @@ model FoundationAccountingExpenseBill {
   profileId        String
   amountPaise      BigInt
   reference        String
+  billingMonth     String?
   occurredAt       DateTime
   createdByAdminId String
   createdAt        DateTime @default(now())
@@ -484,6 +488,7 @@ model FoundationAccountingExpenseBill {
   profile      FoundationAccountingExpenseProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, reference])
+  @@unique([organizationId, profileId, billingMonth])
   @@index([profileId, occurredAt])
   @@index([organizationId, occurredAt])
 }

@@ -148,6 +148,8 @@ const workspace: LotteryWorkspace = {
       categoryId: "salary",
       name: "Raju",
       usualAmountPaise: "720000",
+      scheduleType: "MONTHLY",
+      recurringStartsAt: RECORDED_AT,
       note: "Monthly",
       status: "ACTIVE",
       createdAt: RECORDED_AT,
@@ -164,6 +166,7 @@ const workspace: LotteryWorkspace = {
       categoryName: "Salary",
       amountPaise: "720000",
       reference: "EXB-1",
+      billingMonth: "2026-09",
       occurredAt: RECORDED_AT,
       createdAt: RECORDED_AT,
     },
@@ -329,7 +332,11 @@ describe("LotteryAccountingWorkspace smart V1", () => {
     expect(screen.getByLabelText("Expense master category")).toHaveValue("salary");
     expect(screen.getByRole("button", { name: "+ Add Category" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Category" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "+ Add Profile" })).toBeInTheDocument();
+    const addProfile = screen.getByRole("button", { name: "+ Add Profile" });
+    expect(addProfile).toBeInTheDocument();
+    fireEvent.click(addProfile);
+    expect(screen.getByLabelText("Expense payment type")).toHaveValue("ONE_TIME");
+    expect(screen.getByRole("option", { name: "Monthly recurring" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Raju" })).toBeInTheDocument();
   });
 
@@ -356,4 +363,38 @@ describe("LotteryAccountingWorkspace smart V1", () => {
       }),
     );
   });
+  it("shows a monthly expense due and accepts a partial payment from Universal Payment", async () => {
+    const api = createApi();
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText("Demo Lottery dashboard");
+
+    fireEvent.click(screen.getByRole("button", { name: "Payment" }));
+    fireEvent.change(screen.getByLabelText("Payment account type"), {
+      target: { value: "EXPENSE" },
+    });
+
+    expect(screen.getByLabelText("Expense subcategory")).toHaveValue("salary");
+    expect(screen.getByLabelText("Payment party")).toHaveValue("salary-raju");
+
+    const currentBill = screen.getByText("Current Bill").parentElement;
+    const pending = screen.getByText("Pending").parentElement;
+    expect(currentBill).toHaveTextContent("₹7,200.00");
+    expect(currentBill).toHaveTextContent("Monthly");
+    expect(pending).toHaveTextContent("₹7,200.00");
+
+    fireEvent.change(screen.getByLabelText("Payment Cash"), {
+      target: { value: "1000" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Pay ₹1,000\.00/ }));
+
+    await waitFor(() => expect(api.recordExpensePayment).toHaveBeenCalled());
+    expect(api.recordExpensePayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profileId: "salary-raju",
+        totalAmountPaise: "100000",
+        cashPaise: "100000",
+      }),
+    );
+  });
+
 });

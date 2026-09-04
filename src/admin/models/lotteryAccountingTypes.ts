@@ -218,6 +218,8 @@ export interface LotteryExpenseProfile {
   categoryId: string;
   name: string;
   usualAmountPaise: string;
+  scheduleType?: "ONE_TIME" | "MONTHLY";
+  recurringStartsAt?: string | null;
   note: string | null;
   status: string;
   createdAt: string;
@@ -233,6 +235,7 @@ export interface LotteryExpenseBill {
   categoryName: string;
   amountPaise: string;
   reference: string;
+  billingMonth?: string | null;
   occurredAt: string;
   createdAt: string;
 }

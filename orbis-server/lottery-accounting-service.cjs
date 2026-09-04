@@ -19,6 +19,8 @@ const PAYMENT_METHOD_FIELDS = [
   "chequePaise",
   "pwtPaise",
 ];
+const EXPENSE_SCHEDULE_TYPES = new Set(["ONE_TIME", "MONTHLY"]);
+const SYSTEM_MONTHLY_EXPENSE_ACTOR = "SYSTEM_MONTHLY_EXPENSE";
 
 function paymentMethodBalance(payments, method) {
   return payments.reduce((balance, payment) => {
@@ -139,6 +141,44 @@ function utcDayRange(date) {
 
 function utcDateKey(date) {
   return date.toISOString().slice(0, 10);
+}
+
+function expenseScheduleType(value) {
+  const scheduleType = String(value || "ONE_TIME").trim().toUpperCase();
+  if (!EXPENSE_SCHEDULE_TYPES.has(scheduleType)) {
+    throw accountingError("INVALID_EXPENSE_SCHEDULE", "scheduleType");
+  }
+  return scheduleType;
+}
+
+function businessMonthKey(date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return `${values.year}-${values.month}`;
+}
+
+function recurringMonthKeys(startDate, throughDate) {
+  const start = new Date(`${businessMonthKey(startDate)}-01T00:00:00.000Z`);
+  const end = new Date(`${businessMonthKey(throughDate)}-01T00:00:00.000Z`);
+  const months = [];
+  for (
+    const cursor = new Date(start);
+    cursor <= end;
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1)
+  ) {
+    months.push(cursor.toISOString().slice(0, 7));
+  }
+  return months;
+}
+
+function monthStartUtc(monthKey) {
+  return new Date(`${monthKey}-01T00:00:00.000Z`);
 }
 
 function serialize(value) {
@@ -582,6 +622,8 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     categoryId,
     name,
     usualAmountPaise,
+    scheduleType,
+    recurringStartsAt,
   ) {
     await client.foundationLotteryAuditEvent.create({
       data: {
@@ -594,6 +636,8 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           categoryId,
           name,
           usualAmountPaise: usualAmountPaise.toString(),
+          scheduleType,
+          recurringStartsAt: recurringStartsAt?.toISOString() || null,
         },
       },
     });
@@ -636,12 +680,19 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         input?.usualAmountPaise,
         "usualAmountPaise",
       ),
+      scheduleType: expenseScheduleType(input?.scheduleType),
     };
   }
 
   async function createExpenseProfile(input, actorAdminId) {
-    const { organizationId, categoryId, name, usualAmountPaise } =
-      expenseProfileFields(input);
+    const {
+      organizationId,
+      categoryId,
+      name,
+      usualAmountPaise,
+      scheduleType,
+    } = expenseProfileFields(input);
+    const recurringStartsAt = scheduleType === "MONTHLY" ? now() : null;
     return prisma.$transaction(async (client) => {
       await ensureExpenseCategory(client, organizationId, categoryId);
       const profile = await client.foundationAccountingExpenseProfile.create({
@@ -650,98 +701,228 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           categoryId,
           name,
           usualAmountPaise,
+          scheduleType,
+          recurringStartsAt,
           note: input?.note?.trim() || null,
           status: "ACTIVE",
         },
       });
-      await recordExpenseProfileAudit(client, "EXPENSE_PROFILE_CREATED", organizationId, profile.id, actorAdminId, categoryId, name, usualAmountPaise);
+      await recordExpenseProfileAudit(
+        client,
+        "EXPENSE_PROFILE_CREATED",
+        organizationId,
+        profile.id,
+        actorAdminId,
+        categoryId,
+        name,
+        usualAmountPaise,
+        scheduleType,
+        recurringStartsAt,
+      );
       return serialize(profile);
     });
   }
 
   async function updateExpenseProfile(input, actorAdminId) {
     const profileId = requiredText(input?.profileId, "profileId");
-    const { organizationId, categoryId, name, usualAmountPaise } =
-      expenseProfileFields(input);
+    const {
+      organizationId,
+      categoryId,
+      name,
+      usualAmountPaise,
+      scheduleType,
+    } = expenseProfileFields(input);
     return prisma.$transaction(async (client) => {
-      const profile = await ensureExpenseProfile(client, organizationId, profileId);
+      const profile = await ensureExpenseProfile(
+        client,
+        organizationId,
+        profileId,
+      );
       await ensureExpenseCategory(client, organizationId, categoryId);
+      const recurringStartsAt =
+        scheduleType === "MONTHLY"
+          ? profile.scheduleType === "MONTHLY" && profile.recurringStartsAt
+            ? profile.recurringStartsAt
+            : now()
+          : null;
       const updated = await client.foundationAccountingExpenseProfile.update({
         where: { id: profile.id },
         data: {
           categoryId,
           name,
           usualAmountPaise,
+          scheduleType,
+          recurringStartsAt,
           note: input?.note?.trim() || null,
         },
       });
-      await recordExpenseProfileAudit(client, "EXPENSE_PROFILE_UPDATED", organizationId, profile.id, actorAdminId, categoryId, name, usualAmountPaise);
+      await recordExpenseProfileAudit(
+        client,
+        "EXPENSE_PROFILE_UPDATED",
+        organizationId,
+        profile.id,
+        actorAdminId,
+        categoryId,
+        name,
+        usualAmountPaise,
+        scheduleType,
+        recurringStartsAt,
+      );
       return serialize(updated);
     });
+  }
+
+  async function createExpenseBillPosting(
+    client,
+    {
+      organizationId,
+      profileId,
+      amountPaise,
+      occurredAt,
+      actorAdminId,
+      suppliedReference = null,
+      billingMonth = null,
+    },
+  ) {
+    const reference = await nextReference(client, {
+      organizationId,
+      occurredAt,
+      documentType: "EXB",
+      reference: suppliedReference,
+    });
+    const bill = await client.foundationAccountingExpenseBill.create({
+      data: {
+        organizationId,
+        profileId,
+        amountPaise,
+        reference,
+        billingMonth,
+        occurredAt,
+        createdByAdminId: actorAdminId,
+      },
+    });
+    await client.foundationLotteryLedgerEntry.createMany({
+      data: [
+        {
+          organizationId,
+          transactionId: bill.id,
+          sourceType: "ACCOUNTING_EXPENSE_BILL",
+          sourceId: bill.id,
+          lineNumber: 1,
+          accountCode: "OPERATING_EXPENSE",
+          side: "DEBIT",
+          amountPaise,
+          occurredAt,
+          createdByAdminId: actorAdminId,
+        },
+        {
+          organizationId,
+          transactionId: bill.id,
+          sourceType: "ACCOUNTING_EXPENSE_BILL",
+          sourceId: bill.id,
+          lineNumber: 2,
+          accountCode: "EXPENSE_PAYABLE",
+          side: "CREDIT",
+          amountPaise,
+          occurredAt,
+          createdByAdminId: actorAdminId,
+        },
+      ],
+    });
+    await client.foundationLotteryAuditEvent.create({
+      data: {
+        organizationId,
+        eventType:
+          billingMonth === null
+            ? "EXPENSE_BILL_RECORDED"
+            : "MONTHLY_EXPENSE_BILL_GENERATED",
+        entityType: "EXPENSE_BILL",
+        entityId: bill.id,
+        actorAdminId,
+        metadata: {
+          profileId,
+          reference,
+          amountPaise: amountPaise.toString(),
+          billingMonth,
+        },
+      },
+    });
+    return bill;
+  }
+
+  async function ensureRecurringExpenseBillsThrough(
+    client,
+    organizationId,
+    throughDate,
+  ) {
+    const profiles = await client.foundationAccountingExpenseProfile.findMany({
+      where: {
+        organizationId,
+        status: "ACTIVE",
+        scheduleType: "MONTHLY",
+      },
+    });
+    if (!profiles.length) return;
+
+    const profileIds = profiles.map((profile) => profile.id);
+    const existingBills = await client.foundationAccountingExpenseBill.findMany({
+      where: {
+        organizationId,
+        profileId: { in: profileIds },
+        billingMonth: { not: null },
+      },
+    });
+    const existing = new Set(
+      existingBills.map((bill) => `${bill.profileId}:${bill.billingMonth}`),
+    );
+
+    for (const profile of profiles) {
+      if (!profile.recurringStartsAt || BigInt(profile.usualAmountPaise) <= 0n) {
+        continue;
+      }
+      for (const billingMonth of recurringMonthKeys(
+        profile.recurringStartsAt,
+        throughDate,
+      )) {
+        const key = `${profile.id}:${billingMonth}`;
+        if (existing.has(key)) continue;
+        try {
+          await createExpenseBillPosting(client, {
+            organizationId,
+            profileId: profile.id,
+            amountPaise: BigInt(profile.usualAmountPaise),
+            occurredAt: monthStartUtc(billingMonth),
+            actorAdminId: SYSTEM_MONTHLY_EXPENSE_ACTOR,
+            billingMonth,
+          });
+          existing.add(key);
+        } catch (error) {
+          if (error?.code !== "P2002") throw error;
+        }
+      }
+    }
   }
 
   async function recordExpenseBill(input, actorAdminId) {
     const organizationId = requiredText(input?.organizationId, "organizationId");
     const profileId = requiredText(input?.profileId, "profileId");
     const amountPaise = nonNegativeInteger(input?.amountPaise, "amountPaise");
-    if (amountPaise === 0n) throw accountingError("INVALID_PAYMENT", "amountPaise");
-    const occurredAt = optionalDate(input?.occurredAt, "occurredAt", now());
-    const suppliedReference = optionalReference(input?.reference);
+    if (amountPaise === 0n) {
+      throw accountingError("INVALID_PAYMENT", "amountPaise");
+    }
+    const [occurredAt, suppliedReference] = [
+      optionalDate(input?.occurredAt, "occurredAt", now()),
+      optionalReference(input?.reference),
+    ];
     return prisma.$transaction(async (client) => {
       await ensureExpenseProfile(client, organizationId, profileId);
-      const reference = await nextReference(client, {
+      const bill = await createExpenseBillPosting(client, {
         organizationId,
+        profileId,
+        amountPaise,
         occurredAt,
-        documentType: "EXB",
-        reference: suppliedReference,
-      });
-      const bill = await client.foundationAccountingExpenseBill.create({
-        data: {
-          organizationId,
-          profileId,
-          amountPaise,
-          reference,
-          occurredAt,
-          createdByAdminId: actorAdminId,
-        },
-      });
-      await client.foundationLotteryLedgerEntry.createMany({
-        data: [
-          {
-            organizationId,
-            transactionId: bill.id,
-            sourceType: "ACCOUNTING_EXPENSE_BILL",
-            sourceId: bill.id,
-            lineNumber: 1,
-            accountCode: "OPERATING_EXPENSE",
-            side: "DEBIT",
-            amountPaise,
-            occurredAt,
-            createdByAdminId: actorAdminId,
-          },
-          {
-            organizationId,
-            transactionId: bill.id,
-            sourceType: "ACCOUNTING_EXPENSE_BILL",
-            sourceId: bill.id,
-            lineNumber: 2,
-            accountCode: "EXPENSE_PAYABLE",
-            side: "CREDIT",
-            amountPaise,
-            occurredAt,
-            createdByAdminId: actorAdminId,
-          },
-        ],
-      });
-      await client.foundationLotteryAuditEvent.create({
-        data: {
-          organizationId,
-          eventType: "EXPENSE_BILL_RECORDED",
-          entityType: "EXPENSE_BILL",
-          entityId: bill.id,
-          actorAdminId,
-          metadata: { profileId, reference, amountPaise: amountPaise.toString() },
-        },
+        actorAdminId,
+        suppliedReference,
       });
       return serialize(bill);
     });
@@ -766,6 +947,11 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     const suppliedReference = optionalReference(input?.reference);
     return prisma.$transaction(async (client) => {
       await ensureExpenseProfile(client, organizationId, profileId);
+      await ensureRecurringExpenseBillsThrough(
+        client,
+        organizationId,
+        occurredAt,
+      );
       const [bills, previousExpensePayments, priorLotteryPayments] =
         await Promise.all([
           client.foundationAccountingExpenseBill.findMany({
@@ -2074,6 +2260,14 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     if (!organization) {
       throw accountingError("ORGANIZATION_NOT_FOUND", "organizationId");
     }
+
+    await prisma.$transaction((client) =>
+      ensureRecurringExpenseBillsThrough(
+        client,
+        scopedOrganizationId,
+        now(),
+      ),
+    );
 
     const [
       parties,
