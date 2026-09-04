@@ -116,6 +116,20 @@ export interface LotteryAccountingClient {
     payload: Record<string, unknown>,
   ) => Promise<LotteryDailySellerDraftIdentity>;
   recordPayment: (payload: Record<string, unknown>) => Promise<void>;
+
+  createExpenseCategory: (payload: Record<string, unknown>) => Promise<void>;
+  updateExpenseCategory: (
+    categoryId: string,
+    payload: Record<string, unknown>,
+  ) => Promise<void>;
+  createExpenseProfile: (payload: Record<string, unknown>) => Promise<void>;
+  updateExpenseProfile: (
+    profileId: string,
+    payload: Record<string, unknown>,
+  ) => Promise<void>;
+  recordExpenseBill: (payload: Record<string, unknown>) => Promise<void>;
+  recordExpensePayment: (payload: Record<string, unknown>) => Promise<void>;
+  recordCustomerBill: (payload: Record<string, unknown>) => Promise<void>;
   recordSettlement: (payload: Record<string, unknown>) => Promise<void>;
 }
 
@@ -214,6 +228,34 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
   },
   async recordPayment(payload) {
     await postLottery("/payments", payload);
+  },
+
+  async createExpenseCategory(payload) {
+    await postLottery("/expenses/categories", payload);
+  },
+  async updateExpenseCategory(categoryId, payload) {
+    await patchLottery(
+      `/expenses/categories/${encodeURIComponent(categoryId)}`,
+      payload,
+    );
+  },
+  async createExpenseProfile(payload) {
+    await postLottery("/expenses/profiles", payload);
+  },
+  async updateExpenseProfile(profileId, payload) {
+    await patchLottery(
+      `/expenses/profiles/${encodeURIComponent(profileId)}`,
+      payload,
+    );
+  },
+  async recordExpenseBill(payload) {
+    await postLottery("/expenses/bills", payload);
+  },
+  async recordExpensePayment(payload) {
+    await postLottery("/expenses/payments", payload);
+  },
+  async recordCustomerBill(payload) {
+    await postLottery("/customer-bills", payload);
   },
   async recordSettlement(payload) {
     await postLottery("/settlements", payload);

@@ -181,6 +181,11 @@ const workspace: LotteryWorkspace = {
       createdAt: RECORDED_AT,
     },
   ],
+  expenseCategories: [],
+  expenseProfiles: [],
+  expenseBills: [],
+  expensePayments: [],
+  customerBills: [],
   summary: {
     verified: true,
     moneyUnit: "PAISE",
@@ -223,6 +228,13 @@ function createApi(): LotteryAccountingClient {
     createOrganization: vi.fn().mockResolvedValue(organization),
     createParty: vi.fn().mockResolvedValue(undefined),
     updatePartyProfile: vi.fn().mockResolvedValue(undefined),
+    createExpenseCategory: vi.fn().mockResolvedValue(undefined),
+    updateExpenseCategory: vi.fn().mockResolvedValue(undefined),
+    createExpenseProfile: vi.fn().mockResolvedValue(undefined),
+    updateExpenseProfile: vi.fn().mockResolvedValue(undefined),
+    recordExpenseBill: vi.fn().mockResolvedValue(undefined),
+    recordExpensePayment: vi.fn().mockResolvedValue(undefined),
+    recordCustomerBill: vi.fn().mockResolvedValue(undefined),
     updateOrganizationTdsRate: vi.fn().mockResolvedValue(undefined),
     updateUserLedgerStorage: vi.fn().mockResolvedValue(undefined),
     createPeriod: vi.fn().mockResolvedValue(undefined),
@@ -273,21 +285,20 @@ function createApi(): LotteryAccountingClient {
 }
 
 describe("LotteryAccountingWorkspace", () => {
-  it("shows the simple dashboard and opens a party-only ledger", async () => {
+  it("shows the smart dashboard and opens the hierarchical seller ledger", async () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
     expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Today" })).toBeInTheDocument();
-    expect(screen.getByText("Daily lottery check")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "AI analysis" })).not.toBeInTheDocument();
+    expect(screen.getByText("Net Profit")).toBeInTheDocument();
+    expect(screen.getByText("Receivable")).toBeInTheDocument();
+    expect(screen.getByText("Payable")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
-    expect(await screen.findByText("Party ledger")).toBeInTheDocument();
-    expect(screen.getByText("Day-wise ledger")).toBeInTheDocument();
-    expect(screen.queryByText("Daily stock check")).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("From date"), { target: { value: ACCOUNTING_ENTRY_DATE } });
-    fireEvent.change(screen.getByLabelText("To date"), { target: { value: ACCOUNTING_ENTRY_DATE } });
-    fireEvent.change(screen.getByLabelText("Party"), { target: { value: "party-1" } });
-    expect(await screen.findByText("Seller sale")).toBeInTheDocument();
+    expect(await screen.findByText("Universal Ledger Hub")).toBeInTheDocument();
+    expect(screen.getByLabelText("Ledger Book")).toHaveValue("seller");
+    expect(screen.getByLabelText("Ledger Party")).toHaveValue("party-1");
+    expect(screen.getByRole("button", { name: "Compact List" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Table View" })).toBeInTheDocument();
   });
 
   it("shows business commission reconciliation and profit or loss for the selected dates", async () => {
@@ -347,20 +358,15 @@ describe("LotteryAccountingWorkspace", () => {
       target: { value: ACCOUNTING_ENTRY_DATE },
     });
 
-    expect(screen.getByText("Profit & commission")).toBeInTheDocument();
-    expect(screen.getByText("Commission surplus")).toBeInTheDocument();
+    expect(screen.getByText("Commission reconciliation")).toBeInTheDocument();
+    expect(screen.getByText("Profit & Loss")).toBeInTheDocument();
 
-    const differenceCard = screen.getByText("Commission difference").parentElement;
-    expect(differenceCard).toHaveTextContent("₹10.00");
-
-    const totalCommissionCard = screen.getByText("Total commission").parentElement;
-    expect(totalCommissionCard).toHaveTextContent("₹90.00");
-
-    const profitCard = screen.getByText("Net profit / loss").parentElement;
+    const profitCard = screen.getByText("Net Profit").parentElement;
     expect(profitCard).toHaveTextContent("₹90.00");
+    expect(screen.getAllByText("₹10.00").length).toBeGreaterThan(0);
   });
 
-  it("keeps seller grid as the default and shows every seller in table view", async () => {
+  it("keeps one selected seller in Grid and every seller in Table view", async () => {
     const multiSellerWorkspace: LotteryWorkspace = {
       ...workspace,
       parties: [
@@ -385,9 +391,8 @@ describe("LotteryAccountingWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: DAILY_ENTRY_BUTTON }));
 
     const sellerGrid = await screen.findByRole("region", { name: "Seller grid" });
-    expect(sellerGrid).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Grid view" })).toBeInTheDocument();
-    expect(within(sellerGrid).getByText("Seller B")).toBeInTheDocument();
+    expect(within(sellerGrid).getByText("Seller A")).toBeInTheDocument();
+    expect(within(sellerGrid).queryByText("Seller B")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Table view" }));
     const sellerTable = screen.getByRole("table");
@@ -395,7 +400,7 @@ describe("LotteryAccountingWorkspace", () => {
     expect(within(sellerTable).getByText("Seller B")).toBeInTheDocument();
   });
 
-  it("shows date-wise outstanding and saves one split payment across methods", async () => {
+  it("shows date-wise stockist outstanding and saves one split payment across methods", async () => {
     const paymentWorkspace: LotteryWorkspace = {
       ...workspace,
       stockistEntries: [
@@ -438,29 +443,32 @@ describe("LotteryAccountingWorkspace", () => {
 
     render(<LotteryAccountingWorkspace api={api} />);
     await screen.findByText(ORGANIZATION_OVERVIEW);
-    expect(screen.getByText("Current money balances")).toBeInTheDocument();
+    expect(screen.getByText("Current money")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Payment" }));
-    fireEvent.change(screen.getByLabelText("Party"), {
+    fireEvent.change(screen.getByLabelText("Payment account type"), {
+      target: { value: "STOCKIST" },
+    });
+    fireEvent.change(screen.getByLabelText("Payment party"), {
       target: { value: STOCKIST_ID },
     });
     fireEvent.change(screen.getByLabelText("Date"), {
       target: { value: ACCOUNTING_ENTRY_DATE },
     });
 
-    expect(await screen.findByText("Outstanding to pay")).toBeInTheDocument();
-    expect(screen.getByText("₹600.00")).toBeInTheDocument();
+    expect(await screen.findByText("Amount to pay")).toBeInTheDocument();
+    expect(screen.getAllByText("₹600.00").length).toBeGreaterThan(0);
 
-    fireEvent.change(screen.getByLabelText("Payment amount 1"), {
+    fireEvent.change(screen.getByLabelText("Payment Cash"), {
       target: { value: "100" },
     });
-    fireEvent.change(screen.getByLabelText("Payment amount 2"), {
+    fireEvent.change(screen.getByLabelText("Payment Bank"), {
       target: { value: "150" },
     });
-    fireEvent.change(screen.getByLabelText("Payment amount 3"), {
+    fireEvent.change(screen.getByLabelText("Payment PWT"), {
       target: { value: "50" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save payment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pay ₹300.00" }));
 
     await waitFor(() => expect(api.recordPayment).toHaveBeenCalled());
     expect(api.recordPayment).toHaveBeenCalledWith(
@@ -478,21 +486,6 @@ describe("LotteryAccountingWorkspace", () => {
         },
       }),
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
-    fireEvent.change(screen.getByLabelText("From date"), {
-      target: { value: ACCOUNTING_ENTRY_DATE },
-    });
-    fireEvent.change(screen.getByLabelText("To date"), {
-      target: { value: ACCOUNTING_ENTRY_DATE },
-    });
-    fireEvent.change(screen.getByLabelText("Party"), {
-      target: { value: "party-1" },
-    });
-    fireEvent.click(await screen.findByText("Details"));
-    expect(screen.getByText("Cash:")).toBeInTheDocument();
-    expect(screen.getByText("Bank:")).toBeInTheDocument();
-    expect(screen.getByText("PWT:")).toBeInTheDocument();
   });
 
   it("uses one selected stockist entry with timed returns", async () => {
@@ -500,7 +493,7 @@ describe("LotteryAccountingWorkspace", () => {
     render(<LotteryAccountingWorkspace api={api} />);
     await screen.findByText(ORGANIZATION_OVERVIEW);
     fireEvent.click(screen.getByRole("button", { name: DAILY_ENTRY_BUTTON }));
-    fireEvent.click(screen.getByRole("button", { name: "Stockist purchase" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stockist Purchase" }));
 
     expect(await screen.findByText("Daily purchase and stockist return")).toBeInTheDocument();
     expect(screen.getByText("Stockist entry")).toBeInTheDocument();

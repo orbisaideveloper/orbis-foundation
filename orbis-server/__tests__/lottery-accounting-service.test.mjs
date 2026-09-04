@@ -40,6 +40,11 @@ function createPrismaMock() {
     payments: [],
     settlements: [],
     clearances: [],
+    expenseCategories: [],
+    expenseProfiles: [],
+    expenseBills: [],
+    expensePayments: [],
+    customerBills: [],
     ledger: [],
     audits: [],
   };
@@ -211,6 +216,26 @@ function createPrismaMock() {
         state.settlements.filter((row) => within(row, where)),
       count: async ({ where = {} }) =>
         state.settlements.filter((row) => within(row, where)).length,
+    },
+    foundationAccountingExpenseCategory: {
+      findMany: async ({ where = {} }) =>
+        state.expenseCategories.filter((row) => within(row, where)),
+    },
+    foundationAccountingExpenseProfile: {
+      findMany: async ({ where = {} }) =>
+        state.expenseProfiles.filter((row) => within(row, where)),
+    },
+    foundationAccountingExpenseBill: {
+      findMany: async ({ where = {} }) =>
+        state.expenseBills.filter((row) => within(row, where)),
+    },
+    foundationAccountingExpensePayment: {
+      findMany: async ({ where = {} }) =>
+        state.expensePayments.filter((row) => within(row, where)),
+    },
+    foundationAccountingCustomerBill: {
+      findMany: async ({ where = {} }) =>
+        state.customerBills.filter((row) => within(row, where)),
     },
     foundationLotteryLedgerEntry: {
       createMany: async ({ data }) => {

@@ -8,6 +8,9 @@ const CACHE_CONTROL = "Cache-Control";
 const CLIENT_ERROR_CODES = new Set([
   "DATA_INTEGRITY_ERROR",
   "DRAFT_SALE_NOT_FOUND",
+  "EXPENSE_CATEGORY_NOT_FOUND",
+  "EXPENSE_PROFILE_NOT_FOUND",
+  "INVALID_CUSTOMER_PARTY",
   "INVALID_FINANCIAL_YEAR",
   "INVALID_DATE",
   "INVALID_CLEARANCE_SCOPE",
@@ -266,6 +269,88 @@ function createLotteryAccountingRouter({
       const preview = await service.previewSale(req.body);
       res.setHeader(CACHE_CONTROL, NO_STORE);
       return res.json(preview);
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+
+  router.post("/expenses/categories", async (req, res) => {
+    try {
+      const category = await service.createExpenseCategory(
+        req.body,
+        req.adminUser?.id,
+      );
+      return res.status(201).json({ category });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.patch("/expenses/categories/:categoryId", async (req, res) => {
+    try {
+      const category = await service.updateExpenseCategory(
+        { ...req.body, categoryId: req.params.categoryId },
+        req.adminUser?.id,
+      );
+      return res.json({ category });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.post("/expenses/profiles", async (req, res) => {
+    try {
+      const profile = await service.createExpenseProfile(
+        req.body,
+        req.adminUser?.id,
+      );
+      return res.status(201).json({ profile });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.patch("/expenses/profiles/:profileId", async (req, res) => {
+    try {
+      const profile = await service.updateExpenseProfile(
+        { ...req.body, profileId: req.params.profileId },
+        req.adminUser?.id,
+      );
+      return res.json({ profile });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.post("/expenses/bills", async (req, res) => {
+    try {
+      const bill = await service.recordExpenseBill(req.body, req.adminUser?.id);
+      return res.status(201).json({ bill });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.post("/expenses/payments", async (req, res) => {
+    try {
+      const payment = await service.recordExpensePayment(
+        req.body,
+        req.adminUser?.id,
+      );
+      return res.status(201).json({ payment });
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.post("/customer-bills", async (req, res) => {
+    try {
+      const result = await service.recordCustomerBill(
+        req.body,
+        req.adminUser?.id,
+      );
+      return res.status(201).json(result);
     } catch (error) {
       return sendAccountingError(res, error);
     }

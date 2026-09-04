@@ -174,6 +174,11 @@ model FoundationAccountingOrganization {
   ledgerEntries     FoundationLotteryLedgerEntry[]
   auditEvents       FoundationLotteryAuditEvent[]
   entryClearances   FoundationLotteryEntryClearance[]
+  expenseCategories FoundationAccountingExpenseCategory[]
+  expenseProfiles   FoundationAccountingExpenseProfile[]
+  expenseBills      FoundationAccountingExpenseBill[]
+  expensePayments   FoundationAccountingExpensePayment[]
+  customerBills     FoundationAccountingCustomerBill[]
 }
 
 model FoundationAccountingParty {
@@ -195,6 +200,7 @@ model FoundationAccountingParty {
   payments     FoundationLotteryPayment[]
   stockMovements FoundationLotteryStockMovement[]
   stockistEntries FoundationLotteryStockistEntry[]
+  customerBills   FoundationAccountingCustomerBill[]
 
   @@unique([organizationId, name])
   @@index([organizationId, status])
@@ -425,6 +431,101 @@ model FoundationLotteryEntryClearance {
   organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, occurredAt, scope])
+}
+
+
+model FoundationAccountingExpenseCategory {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  profiles     FoundationAccountingExpenseProfile[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+}
+
+model FoundationAccountingExpenseProfile {
+  id               String   @id @default(uuid())
+  organizationId   String
+  categoryId       String
+  name             String
+  usualAmountPaise BigInt   @default(0)
+  note             String?
+  status           String   @default("ACTIVE")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization FoundationAccountingOrganization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  category     FoundationAccountingExpenseCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  bills        FoundationAccountingExpenseBill[]
+  payments     FoundationAccountingExpensePayment[]
+
+  @@unique([organizationId, categoryId, name])
+  @@index([organizationId, status])
+  @@index([categoryId])
+}
+
+model FoundationAccountingExpenseBill {
+  id               String   @id @default(uuid())
+  organizationId   String
+  profileId        String
+  amountPaise      BigInt
+  reference        String
+  occurredAt       DateTime
+  createdByAdminId String
+  createdAt        DateTime @default(now())
+
+  organization FoundationAccountingOrganization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  profile      FoundationAccountingExpenseProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, reference])
+  @@index([profileId, occurredAt])
+  @@index([organizationId, occurredAt])
+}
+
+model FoundationAccountingExpensePayment {
+  id               String   @id @default(uuid())
+  organizationId   String
+  profileId        String
+  totalAmountPaise BigInt
+  cashPaise        BigInt   @default(0)
+  bankPaise        BigInt   @default(0)
+  reference        String
+  occurredAt       DateTime
+  createdByAdminId String
+  createdAt        DateTime @default(now())
+
+  organization FoundationAccountingOrganization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  profile      FoundationAccountingExpenseProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, reference])
+  @@index([profileId, occurredAt])
+  @@index([organizationId, occurredAt])
+}
+
+model FoundationAccountingCustomerBill {
+  id               String   @id @default(uuid())
+  organizationId   String
+  partyId          String
+  quantity         BigInt
+  unitRatePaise    BigInt
+  amountPaise      BigInt
+  reference        String
+  occurredAt       DateTime
+  createdByAdminId String
+  createdAt        DateTime @default(now())
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  party        FoundationAccountingParty        @relation(fields: [partyId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, reference])
+  @@index([partyId, occurredAt])
+  @@index([organizationId, occurredAt])
 }
 
 // Audit events contain only release metadata. They never contain financial

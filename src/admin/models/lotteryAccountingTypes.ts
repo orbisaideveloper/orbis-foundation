@@ -202,6 +202,69 @@ export interface LotteryInsight {
   sourceFields: string[];
 }
 
+
+export interface LotteryExpenseCategory {
+  id: string;
+  organizationId: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LotteryExpenseProfile {
+  id: string;
+  organizationId: string;
+  categoryId: string;
+  name: string;
+  usualAmountPaise: string;
+  note: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LotteryExpenseBill {
+  id: string;
+  organizationId: string;
+  profileId: string;
+  profileName: string;
+  categoryId: string;
+  categoryName: string;
+  amountPaise: string;
+  reference: string;
+  occurredAt: string;
+  createdAt: string;
+}
+
+export interface LotteryExpensePayment {
+  id: string;
+  organizationId: string;
+  profileId: string;
+  profileName: string;
+  categoryId: string;
+  categoryName: string;
+  totalAmountPaise: string;
+  cashPaise: string;
+  bankPaise: string;
+  reference: string;
+  occurredAt: string;
+  createdAt: string;
+}
+
+export interface LotteryCustomerBill {
+  id: string;
+  organizationId: string;
+  partyId: string;
+  partyName: string;
+  quantity: string;
+  unitRatePaise: string;
+  amountPaise: string;
+  reference: string;
+  occurredAt: string;
+  createdAt: string;
+}
+
 export interface LotteryWorkspace {
   organization: LotteryOrganization;
   parties: LotteryParty[];
@@ -214,6 +277,11 @@ export interface LotteryWorkspace {
   settlements: LotterySettlement[];
   ledgerEntries: LotteryLedgerEntry[];
   auditEvents: LotteryAuditEvent[];
+  expenseCategories: LotteryExpenseCategory[];
+  expenseProfiles: LotteryExpenseProfile[];
+  expenseBills: LotteryExpenseBill[];
+  expensePayments: LotteryExpensePayment[];
+  customerBills: LotteryCustomerBill[];
   summary: VerifiedLotterySummary;
   insights: LotteryInsight[];
 }

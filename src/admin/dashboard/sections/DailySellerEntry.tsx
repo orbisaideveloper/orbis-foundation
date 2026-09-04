@@ -742,15 +742,14 @@ export function DailySellerEntry({
     setLocalError(null);
     await onUpdateTdsRate(Number(tdsRateBps));
   };
-  const orderedSellers = useMemo(() => {
-    if (!selectedPartyId) return sellers;
-    const selected = sellers.find((party) => party.id === selectedPartyId);
-    if (!selected) return sellers;
-    return [selected, ...sellers.filter((party) => party.id !== selectedPartyId)];
-  }, [selectedPartyId, sellers]);
+  const selectedSeller = useMemo(
+    () => sellers.find((party) => party.id === selectedPartyId) || sellers[0],
+    [selectedPartyId, sellers],
+  );
 
   const sellerViewProps = {
-    sellers: orderedSellers,
+    sellers:
+      viewMode === "grid" && selectedSeller ? [selectedSeller] : sellers,
     rows,
     savingPartyIds,
     onChange: updateRow,
@@ -862,12 +861,12 @@ export function DailySellerEntry({
       </div>
 
       <label className="block rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm">
-        <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">Focus seller (optional)</span>
+        <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">Seller</span>
         <select aria-label="Seller" value={selectedPartyId} onChange={(event) => setSelectedPartyId(event.target.value)} className={CONTROL_CLASS}>
           {sellers.map((party) => <option key={party.id} value={party.id}>{party.name}</option>)}
         </select>
         <span className="mt-1 block text-[8px] text-slate-500">
-          All sellers remain visible. This only moves the selected seller to the first position.
+          Grid shows only this seller. Table view can show every seller for the selected date.
         </span>
       </label>
 

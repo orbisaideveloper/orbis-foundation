@@ -1,10 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  LoaderCircle,
-  Plus,
-  RefreshCw,
-  WalletCards,
-} from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronRight, LoaderCircle, RefreshCw, WalletCards } from "lucide-react";
 import { DailySellerEntry } from "./DailySellerEntry";
 import { DailyStockistEntry } from "./DailyStockistEntry";
 import { WorkspaceSectionTabs } from "./WorkspaceSectionTabs";
@@ -15,256 +10,484 @@ import {
 import {
   formatPaise,
   rupeesToPaise,
-  sumPaise,
 } from "../../models/lotteryAccountingMoney";
-import {
-  pickMobileContact,
-  supportsMobileContactPicker,
-} from "../../models/mobileContactPicker";
 import type {
-  LotteryOrganization,
+  LotteryExpenseCategory,
+  LotteryExpenseProfile,
+  LotteryParty,
   LotteryPartyType,
   LotteryWorkspace,
 } from "../../models/lotteryAccountingTypes";
 
-type WorkspaceTab =
-  | "dashboard"
-  | "setup"
+type WorkspaceTab = "dashboard" | "daily" | "payment" | "ledger" | "ai" | "masters";
+type DailyMode = "SELLER" | "STOCKIST" | "CASH_CUSTOMER" | "EXPENSE";
+type PartyMasterType = Extract<LotteryPartyType, "SELLER" | "STOCKIST" | "CUSTOMER">;
+type PaymentKind = "SELLER" | "STOCKIST" | "CUSTOMER" | "EXPENSE";
+type MoneyMethod = "cashPaise" | "bankPaise" | "upiPaise" | "pwtPaise";
+type LedgerPeriod = "today" | "7d" | "10d" | "month" | "year" | "custom";
+type LedgerBookType =
   | "seller"
-  | "entry"
-  | "statements";
-type DailyOperation = "SALE" | "PURCHASE";
-
-type DailyEditRequest = {
-  operation: DailyOperation;
-  partyId: string;
-  occurredAt: string;
-  token: number;
-};
+  | "customer"
+  | "stockist"
+  | "sale"
+  | "purchase"
+  | "return"
+  | "commission"
+  | "tds"
+  | "expense"
+  | "payment"
+  | "money"
+  | "pwt"
+  | "stock";
 
 const WORKSPACE_TABS: Array<[WorkspaceTab, string]> = [
   ["dashboard", "Dashboard"],
-  ["setup", "Setup"],
-  ["seller", "Daily entry"],
-  ["entry", "Payment"],
-  ["statements", "Ledger"],
+  ["daily", "Daily entry"],
+  ["payment", "Payment"],
+  ["ledger", "Ledger"],
+  ["ai", "AI"],
+  ["masters", "Masters"],
 ];
 
-const PARTY_TYPES: Array<[LotteryPartyType, string]> = [
-  ["SELLER", "Seller"],
-  ["STOCKIST", "Stockist"],
-  ["SERVICE_STOCKIST", "Service stockist"],
-  ["CUSTOMER", "Customer"],
-];
-
-const PAYMENT_METHODS = [
+const PARTY_PAYMENT_METHODS: Array<[MoneyMethod, string]> = [
   ["cashPaise", "Cash"],
   ["bankPaise", "Bank"],
   ["upiPaise", "UPI"],
-  ["chequePaise", "Cheque"],
   ["pwtPaise", "PWT"],
-] as const;
+];
 
-type PaymentMethodKey = (typeof PAYMENT_METHODS)[number][0];
+const CONTROL =
+  "w-full rounded-xl border border-emerald-100 bg-white px-3 py-2.5 text-xs text-slate-800 outline-none placeholder:text-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
+const LIGHT_CARD =
+  "rounded-[22px] border border-emerald-100/90 bg-gradient-to-br from-white via-emerald-50/20 to-orange-50/35 p-4 shadow-[0_10px_28px_rgba(15,68,50,0.055)]";
+const SOFT_BUTTON =
+  "rounded-xl border border-emerald-100 bg-white px-3 py-2 text-[10px] font-bold text-slate-600";
+const ACTIVE_BUTTON =
+  "rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-100 to-orange-100 px-3 py-2 text-[10px] font-black text-emerald-900";
 
-type PaymentInputRow = {
-  id: number;
-  method: PaymentMethodKey;
-  amount: string;
-};
-
-function initialPaymentRows(): PaymentInputRow[] {
-  return [
-    { id: 1, method: "cashPaise", amount: "" },
-    { id: 2, method: "bankPaise", amount: "" },
-    { id: 3, method: "pwtPaise", amount: "" },
-  ];
+function businessDateToday() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
-function paymentMethodBalances(
-  payments: LotteryWorkspace["payments"],
-  throughDate?: string,
+function dateKey(value: string) {
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
+  return match?.[1] || "";
+}
+
+function addDays(day: string, days: number) {
+  const value = new Date(`${day}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function monthStart(day: string) {
+  return `${day.slice(0, 7)}-01`;
+}
+
+function yearStart(day: string) {
+  return `${day.slice(0, 4)}-01-01`;
+}
+
+function periodBounds(
+  period: LedgerPeriod,
+  customFrom: string,
+  customTo: string,
 ) {
-  const balances = Object.fromEntries(
-    PAYMENT_METHODS.map(([key]) => [key, 0n]),
-  ) as Record<PaymentMethodKey, bigint>;
-  const cutoff = throughDate
-    ? new Date(`${throughDate}T23:59:59.999Z`)
-    : null;
-
-  for (const payment of payments) {
-    if (cutoff && new Date(payment.occurredAt) > cutoff) continue;
-    const sign = payment.direction === "RECEIPT" ? 1n : -1n;
-    for (const [key] of PAYMENT_METHODS) {
-      balances[key] += sign * BigInt(payment.methodSplit[key] || "0");
-    }
-  }
-
-  return balances;
+  const today = businessDateToday();
+  if (period === "today") return { from: today, to: today };
+  if (period === "7d") return { from: addDays(today, -6), to: today };
+  if (period === "10d") return { from: addDays(today, -9), to: today };
+  if (period === "month") return { from: monthStart(today), to: today };
+  if (period === "year") return { from: yearStart(today), to: today };
+  const from = customFrom || today;
+  const to = customTo && customTo >= from ? customTo : from;
+  return { from, to };
 }
 
-function partyOutstandingAt(
-  workspace: LotteryWorkspace,
-  partyId: string,
-  throughDate: string,
-) {
-  const party = workspace.parties.find((item) => item.id === partyId);
-  if (!party) return null;
-
-  const cutoff = new Date(`${throughDate}T23:59:59.999Z`);
-  const through = (occurredAt: string) => new Date(occurredAt) <= cutoff;
-  const partyPayments = workspace.payments.filter(
-    (payment) => payment.partyId === partyId && through(payment.occurredAt),
-  );
-
-  if (party.partyType === "SELLER") {
-    const sales = [...workspace.sales, ...workspace.draftSales]
-      .filter((sale) => sale.partyId === partyId && through(sale.occurredAt))
-      .reduce((total, sale) => total + BigInt(sale.netPayablePaise), 0n);
-    const receipts = partyPayments
-      .filter((payment) => payment.direction === "RECEIPT")
-      .reduce(
-        (total, payment) => total + BigInt(payment.totalAmountPaise),
-        0n,
-      );
-    return {
-      label: "Outstanding to receive",
-      amountPaise: sales - receipts,
-    };
-  }
-
-  if (
-    party.partyType === "STOCKIST" ||
-    party.partyType === "SERVICE_STOCKIST"
-  ) {
-    const purchases = workspace.stockistEntries
-      .filter((entry) => entry.partyId === partyId && through(entry.occurredAt))
-      .reduce(
-        (total, entry) => total + BigInt(entry.netPayablePaise),
-        0n,
-      );
-    const paid = partyPayments
-      .filter((payment) => payment.direction === "PAYMENT")
-      .reduce(
-        (total, payment) => total + BigInt(payment.totalAmountPaise),
-        0n,
-      );
-    return {
-      label: "Outstanding to pay",
-      amountPaise: purchases - paid,
-    };
-  }
-
-  return null;
+function inDateRange(value: string, from: string, to: string) {
+  const day = dateKey(value);
+  return Boolean(day && day >= from && day <= to);
 }
 
-function todayInputValue() {
-  return new Date().toISOString().slice(0, 10);
+function throughDate(value: string, to: string) {
+  const day = dateKey(value);
+  return Boolean(day && day <= to);
 }
 
-function paiseToRupeesInput(value: string) {
-  const paise = BigInt(value);
-  return `${paise / 100n}.${(paise % 100n).toString().padStart(2, "0")}`;
+function sumBigInt(values: Iterable<string | number | bigint>) {
+  let total = 0n;
+  for (const value of values) total += BigInt(value);
+  return total;
 }
 
-function friendlyError(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "The Accounting workspace could not be updated.";
+function paiseInput(value: bigint) {
+  return `${value / 100n}.${(value % 100n).toString().padStart(2, "0")}`;
+}
+
+function parseAmount(value: string) {
+  const paise = rupeesToPaise(value);
+  return paise ? BigInt(paise) : null;
 }
 
 function displayDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
+  const key = dateKey(value);
+  if (!key) return value;
+  const parsed = new Date(`${key}T00:00:00.000Z`);
+  return parsed.toLocaleDateString("en-IN", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function expenseProfileLabel(
+  profile: LotteryExpenseProfile,
+  categories: LotteryExpenseCategory[],
+) {
+  const category =
+    categories.find((item) => item.id === profile.categoryId)?.name || "Expense";
+  return `${category} › ${profile.name}`;
+}
+
+function moneyMethodBalances(workspace: LotteryWorkspace, through?: string) {
+  const result: Record<MoneyMethod, bigint> = {
+    cashPaise: 0n,
+    bankPaise: 0n,
+    upiPaise: 0n,
+    pwtPaise: 0n,
+  };
+  for (const payment of workspace.payments) {
+    if (through && !throughDate(payment.occurredAt, through)) continue;
+    const sign = payment.direction === "RECEIPT" ? 1n : -1n;
+    for (const [method] of PARTY_PAYMENT_METHODS) {
+      result[method] += sign * BigInt(payment.methodSplit[method] || "0");
+    }
+  }
+  for (const payment of workspace.expensePayments) {
+    if (through && !throughDate(payment.occurredAt, through)) continue;
+    result.cashPaise -= BigInt(payment.cashPaise);
+    result.bankPaise -= BigInt(payment.bankPaise);
+  }
+  return result;
+}
+
+function partyPaymentTotal(
+  workspace: LotteryWorkspace,
+  partyId: string,
+  direction: "RECEIPT" | "PAYMENT",
+  through: string,
+) {
+  return workspace.payments
+    .filter(
+      (payment) =>
+        payment.partyId === partyId &&
+        payment.direction === direction &&
+        throughDate(payment.occurredAt, through),
+    )
+    .reduce((total, payment) => total + BigInt(payment.totalAmountPaise), 0n);
+}
+
+function sellerOutstanding(workspace: LotteryWorkspace, partyId: string, through: string) {
+  const due = [...workspace.sales, ...workspace.draftSales]
+    .filter((sale) => sale.partyId === partyId && throughDate(sale.occurredAt, through))
+    .reduce((total, sale) => total + BigInt(sale.netPayablePaise), 0n);
+  return due - partyPaymentTotal(workspace, partyId, "RECEIPT", through);
+}
+
+function stockistOutstanding(
+  workspace: LotteryWorkspace,
+  partyId: string,
+  through: string,
+) {
+  const due = workspace.stockistEntries
+    .filter((entry) => entry.partyId === partyId && throughDate(entry.occurredAt, through))
+    .reduce((total, entry) => total + BigInt(entry.netPayablePaise), 0n);
+  return due - partyPaymentTotal(workspace, partyId, "PAYMENT", through);
+}
+
+function customerOutstanding(
+  workspace: LotteryWorkspace,
+  partyId: string,
+  through: string,
+) {
+  const due = workspace.customerBills
+    .filter((bill) => bill.partyId === partyId && throughDate(bill.occurredAt, through))
+    .reduce((total, bill) => total + BigInt(bill.amountPaise), 0n);
+  return due - partyPaymentTotal(workspace, partyId, "RECEIPT", through);
+}
+
+function expenseOutstanding(
+  workspace: LotteryWorkspace,
+  profileId: string,
+  through: string,
+) {
+  const due = workspace.expenseBills
+    .filter((bill) => bill.profileId === profileId && throughDate(bill.occurredAt, through))
+    .reduce((total, bill) => total + BigInt(bill.amountPaise), 0n);
+  const paid = workspace.expensePayments
+    .filter(
+      (payment) =>
+        payment.profileId === profileId && throughDate(payment.occurredAt, through),
+    )
+    .reduce((total, payment) => total + BigInt(payment.totalAmountPaise), 0n);
+  return due - paid;
+}
+
+type PriorityRow = {
+  id: string;
+  name: string;
+  type: "Seller" | "Customer" | "Stockist" | "Expense";
+  amountPaise: bigint;
+};
+
+function sortPriorityRows(rows: PriorityRow[]) {
+  return rows.sort((left, right) =>
+    left.amountPaise === right.amountPaise
+      ? left.name.localeCompare(right.name)
+      : left.amountPaise > right.amountPaise
+        ? -1
+        : 1,
+  );
+}
+
+function receivablePriority(workspace: LotteryWorkspace, through: string) {
+  const result: PriorityRow[] = [];
+  for (const party of workspace.parties) {
+    if (party.partyType === "SELLER") {
+      const amountPaise = sellerOutstanding(workspace, party.id, through);
+      if (amountPaise > 0n)
+        result.push({ id: party.id, name: party.name, type: "Seller", amountPaise });
+    } else if (party.partyType === "CUSTOMER") {
+      const amountPaise = customerOutstanding(workspace, party.id, through);
+      if (amountPaise > 0n)
+        result.push({ id: party.id, name: party.name, type: "Customer", amountPaise });
+    }
+  }
+  return sortPriorityRows(result);
+}
+
+function payablePriority(workspace: LotteryWorkspace, through: string) {
+  const result: PriorityRow[] = [];
+  for (const party of workspace.parties) {
+    if (
+      party.partyType === "STOCKIST" ||
+      party.partyType === "SERVICE_STOCKIST"
+    ) {
+      const amountPaise = stockistOutstanding(workspace, party.id, through);
+      if (amountPaise > 0n)
+        result.push({ id: party.id, name: party.name, type: "Stockist", amountPaise });
+    }
+  }
+  for (const profile of workspace.expenseProfiles) {
+    const amountPaise = expenseOutstanding(workspace, profile.id, through);
+    if (amountPaise > 0n) {
+      result.push({
+        id: profile.id,
+        name: expenseProfileLabel(profile, workspace.expenseCategories),
+        type: "Expense",
+        amountPaise,
       });
+    }
+  }
+  return sortPriorityRows(result);
 }
 
-function WorkspaceCard({
-  title,
-  children,
-}: Readonly<{ title: string; children: React.ReactNode }>) {
-  return (
-    <section className="rounded-[22px] border border-emerald-100 bg-white/90 p-4 shadow-sm">
-      <h4 className="text-sm font-black text-slate-900">{title}</h4>
-      <div className="mt-3">{children}</div>
-    </section>
+function periodBusinessMetrics(
+  workspace: LotteryWorkspace,
+  from: string,
+  to: string,
+) {
+  const sales = [...workspace.sales, ...workspace.draftSales].filter((sale) =>
+    inDateRange(sale.occurredAt, from, to),
   );
-}
-
-function EmptyState({ children }: Readonly<{ children: React.ReactNode }>) {
-  return (
-    <p className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/50 p-3 text-[10px] leading-relaxed text-slate-600">
-      {children}
-    </p>
+  const purchases = workspace.stockistEntries.filter((entry) =>
+    inDateRange(entry.occurredAt, from, to),
   );
+  const legacyExpenses = workspace.payments.filter(
+    (payment) =>
+      payment.direction === "EXPENSE" &&
+      inDateRange(payment.occurredAt, from, to),
+  );
+  const expensePayments = workspace.expensePayments.filter((payment) =>
+    inDateRange(payment.occurredAt, from, to),
+  );
+  const sellerGross = sumBigInt(sales.map((sale) => sale.grossSalesPaise));
+  const stockistGross = sumBigInt(
+    purchases.map((entry) => entry.grossPurchasePaise),
+  );
+  const sellerCommission = sumBigInt(sales.map((sale) => sale.commissionPaise));
+  const stockistCommission = sumBigInt(
+    purchases.map((entry) => entry.commissionPaise),
+  );
+  const commissionDifference = stockistCommission - sellerCommission;
+  const expenses =
+    sumBigInt(legacyExpenses.map((item) => item.totalAmountPaise)) +
+    sumBigInt(expensePayments.map((item) => item.totalAmountPaise));
+  return {
+    sales,
+    purchases,
+    sellerGross,
+    stockistGross,
+    sellerCommission,
+    stockistCommission,
+    commissionDifference,
+    expenses,
+    profit: sellerGross - stockistGross + commissionDifference - expenses,
+  };
 }
 
 function Metric({
   label,
   value,
-  tone = "emerald",
-}: Readonly<{ label: string; value: string; tone?: "emerald" | "orange" }>) {
-  return (
-    <div
-      className={`rounded-xl border p-3 ${tone === "emerald" ? "border-emerald-100 bg-emerald-50/45" : "border-orange-100 bg-orange-50/50"}`}
-    >
-      <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">
+  tone = "green",
+  children,
+  onClick,
+}: Readonly<{
+  label: string;
+  value: string;
+  tone?: "green" | "orange" | "blue" | "violet";
+  children?: React.ReactNode;
+  onClick?: () => void;
+}>) {
+  const toneClass = {
+    green: "from-emerald-50 to-emerald-100/45 border-emerald-100",
+    orange: "from-orange-50 to-amber-100/45 border-orange-100",
+    blue: "from-blue-50 to-sky-100/45 border-blue-100",
+    violet: "from-violet-50 to-purple-100/45 border-violet-100",
+  }[tone];
+  const content = (
+    <>
+      <p className="text-[8px] font-black uppercase tracking-[0.08em] text-slate-500">
         {label}
       </p>
-      <p className="mt-1 text-sm font-black text-slate-900">{value}</p>
+      <p className="mt-1 text-lg font-black tracking-tight text-slate-950">{value}</p>
+      {children}
+    </>
+  );
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`min-w-0 rounded-2xl border bg-gradient-to-br p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,.9)] ${toneClass}`}
+    >
+      {content}
+    </button>
+  ) : (
+    <div
+      className={`min-w-0 rounded-2xl border bg-gradient-to-br p-3 ${toneClass}`}
+    >
+      {content}
     </div>
   );
 }
 
-function Label({
-  htmlFor,
+function InlineNotice({
+  tone = "green",
   children,
-}: Readonly<{ htmlFor: string; children: React.ReactNode }>) {
+}: Readonly<{ tone?: "green" | "orange"; children: React.ReactNode }>) {
   return (
-    <label
-      htmlFor={htmlFor}
-      className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500"
+    <div
+      className={`rounded-xl border p-3 text-[9px] leading-relaxed ${
+        tone === "green"
+          ? "border-emerald-100 bg-emerald-50/60 text-emerald-900"
+          : "border-orange-100 bg-orange-50/70 text-orange-900"
+      }`}
     >
       {children}
+    </div>
+  );
+}
+
+function SectionCard({
+  title,
+  hint,
+  children,
+}: Readonly<{
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}>) {
+  return (
+    <section className={LIGHT_CARD}>
+      <h4 className="text-sm font-black text-slate-950">{title}</h4>
+      {hint && <p className="mt-1 text-[9px] leading-relaxed text-slate-500">{hint}</p>}
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+function Button({
+  active = false,
+  children,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
+  return (
+    <button
+      type="button"
+      {...props}
+      className={`${active ? ACTIVE_BUTTON : SOFT_BUTTON} ${props.className || ""}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+type SimpleEntryProps = Readonly<{
+  workspace: LotteryWorkspace;
+  organizationId: string;
+  busy: boolean;
+  onSave: (payload: Record<string, unknown>) => Promise<boolean>;
+}>;
+
+function EntryDateField({
+  value,
+  onChange,
+}: Readonly<{ value: string; onChange: (value: string) => void }>) {
+  return (
+    <label>
+      <span className="text-[8px] font-bold text-slate-500">Date</span>
+      <input
+        type="date"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={CONTROL}
+      />
     </label>
   );
 }
 
-const CONTROL_CLASS =
-  "w-full rounded-xl border border-emerald-100 bg-white px-3 py-2.5 text-xs text-slate-800 outline-none placeholder:text-slate-300 focus:border-emerald-500";
-
-function InlineError({ message }: Readonly<{ message: string | null }>) {
-  if (!message) return null;
-  return (
-    <p className="mt-3 rounded-xl border border-orange-100 bg-orange-50 p-2.5 text-[9px] text-orange-800">
-      {message}
-    </p>
-  );
-}
-
-function SubmitButton({
-  children,
-  busy,
-  className = "",
+function ExpenseCategorySelect({
+  categories,
+  value,
+  onChange,
+  ariaLabel,
 }: Readonly<{
-  children: React.ReactNode;
-  busy?: boolean;
-  className?: string;
+  categories: LotteryExpenseCategory[];
+  value: string;
+  onChange: (value: string) => void;
+  ariaLabel?: string;
 }>) {
   return (
-    <button
-      type="submit"
-      disabled={busy}
-      className={`inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+    <select
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className={CONTROL}
     >
-      {busy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-      {children}
-    </button>
+      {categories.map((category) => (
+        <option key={category.id} value={category.id}>
+          {category.name}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -275,234 +498,156 @@ interface LotteryAccountingWorkspaceProps {
 export function LotteryAccountingWorkspace({
   api = lotteryAccountingClient,
 }: Readonly<LotteryAccountingWorkspaceProps>) {
-  const [organizations, setOrganizations] = useState<LotteryOrganization[]>([]);
+  const [organizations, setOrganizations] = useState<
+    LotteryWorkspace["organization"][]
+  >([]);
   const [organizationId, setOrganizationId] = useState("");
   const [workspace, setWorkspace] = useState<LotteryWorkspace | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>("dashboard");
-  const [dailyOperation, setDailyOperation] = useState<DailyOperation>("SALE");
-  const [dailyEditRequest, setDailyEditRequest] =
-    useState<DailyEditRequest | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [workingAction, setWorkingAction] = useState<string | null>(null);
+  const [dailyMode, setDailyMode] = useState<DailyMode>("SELLER");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [working, setWorking] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const dailyRefreshTimerRef = useRef<number | null>(null);
+
+  const loadOrganizations = useCallback(async () => {
+    setLoading(true);
+    try {
+      const next = await api.listOrganizations();
+      setOrganizations(next);
+      setOrganizationId((current) =>
+        next.some((item) => item.id === current) ? current : next[0]?.id || "",
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Accounting unavailable.");
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
 
   const refreshWorkspace = useCallback(
-    async (nextOrganizationId = organizationId) => {
-      if (!nextOrganizationId) {
+    async (nextId = organizationId) => {
+      if (!nextId) {
         setWorkspace(null);
         return;
       }
-      setIsRefreshing(true);
+      setRefreshing(true);
       try {
-        setWorkspace(await api.loadWorkspace(nextOrganizationId));
-      } catch (loadError) {
-        setError(friendlyError(loadError));
+        setWorkspace(await api.loadWorkspace(nextId));
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Accounting unavailable.");
       } finally {
-        setIsRefreshing(false);
+        setRefreshing(false);
       }
     },
     [api, organizationId],
   );
 
-  const refreshOrganizations = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const nextOrganizations = await api.listOrganizations();
-      setOrganizations(nextOrganizations);
-      setOrganizationId((current) => {
-        if (
-          nextOrganizations.some((organization) => organization.id === current)
-        ) {
-          return current;
-        }
-        return nextOrganizations[0]?.id || "";
-      });
-    } catch (loadError) {
-      setError(friendlyError(loadError));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [api]);
-
-  const scheduleDailyWorkspaceRefresh = useCallback(() => {
-    if (dailyRefreshTimerRef.current !== null) {
-      window.clearTimeout(dailyRefreshTimerRef.current);
-    }
-    dailyRefreshTimerRef.current = window.setTimeout(() => {
-      dailyRefreshTimerRef.current = null;
-      void refreshWorkspace();
-    }, 1_200);
-  }, [refreshWorkspace]);
-
-  useEffect(
-    () => () => {
-      if (dailyRefreshTimerRef.current !== null) {
-        window.clearTimeout(dailyRefreshTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  const runDailyDraftAction = useCallback(
-    async <T,>(action: () => Promise<T>): Promise<T | null> => {
-      setError(null);
-      try {
-        const result = await action();
-        scheduleDailyWorkspaceRefresh();
-        return result;
-      } catch (actionError) {
-        setError(friendlyError(actionError));
-        return null;
-      }
-    },
-    [scheduleDailyWorkspaceRefresh],
-  );
+  useEffect(() => {
+    void loadOrganizations();
+  }, [loadOrganizations]);
 
   useEffect(() => {
-    void refreshOrganizations();
-  }, [refreshOrganizations]);
+    if (organizationId) void refreshWorkspace(organizationId);
+    else if (!loading) setTab("masters");
+  }, [organizationId, loading, refreshWorkspace]);
 
-  useEffect(() => {
-    if (!organizationId) {
-      setWorkspace(null);
-      if (!isLoading) {
-        setTab("setup");
-      }
-      return;
-    }
-    void refreshWorkspace(organizationId);
-  }, [isLoading, organizationId, refreshWorkspace]);
-
-  const runAction = async (
+  const run = async (
     key: string,
-    action: () => Promise<void>,
-    successMessage: string,
+    action: () => Promise<unknown>,
+    success: string,
   ) => {
-    setWorkingAction(key);
+    setWorking(key);
     setError(null);
     setNotice(null);
     try {
       await action();
-      setNotice(successMessage);
+      setNotice(success);
       await refreshWorkspace();
       return true;
-    } catch (actionError) {
-      setError(friendlyError(actionError));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Accounting update failed.");
       return false;
     } finally {
-      setWorkingAction(null);
+      setWorking(null);
     }
   };
 
   const createOrganization = async (name: string) => {
-    setWorkingAction("organization");
-    setError(null);
-    setNotice(null);
+    setWorking("organization");
     try {
       const created = await api.createOrganization({ name });
-      const nextOrganizations = await api.listOrganizations();
-      setOrganizations(nextOrganizations);
+      const next = await api.listOrganizations();
+      setOrganizations(next);
       setOrganizationId(created.id);
-      setNotice("Accounting workspace created. Add a party and period next.");
-      setTab("setup");
+      setNotice("Accounting workspace created.");
       return true;
-    } catch (actionError) {
-      setError(friendlyError(actionError));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Workspace could not be created.");
       return false;
     } finally {
-      setWorkingAction(null);
+      setWorking(null);
     }
   };
 
-  const selectedOrganization = useMemo(
-    () =>
-      organizations.find((organization) => organization.id === organizationId),
-    [organizations, organizationId],
-  );
-
-  if (isLoading) {
+  if (loading) {
     return (
-      <WorkspaceCard title="Lottery Accounting">
+      <SectionCard title="Lottery Accounting">
         <p className="flex items-center gap-2 text-xs text-slate-500">
-          <LoaderCircle className="h-4 w-4 animate-spin" /> Loading private
-          accounting workspace…
+          <LoaderCircle className="h-4 w-4 animate-spin" /> Loading accounting…
         </p>
-      </WorkspaceCard>
+      </SectionCard>
     );
   }
 
   return (
-    <section
-      className="space-y-3"
-      aria-label="Lottery Accounting data workspace"
-    >
-      <header className="rounded-[22px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-orange-50/50 p-4 shadow-sm">
+    <section className="space-y-3" aria-label="Lottery Accounting data workspace">
+      <header className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-orange-50 p-4 shadow-[0_12px_34px_rgba(20,85,61,.07)]">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700">
-              Private Admin workspace
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-emerald-700">
+              ORBIS Foundation · Lottery Accounting
             </p>
-            <h4 className="mt-1 text-lg font-black text-slate-900">
-              Lottery Accounting
-            </h4>
+            <h3 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+              Smart Accounting Cockpit
+            </h3>
             <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-              Record what you bought, what you gave, what came back and what
-              you paid or received.
+              Easy outside. The existing accounting rules stay underneath.
             </p>
           </div>
-          <span className="rounded-xl bg-emerald-600 p-2.5 text-white">
+          <span className="rounded-2xl border border-orange-100 bg-gradient-to-br from-emerald-100 to-orange-100 p-3 text-emerald-800">
             <WalletCards className="h-5 w-5" />
           </span>
         </div>
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex gap-2">
           <select
             aria-label="Accounting organization"
             value={organizationId}
-            onChange={(event) => {
-              setError(null);
-              setNotice(null);
-              setOrganizationId(event.target.value);
-            }}
-            className={`${CONTROL_CLASS} flex-1 py-2 text-[10px]`}
+            onChange={(event) => setOrganizationId(event.target.value)}
+            className={`${CONTROL} flex-1`}
           >
-            <option value="">Create an organization first</option>
-            {organizations.map((organization) => (
-              <option key={organization.id} value={organization.id}>
-                {organization.name}
+            <option value="">Create organization</option>
+            {organizations.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
               </option>
             ))}
           </select>
           <button
             type="button"
             aria-label="Refresh accounting workspace"
+            disabled={!organizationId || refreshing}
             onClick={() => void refreshWorkspace()}
-            disabled={!organizationId || isRefreshing}
-            className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl border border-emerald-100 bg-white text-emerald-700 disabled:opacity-50"
+            className="grid h-10 w-10 place-items-center rounded-xl border border-emerald-100 bg-white text-emerald-700 disabled:opacity-50"
           >
-            <RefreshCw
-              className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-            />
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
         </div>
       </header>
 
-      {notice && (
-        <p className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-[10px] text-emerald-800">
-          {notice}
-        </p>
-      )}
-      {error && (
-        <p
-          role="alert"
-          className="rounded-xl border border-orange-100 bg-orange-50 p-3 text-[10px] text-orange-800"
-        >
-          {error}
-        </p>
-      )}
+      {notice && <InlineNotice>{notice}</InlineNotice>}
+      {error && <InlineNotice tone="orange">{error}</InlineNotice>}
 
       <WorkspaceSectionTabs
         ariaLabel="Accounting workspace sections"
@@ -511,147 +656,68 @@ export function LotteryAccountingWorkspace({
         onSelect={setTab}
       />
 
-      {!selectedOrganization || !workspace ? (
-        <SetupPanel
+      {!workspace ? (
+        <MastersPanel
           workspace={null}
-          onCreateOrganization={createOrganization}
-          onCreateParty={() => Promise.resolve(false)}
-          onUpdatePartyProfile={() => Promise.resolve(false)}
-          onUpdateUserLedgerStorage={() => Promise.resolve(false)}
-          onCreateFinancialYearPeriod={() => Promise.resolve(false)}
-          workingAction={workingAction}
           organizationId=""
+          api={api}
+          working={working}
+          createOrganization={createOrganization}
+          run={run}
         />
       ) : (
         <>
           {tab === "dashboard" && (
             <DashboardPanel
               workspace={workspace}
-              onOpenLedger={() => setTab("statements")}
+              openLedger={() => setTab("ledger")}
             />
           )}
-          {tab === "setup" && (
-            <SetupPanel
+          {tab === "daily" && (
+            <DailyPanel
               workspace={workspace}
               organizationId={organizationId}
-              onCreateOrganization={createOrganization}
-              onCreateParty={(payload) =>
-                runAction(
-                  "party",
-                  () => api.createParty(payload),
-                  "Party saved in the private accounting workspace.",
-                )
-              }
-              onUpdatePartyProfile={(payload) =>
-                runAction(
-                  "party-profile",
-                  () => api.updatePartyProfile(payload),
-                  "Seller fixed rate updated.",
-                )
-              }
-              onUpdateUserLedgerStorage={(userLedgerStorage) =>
-                runAction(
-                  "user-ledger-storage",
-                  () =>
-                    api.updateUserLedgerStorage({
-                      organizationId,
-                      userLedgerStorage,
-                    }),
-                  "Future user ledger storage policy saved. Party directory remains private in the database.",
-                )
-              }
-              onCreateFinancialYearPeriod={(payload) =>
-                runAction(
-                  "financial-year",
-                  () => api.createFinancialYearPeriod(payload),
-                  "Financial year created or selected.",
-                )
-              }
-              workingAction={workingAction}
+              api={api}
+              mode={dailyMode}
+              setMode={setDailyMode}
+              run={run}
+              refreshWorkspace={refreshWorkspace}
             />
           )}
-          {tab === "seller" && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 rounded-xl border border-emerald-100 bg-white p-2">
-                {(["SALE", "PURCHASE"] as const).map((operation) => <button key={operation} type="button" onClick={() => setDailyOperation(operation)} className={`rounded-lg px-3 py-2 text-[10px] font-bold ${dailyOperation === operation ? "bg-emerald-600 text-white" : "text-slate-600"}`}>{operation === "SALE" ? "Seller sale" : "Stockist purchase"}</button>)}
-              </div>
-              {dailyOperation === "SALE" ? <DailySellerEntry
-              organizationId={organizationId}
-              workspace={workspace}
-              editRequest={dailyEditRequest?.operation === "SALE" ? dailyEditRequest : null}
-              onSaveDraft={(payload) =>
-                runDailyDraftAction(() => api.saveDailySellerDraft(payload))
-              }
-              onUpdateDraft={(saleId, payload) =>
-                runDailyDraftAction(() =>
-                  api.updateDailySellerDraft(saleId, payload),
-                )
-              }
-              onDeleteDraft={(saleId) =>
-                runDailyDraftAction(async () => {
-                  await api.deleteDailySellerDraft(saleId, { organizationId });
-                  return true;
-                }).then(Boolean)
-              }
-              onCorrectPosted={(saleId) =>
-                runDailyDraftAction(() =>
-                  api.correctPostedSale(saleId, { organizationId }),
-                )
-              }
-              onUpdateTdsRate={(tdsRateBps) =>
-                runAction(
-                  "global-tds-rate",
-                  () =>
-                    api.updateOrganizationTdsRate({
-                      organizationId,
-                      tdsRateBps,
-                    }),
-                  "Global TDS rate updated for new and draft seller entries.",
-                )
-              }
-              /> : <DailyStockistEntry
-                organizationId={organizationId}
-                workspace={workspace}
-                editRequest={dailyEditRequest?.operation === "PURCHASE" ? dailyEditRequest : null}
-                onSave={(payload) =>
-                  runDailyDraftAction(() => api.saveDailyStockistEntry(payload))
-                }
-              />}
-              <DailyCleanupPanel
-                organizationId={organizationId}
-                busy={workingAction === "daily-clear"}
-                onClear={(payload) =>
-                  runAction(
-                    "daily-clear",
-                    () => api.clearDailyEntries(payload),
-                    "The selected day's entries are cleared. Party profiles remain safe.",
-                  )
-                }
-              />
-            </div>
-          )}
-          {tab === "entry" && (
-            <EntryPanel
+          {tab === "payment" && (
+            <PaymentPanel
               workspace={workspace}
               organizationId={organizationId}
-              workingAction={workingAction}
-              onPayment={(payload) =>
-                runAction(
-                  "payment",
-                  () => api.recordPayment(payload),
-                  "Payment posted with its method split.",
-                )
-              }
+              api={api}
+              working={working}
+              run={run}
             />
           )}
-          {tab === "statements" && (
-            <StatementPanel
+          {tab === "ledger" && (
+            <LedgerPanel
               workspace={workspace}
-              onEdit={(operation, partyId, occurredAt) => {
-                setDailyOperation(operation);
-                setDailyEditRequest({ operation, partyId, occurredAt, token: Date.now() });
-                setTab("seller");
+              editParty={(party) => {
+                setTab("masters");
+                sessionStorage.setItem("orbis-accounting-edit-party", party.id);
               }}
+              editExpense={(profile) => {
+                setTab("masters");
+                sessionStorage.setItem(
+                  "orbis-accounting-edit-expense",
+                  profile.id,
+                );
+              }}
+            />
+          )}
+          {tab === "ai" && <AiPanel workspace={workspace} />}
+          {tab === "masters" && (
+            <MastersPanel
+              workspace={workspace}
+              organizationId={organizationId}
+              api={api}
+              working={working}
+              createOrganization={createOrganization}
+              run={run}
             />
           )}
         </>
@@ -662,1317 +728,2694 @@ export function LotteryAccountingWorkspace({
 
 function DashboardPanel({
   workspace,
-  onOpenLedger,
-}: Readonly<{ workspace: LotteryWorkspace; onOpenLedger: () => void }>) {
-  const [range, setRange] = useState<"today" | "yesterday" | "week" | "custom">("today");
-  const [partyFilter, setPartyFilter] = useState<"ALL" | LotteryPartyType>("ALL");
-  const [customFrom, setCustomFrom] = useState(todayInputValue());
-  const [customTo, setCustomTo] = useState(todayInputValue());
+  openLedger,
+}: Readonly<{ workspace: LotteryWorkspace; openLedger: () => void }>) {
+  const today = businessDateToday();
+  const [period, setPeriod] = useState<"today" | "7d" | "month" | "custom">("today");
+  const [from, setFrom] = useState(today);
+  const [to, setTo] = useState(today);
+  const [expanded, setExpanded] = useState<"receivable" | "payable" | null>(null);
+
   const bounds = useMemo(() => {
-    const today = new Date(`${todayInputValue()}T00:00:00Z`);
-    if (range === "today") return { from: today, to: new Date(today.getTime() + 86_400_000) };
-    if (range === "yesterday") return { from: new Date(today.getTime() - 86_400_000), to: today };
-    if (range === "week") return { from: new Date(today.getTime() - 6 * 86_400_000), to: new Date(today.getTime() + 86_400_000) };
-    return {
-      from: new Date(`${customFrom || todayInputValue()}T00:00:00Z`),
-      to: new Date(`${customTo || customFrom || todayInputValue()}T00:00:00Z`).getTime() >= new Date(`${customFrom || todayInputValue()}T00:00:00Z`).getTime()
-        ? new Date(new Date(`${customTo || customFrom || todayInputValue()}T00:00:00Z`).getTime() + 86_400_000)
-        : new Date(`${customFrom || todayInputValue()}T00:00:00Z`),
-    };
-  }, [customFrom, customTo, range]);
-  const allowedPartyIds = useMemo(
-    () => new Set(workspace.parties.filter((party) => partyFilter === "ALL" || party.partyType === partyFilter).map((party) => party.id)),
-    [partyFilter, workspace.parties],
-  );
-  const inRange = (occurredAt: string) => {
-    const date = new Date(occurredAt);
-    return date >= bounds.from && date < bounds.to;
-  };
-  const visibleSales = workspace.sales.filter((sale) => inRange(sale.occurredAt) && allowedPartyIds.has(sale.partyId));
-  const visibleDraftSales = workspace.draftSales.filter((sale) => inRange(sale.occurredAt) && allowedPartyIds.has(sale.partyId));
-  const visiblePayments = workspace.payments.filter((payment) => inRange(payment.occurredAt) && allowedPartyIds.has(payment.partyId));
-  const visibleStock = workspace.stockMovements.filter((movement) => inRange(movement.occurredAt) && (!movement.partyId || allowedPartyIds.has(movement.partyId)));
-  const visibleStockistEntries = workspace.stockistEntries.filter(
-    (entry) => inRange(entry.occurredAt) && allowedPartyIds.has(entry.partyId),
-  );
-  const sum = (values: Iterable<string | number | bigint>) => {
-    let total = 0n;
-    for (const value of values) total += BigInt(value);
-    return total;
-  };
-  const allSellerEntries = [...workspace.sales, ...workspace.draftSales];
-  const businessSalesInRange = allSellerEntries.filter((sale) => inRange(sale.occurredAt));
-  const businessStockistEntriesInRange = workspace.stockistEntries.filter((entry) =>
-    inRange(entry.occurredAt),
-  );
-  const businessExpensesInRange = workspace.payments.filter(
-    (payment) => payment.direction === "EXPENSE" && inRange(payment.occurredAt),
-  );
-  const beforeRange = (occurredAt: string) => new Date(occurredAt) < bounds.from;
+    if (period === "today") return { from: today, to: today };
+    if (period === "7d") return { from: addDays(today, -6), to: today };
+    if (period === "month") return { from: monthStart(today), to: today };
+    return { from: from || today, to: to >= from ? to : from };
+  }, [from, period, to, today]);
 
-  const sellerCommission = sum(
-    businessSalesInRange.map((sale) => sale.commissionPaise),
-  );
-  const stockistCommission = sum(
-    businessStockistEntriesInRange.map((entry) => entry.commissionPaise),
-  );
-  const totalCommissionActivity = sellerCommission + stockistCommission;
-  const commissionDifference = stockistCommission - sellerCommission;
-  const openingSellerCommission = sum(
-    allSellerEntries
-      .filter((sale) => beforeRange(sale.occurredAt))
-      .map((sale) => sale.commissionPaise),
-  );
-  const openingStockistCommission = sum(
-    workspace.stockistEntries
-      .filter((entry) => beforeRange(entry.occurredAt))
-      .map((entry) => entry.commissionPaise),
-  );
-  const openingCommissionBalance =
-    openingStockistCommission - openingSellerCommission;
-  const closingCommissionBalance =
-    openingCommissionBalance + commissionDifference;
+  const {
+    sales,
+    purchases,
+    sellerGross,
+    stockistGross,
+    sellerCommission,
+    stockistCommission,
+    commissionDifference,
+    expenses,
+    profit,
+  } = periodBusinessMetrics(workspace, bounds.from, bounds.to);
 
-  const businessSellerGross = sum(
-    businessSalesInRange.map((sale) => sale.grossSalesPaise),
-  );
-  const businessStockistGross = sum(
-    businessStockistEntriesInRange.map((entry) => entry.grossPurchasePaise),
-  );
-  const businessExpenses = sum(
-    businessExpensesInRange.map((payment) => payment.totalAmountPaise),
-  );
-  const baseTradingMargin = businessSellerGross - businessStockistGross;
-  const netProfitLoss =
-    baseTradingMargin + commissionDifference - businessExpenses;
-  const commissionStatus =
-    closingCommissionBalance === 0n
-      ? "Commission clear"
-      : closingCommissionBalance > 0n
-        ? "Commission surplus"
-        : "Commission short";
-
-  const grossSales = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.grossSalesPaise));
-  const dispatch = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.dispatchQuantity));
-  const returns = sum([...visibleSales, ...visibleDraftSales].map((sale) => sale.returnQuantity));
-  const received = sum(visiblePayments.filter((payment) => payment.direction === "RECEIPT").map((payment) => payment.totalAmountPaise));
-  const outgoing = sum(visiblePayments.filter((payment) => payment.direction === "PAYMENT").map((payment) => payment.totalAmountPaise));
-  const expenses = sum(visiblePayments.filter((payment) => payment.direction === "EXPENSE").map((payment) => payment.totalAmountPaise));
-  const moneyBalances = paymentMethodBalances(workspace.payments);
-  const totalAvailableMoney = Object.values(moneyBalances).reduce(
-    (total, amount) => total + amount,
+  const receivables = receivablePriority(workspace, bounds.to);
+  const payables = payablePriority(workspace, bounds.to);
+  const receivable = receivables.reduce(
+    (total, item) => total + item.amountPaise,
     0n,
   );
-  const purchase = sum(
-    [
-      ...visibleStockistEntries.map((entry) => entry.purchaseQuantity),
-      ...visibleStock
-        .filter(
-          (movement) =>
-            movement.movementType === "RECEIPT" && !movement.partyId,
-        )
-        .map((movement) => movement.quantity),
-    ],
+  const payable = payables.reduce(
+    (total, item) => total + item.amountPaise,
+    0n,
   );
-  const returnedToStockist = sum(
-    visibleStockistEntries.map((entry) => entry.totalReturnQuantity),
+
+  const balances = moneyMethodBalances(workspace);
+  const totalMoney = Object.values(balances).reduce(
+    (total, value) => total + value,
+    0n,
   );
-  const netSold = dispatch - returns;
-  const dailyChecks = dailyStockClearanceRows(
-    workspace,
-    bounds.from.toISOString().slice(0, 10),
-    new Date(bounds.to.getTime() - 1).toISOString().slice(0, 10),
+
+  const purchased = purchases.reduce(
+    (total, entry) => total + BigInt(entry.netPurchaseQuantity),
+    0n,
   );
-  const openDays = dailyChecks.filter((row) => row.totalStock !== 0n);
+  const sellerSold = sales.reduce(
+    (total, sale) => total + BigInt(sale.netTickets),
+    0n,
+  );
+  const customerSold = workspace.customerBills
+    .filter((bill) => inDateRange(bill.occurredAt, bounds.from, bounds.to))
+    .reduce((total, bill) => total + BigInt(bill.quantity), 0n);
+  const stockDifference = purchased - sellerSold - customerSold;
+
+  const previousDay = addDays(bounds.to, -1);
+  const previousSellerCommission = [...workspace.sales, ...workspace.draftSales]
+    .filter((sale) => dateKey(sale.occurredAt) === previousDay)
+    .reduce((total, sale) => total + BigInt(sale.commissionPaise), 0n);
+  const previousStockistCommission = workspace.stockistEntries
+    .filter((entry) => dateKey(entry.occurredAt) === previousDay)
+    .reduce((total, entry) => total + BigInt(entry.commissionPaise), 0n);
+  const previousDifference =
+    previousStockistCommission - previousSellerCommission;
+
   return (
     <div className="space-y-3">
-      <WorkspaceCard title={`${workspace.organization.name} dashboard`}>
-        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Dashboard date filter">
-          {(["today", "yesterday", "week", "custom"] as const).map((value) => (
-            <button key={value} type="button" onClick={() => setRange(value)} className={`shrink-0 rounded-xl border px-3 py-2 text-[10px] font-bold ${range === value ? "border-emerald-600 bg-emerald-600 text-white" : "border-emerald-100 text-slate-600"}`}>
-              {{ today: "Today", yesterday: "Yesterday", week: "Last 7 days", custom: "Custom" }[value]}
-            </button>
+      <SectionCard
+        title={`${workspace.organization.name} dashboard`}
+        hint="Pick a period. Receivable and Payable always rank the largest open accounts first as of the selected end date."
+      >
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {(["today", "7d", "month", "custom"] as const).map((value) => (
+            <Button
+              key={value}
+              active={period === value}
+              onClick={() => setPeriod(value)}
+            >
+              {{ today: "Today", "7d": "7 Days", month: "Month", custom: "Custom" }[
+                value
+              ]}
+            </Button>
           ))}
         </div>
-        {range === "custom" && <div className="mt-2 grid grid-cols-2 gap-2"><input aria-label="Dashboard from date" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} className={CONTROL_CLASS} /><input aria-label="Dashboard to date" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} className={CONTROL_CLASS} /></div>}
-        <select aria-label="Dashboard party filter" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value as "ALL" | LotteryPartyType)} className={`${CONTROL_CLASS} mt-2`}>
-          <option value="ALL">All parties</option>
-          {PARTY_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-        <div className="grid grid-cols-2 gap-2">
-          <Metric label="Bought" value={purchase.toString()} />
-          <Metric label="Given to sellers" value={dispatch.toString()} />
-          <Metric label="Seller return" value={returns.toString()} />
-          <Metric label="Returned to stockist" value={returnedToStockist.toString()} />
-          <Metric label="Net sold" value={netSold.toString()} />
-          <Metric label="Sale amount" value={formatPaise(grossSales)} />
-          <Metric label="Money received" value={formatPaise(received)} />
-          <Metric label="Paid / expense" value={formatPaise(outgoing + expenses)} tone="orange" />
-        </div>
-        <div className="mt-3 rounded-xl border border-emerald-100 bg-white p-3">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <p className="text-[10px] font-black text-slate-900">Profit & commission</p>
-              <p className="mt-1 text-[9px] leading-relaxed text-slate-600">
-                Business-wide reconciliation for the selected dates. Seller and stockist commission are compared directly; the balance carries forward from earlier dates.
+        {period === "custom" && (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <label>
+              <span className="text-[8px] font-bold text-slate-500">From</span>
+              <input
+                aria-label="Dashboard from date"
+                type="date"
+                value={from}
+                onChange={(event) => setFrom(event.target.value)}
+                className={CONTROL}
+              />
+            </label>
+            <label>
+              <span className="text-[8px] font-bold text-slate-500">To</span>
+              <input
+                aria-label="Dashboard to date"
+                type="date"
+                value={to}
+                onChange={(event) => setTo(event.target.value)}
+                className={CONTROL}
+              />
+            </label>
+          </div>
+        )}
+      </SectionCard>
+
+      <section className="rounded-[22px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-orange-50 p-4 shadow-[0_12px_30px_rgba(20,85,61,.065)]">
+        <p className="text-[8px] font-black uppercase tracking-[0.1em] text-slate-500">
+          Current money
+        </p>
+        <p className="mt-1 text-3xl font-black tracking-tight text-slate-950">
+          {formatPaise(totalMoney)}
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {PARTY_PAYMENT_METHODS.map(([method, label]) => (
+            <div
+              key={method}
+              className="rounded-xl border border-white bg-white/75 p-2.5"
+            >
+              <p className="text-[7px] font-bold uppercase text-slate-500">
+                {label}
               </p>
+              <p className="mt-1 text-xs font-black">{formatPaise(balances[method])}</p>
             </div>
-            <span className={`rounded-lg px-2 py-1 text-[8px] font-black ${closingCommissionBalance < 0n ? "bg-orange-50 text-orange-800" : "bg-emerald-50 text-emerald-800"}`}>
-              {commissionStatus}
-            </span>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <Metric label="Seller commission given" value={formatPaise(sellerCommission)} tone="orange" />
-            <Metric label="Stockist commission earned" value={formatPaise(stockistCommission)} />
-            <Metric label="Total commission" value={formatPaise(totalCommissionActivity)} />
-            <Metric label="Commission difference" value={formatPaise(commissionDifference)} tone={commissionDifference < 0n ? "orange" : "emerald"} />
-            <Metric label="Opening carry-forward" value={formatPaise(openingCommissionBalance)} tone={openingCommissionBalance < 0n ? "orange" : "emerald"} />
-            <Metric label="Closing commission balance" value={formatPaise(closingCommissionBalance)} tone={closingCommissionBalance < 0n ? "orange" : "emerald"} />
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <Metric label="Seller gross sales" value={formatPaise(businessSellerGross)} />
-            <Metric label="Stockist gross cost" value={formatPaise(businessStockistGross)} tone="orange" />
-            <Metric label="Base trading margin" value={formatPaise(baseTradingMargin)} tone={baseTradingMargin < 0n ? "orange" : "emerald"} />
-            <Metric label="Expenses" value={formatPaise(businessExpenses)} tone="orange" />
-            <Metric label="Net profit / loss" value={formatPaise(netProfitLoss)} tone={netProfitLoss < 0n ? "orange" : "emerald"} />
-          </div>
-          <p className="mt-2 text-[8px] leading-relaxed text-slate-500">
-            Net profit / loss = seller gross sales − stockist gross cost + commission difference − expenses. TDS stays separate and is not treated as profit.
-          </p>
+          ))}
         </div>
-        <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
-          <p className="text-[10px] font-black text-slate-900">Current money balances</p>
-          <p className="mt-1 text-[9px] text-slate-600">
-            Each method stays separate. Receipts add to that method and payments or expenses reduce only that same method.
+      </section>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Metric label="Net Profit" value={formatPaise(profit)} />
+        <Metric
+          label="Receivable"
+          value={formatPaise(receivable)}
+          tone="blue"
+          onClick={() =>
+            setExpanded((current) =>
+              current === "receivable" ? null : "receivable",
+            )
+          }
+        >
+          <PriorityMini rows={receivables} />
+        </Metric>
+        <Metric
+          label="Payable"
+          value={formatPaise(payable)}
+          tone="orange"
+          onClick={() =>
+            setExpanded((current) => (current === "payable" ? null : "payable"))
+          }
+        >
+          <PriorityMini rows={payables} />
+        </Metric>
+        <Metric
+          label="Commission"
+          value={commissionDifference === 0n ? "CLEAR" : "MISMATCH"}
+          tone="violet"
+        >
+          <p className="mt-1 text-[7px] font-bold text-slate-500">
+            Difference {formatPaise(commissionDifference < 0n ? -commissionDifference : commissionDifference)}
           </p>
-          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {PAYMENT_METHODS.map(([key, label]) => (
-              <Metric key={key} label={label === "Cash" ? "Cash in hand" : label} value={formatPaise(moneyBalances[key])} />
-            ))}
-            <Metric label="Total available" value={formatPaise(totalAvailableMoney)} />
+        </Metric>
+      </div>
+
+      {expanded && (
+        <SectionCard
+          title={
+            expanded === "receivable"
+              ? `Receivable priority · ${displayDate(bounds.to)}`
+              : `Payable priority · ${displayDate(bounds.to)}`
+          }
+        >
+          <PriorityList rows={expanded === "receivable" ? receivables : payables} />
+        </SectionCard>
+      )}
+
+      <SectionCard
+        title="Commission reconciliation"
+        hint="Only this selected period is compared. Previous-day mismatch is shown as attention only and never carried into today's number."
+      >
+        <div className="grid grid-cols-3 gap-2">
+          <Metric label="Stockist Gross" value={formatPaise(stockistCommission)} />
+          <Metric label="Seller Gross" value={formatPaise(sellerCommission)} tone="orange" />
+          <Metric
+            label="Difference"
+            value={formatPaise(
+              commissionDifference < 0n ? -commissionDifference : commissionDifference,
+            )}
+            tone={commissionDifference === 0n ? "green" : "orange"}
+          />
+        </div>
+        {previousDifference !== 0n && (
+          <div className="mt-2">
+            <InlineNotice tone="orange">
+              {displayDate(previousDay)} had a commission mismatch of{" "}
+              {formatPaise(previousDifference < 0n ? -previousDifference : previousDifference)}.
+              It is not carried forward.
+            </InlineNotice>
           </div>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Profit & Loss">
+        <p className="text-[10px] leading-relaxed text-slate-600">
+          <strong>{formatPaise(sellerGross)}</strong> seller gross −{" "}
+          <strong>{formatPaise(stockistGross)}</strong> stockist gross +{" "}
+          <strong>{formatPaise(stockistCommission)}</strong> stockist commission −{" "}
+          <strong>{formatPaise(sellerCommission)}</strong> seller commission −{" "}
+          <strong>{formatPaise(expenses)}</strong> expenses ={" "}
+          <strong>{formatPaise(profit)}</strong>.
+        </p>
+        <p className="mt-2 text-[8px] text-slate-500">
+          TDS remains separate from commission profit.
+        </p>
+      </SectionCard>
+
+      <SectionCard title="Stock truth">
+        <div className="grid grid-cols-3 gap-2">
+          <Metric label="Net Purchase" value={purchased.toString()} />
+          <Metric label="Net Sale" value={(sellerSold + customerSold).toString()} />
+          <Metric
+            label="Difference"
+            value={stockDifference.toString()}
+            tone={stockDifference === 0n ? "green" : "orange"}
+          />
         </div>
-        <div className="mt-3 rounded-xl border border-emerald-100 bg-slate-50 p-3">
-          <p className="text-[10px] font-black text-slate-900">Daily lottery check</p>
-          <p className="mt-1 text-[9px] text-slate-600">
-            Every date must close separately: purchase = seller dispatch, and seller return = stockist return. Nothing carries to tomorrow.
-          </p>
-          {openDays.length ? (
-            <ul className="mt-2 space-y-1.5 text-[9px] font-bold text-orange-800">
-              {openDays.map((row) => (
-                <li key={row.day} className="rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-2">
-                  {displayDate(`${row.day}T00:00:00.000Z`)}: {row.newStock !== 0n ? `${row.newStock.toString()} dispatch mismatch` : `${row.returnWaiting.toString()} return waiting`}
-                </li>
-              ))}
-            </ul>
-          ) : <p className="mt-2 text-[9px] font-bold text-emerald-800">Every selected day is clear.</p>}
+      </SectionCard>
+
+      <SectionCard
+        title="ORBIS AI business check"
+        hint="Module-only accounting analysis. It uses these same numbers."
+      >
+        <div className="grid grid-cols-2 gap-2">
+          <AiCard
+            title="Profit"
+            text={`${profit >= 0n ? "Profit" : "Loss"} ${formatPaise(
+              profit >= 0n ? profit : -profit,
+            )}`}
+          />
+          <AiCard
+            title="Dues"
+            text={`${formatPaise(receivable)} receivable · ${formatPaise(payable)} payable`}
+          />
+          <AiCard
+            title="Commission"
+            text={commissionDifference === 0n ? "Clear" : "Mismatch needs attention"}
+          />
+          <AiCard
+            title="Stock"
+            text={stockDifference === 0n ? "Selected period closes" : "Stock difference needs review"}
+          />
         </div>
-        <button type="button" onClick={onOpenLedger} className="mt-3 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-[10px] font-bold text-emerald-800">
-          Open party ledger
+        <button
+          type="button"
+          onClick={openLedger}
+          className="mt-3 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-[10px] font-black text-emerald-800"
+        >
+          Open Ledger
         </button>
-      </WorkspaceCard>
+      </SectionCard>
     </div>
   );
 }
 
-function SetupPanel({
+function PriorityMini({ rows }: Readonly<{ rows: PriorityRow[] }>) {
+  if (!rows.length)
+    return <p className="mt-2 text-[7px] font-bold text-emerald-700">No pending account</p>;
+  return (
+    <div className="mt-2 space-y-1">
+      {rows.slice(0, 2).map((row) => (
+        <div
+          key={`${row.type}-${row.id}`}
+          className="flex items-center justify-between gap-2 rounded-lg border border-white bg-white/75 px-2 py-1"
+        >
+          <span className="truncate text-[7px] text-slate-600">
+            {row.type} · {row.name}
+          </span>
+          <strong className="shrink-0 text-[8px]">{formatPaise(row.amountPaise)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PriorityList({ rows }: Readonly<{ rows: PriorityRow[] }>) {
+  if (!rows.length) return <InlineNotice>No pending account.</InlineNotice>;
+  return (
+    <div className="divide-y divide-slate-100 rounded-xl border border-slate-100 bg-white">
+      {rows.map((row) => (
+        <div
+          key={`${row.type}-${row.id}`}
+          className="flex items-center justify-between gap-3 px-3 py-2.5"
+        >
+          <div className="min-w-0">
+            <p className="truncate text-[10px] font-black text-slate-900">{row.name}</p>
+            <p className="text-[7px] uppercase text-slate-500">{row.type}</p>
+          </div>
+          <strong className="shrink-0 text-[10px]">{formatPaise(row.amountPaise)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AiCard({ title, text }: Readonly<{ title: string; text: string }>) {
+  return (
+    <div className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-3">
+      <p className="text-[8px] font-black uppercase text-violet-700">{title}</p>
+      <p className="mt-1 text-[9px] font-bold text-slate-700">{text}</p>
+    </div>
+  );
+}
+
+function DailyPanel({
   workspace,
   organizationId,
-  onCreateOrganization,
-  onCreateParty,
-  onUpdatePartyProfile,
-  onUpdateUserLedgerStorage,
-  workingAction,
+  api,
+  mode,
+  setMode,
+  run,
+  refreshWorkspace,
 }: Readonly<{
-  workspace: LotteryWorkspace | null;
+  workspace: LotteryWorkspace;
   organizationId: string;
-  onCreateOrganization: (name: string) => Promise<boolean>;
-  onCreateParty: (payload: Record<string, unknown>) => Promise<boolean>;
-  onUpdatePartyProfile: (payload: Record<string, unknown>) => Promise<boolean>;
-  onUpdateUserLedgerStorage: (
-    storage: "CLOUD" | "DEVICE",
+  api: LotteryAccountingClient;
+  mode: DailyMode;
+  setMode: (mode: DailyMode) => void;
+  run: (
+    key: string,
+    action: () => Promise<unknown>,
+    success: string,
   ) => Promise<boolean>;
-  onCreateFinancialYearPeriod: (
-    payload: Record<string, unknown>,
-  ) => Promise<boolean>;
-  workingAction: string | null;
+  refreshWorkspace: () => Promise<void>;
 }>) {
-  const [organizationName, setOrganizationName] = useState("");
-  const [partyName, setPartyName] = useState("");
-  const [partyType, setPartyType] = useState<LotteryPartyType>("SELLER");
-  const [phone, setPhone] = useState("");
-  const [ticketRate, setTicketRate] = useState("");
-  const [profilePartyId, setProfilePartyId] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
-
-  const submitOrganization = async (
-    event: React.FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
-    if (!organizationName.trim()) {
-      setLocalError("Enter the business name first.");
-      return;
-    }
-    setLocalError(null);
-    if (await onCreateOrganization(organizationName.trim())) {
-      setOrganizationName("");
-    }
-  };
-
-  const submitParty = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!partyName.trim()) {
-      setLocalError("Enter the party name.");
-      return;
-    }
-    const ticketRatePaise = rupeesToPaise(ticketRate);
-    setLocalError(null);
-    if (
-      await onCreateParty({
-        organizationId,
-        name: partyName.trim(),
-        partyType,
-        phone: phone.trim() || undefined,
-        ...(ticketRatePaise ? { ticketRatePaise } : {}),
-      })
-    ) {
-      setPartyName("");
-      setPhone("");
-      setTicketRate("");
-    }
-  };
-
-  const submitPartyProfile = async (
-    event: React.FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
-    const ticketRatePaise = rupeesToPaise(ticketRate);
-    if (!profilePartyId || !ticketRatePaise) {
-      setLocalError(
-        "Select a party and enter its rate.",
-      );
-      return;
-    }
-    setLocalError(null);
-    await onUpdatePartyProfile({
-      organizationId,
-      partyId: profilePartyId,
-      ticketRatePaise,
-    });
-  };
-
-  const selectPhoneContact = async () => {
-    try {
-      const contact = await pickMobileContact();
-      if (!contact) return;
-      if (contact.name) setPartyName(contact.name);
-      if (contact.phone) setPhone(contact.phone);
-    } catch {
-      setLocalError("Phone contact could not be read. You can enter it manually.");
-    }
-  };
-
   return (
     <div className="space-y-3">
-      <WorkspaceCard
-        title={
-          workspace ? "Setup and master data" : "Create your first workspace"
-        }
-      >
-        <form onSubmit={(event) => void submitOrganization(event)}>
-          <Label htmlFor="lottery-organization-name">
-            Business / organization name
-          </Label>
-          <div className="flex gap-2">
-            <input
-              id="lottery-organization-name"
-              value={organizationName}
-              onChange={(event) => setOrganizationName(event.target.value)}
-              placeholder="Example: ORBiS Lottery Kolkata"
-              className={CONTROL_CLASS}
-            />
-            <SubmitButton
-              busy={workingAction === "organization"}
-              className="shrink-0"
-            >
-              <Plus className="h-3.5 w-3.5" /> Create
-            </SubmitButton>
-          </div>
-        </form>
-        {workspace && (
-          <p className="mt-3 text-[9px] text-slate-500">
-            Current workspace: <strong>{workspace.organization.name}</strong>
-          </p>
-        )}
-        <InlineError message={localError} />
-      </WorkspaceCard>
+      <div className="flex gap-2 overflow-x-auto rounded-2xl border border-emerald-100 bg-white p-2">
+        {(
+          [
+            ["SELLER", "Seller Sale"],
+            ["STOCKIST", "Stockist Purchase"],
+            ["CASH_CUSTOMER", "Cash Customer"],
+            ["EXPENSE", "Expense Bill"],
+          ] as const
+        ).map(([value, label]) => (
+          <Button
+            key={value}
+            active={mode === value}
+            className="shrink-0"
+            onClick={() => setMode(value)}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
 
-      {workspace && (
-        <>
-          <WorkspaceCard title="Party profile">
-            <form
-              className="space-y-3"
-              onSubmit={(event) => void submitParty(event)}
-            >
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="lottery-party-name">Party name</Label>
-                  <input
-                    id="lottery-party-name"
-                    value={partyName}
-                    onChange={(event) => setPartyName(event.target.value)}
-                    className={CONTROL_CLASS}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="lottery-party-type">Party role</Label>
-                  <select
-                    id="lottery-party-type"
-                    value={partyType}
-                    onChange={(event) =>
-                      setPartyType(event.target.value as LotteryPartyType)
-                    }
-                    className={CONTROL_CLASS}
-                  >
-                    {PARTY_TYPES.map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label htmlFor="lottery-party-phone">Phone (optional)</Label>
-                  <div className="flex gap-2">
-                    <input
-                      id="lottery-party-phone"
-                      inputMode="tel"
-                      value={phone}
-                      onChange={(event) => setPhone(event.target.value)}
-                      className={CONTROL_CLASS}
-                    />
-                    {supportsMobileContactPicker() && (
-                      <button
-                        type="button"
-                        onClick={() => void selectPhoneContact()}
-                        className="rounded-xl border border-emerald-100 px-3 text-[10px] font-bold text-emerald-700"
-                      >
-                        Contact
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="lottery-party-ticket-rate">
-                    Fixed rate (₹, optional)
-                  </Label>
-                  <input
-                    id="lottery-party-ticket-rate"
-                    inputMode="decimal"
-                    value={ticketRate}
-                    onChange={(event) => setTicketRate(event.target.value)}
-                    placeholder="10.00"
-                    className={CONTROL_CLASS}
-                  />
-                </div>
-              </div>
-              <SubmitButton busy={workingAction === "party"}>
-                Save party
-              </SubmitButton>
-            </form>
-            <p className="mt-3 text-[10px] text-slate-500">Saved parties remain in this profile. Select one below only when you need to review or change its rate.</p>
-            <form
-              className="space-y-3"
-              onSubmit={(event) => void submitPartyProfile(event)}
-            >
-              <div>
-                <Label htmlFor="lottery-party-profile">Party</Label>
-                <select
-                  id="lottery-party-profile"
-                  value={profilePartyId}
-                  onChange={(event) => {
-                    const party = workspace.parties.find(
-                      (item) => item.id === event.target.value,
-                    );
-                    setProfilePartyId(event.target.value);
-                    if (party) {
-                      setTicketRate(paiseToRupeesInput(party.ticketRatePaise));
-                    }
-                  }}
-                  className={CONTROL_CLASS}
-                >
-                  <option value="">Select party</option>
-                  {workspace.parties.map((party) => (
-                      <option key={party.id} value={party.id}>
-                        {party.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-1 gap-2">
-                <div>
-                  <Label htmlFor="lottery-profile-ticket-rate">Rate (₹)</Label>
-                  <input
-                    id="lottery-profile-ticket-rate"
-                    inputMode="decimal"
-                    value={ticketRate}
-                    onChange={(event) => setTicketRate(event.target.value)}
-                    className={CONTROL_CLASS}
-                  />
-                </div>
-              </div>
-              <p className="text-[9px] leading-relaxed text-slate-500">
-                Commission is entered on a sale or stock receipt. Global TDS is
-                controlled once for every party in this workspace.
-              </p>
-              <SubmitButton busy={workingAction === "party-profile"}>
-                Save party rate
-              </SubmitButton>
-            </form>
-          </WorkspaceCard>
-
-          <WorkspaceCard title="Future user ledger storage">
-            <p className="text-[10px] leading-relaxed text-slate-500">
-              Admin accounting stays in the private database. This policy only
-              decides the default for a future user app; party name, phone and
-              unique code always remain in the private directory.
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {(["CLOUD", "DEVICE"] as const).map((storage) => (
-                <button
-                  key={storage}
-                  type="button"
-                  disabled={workingAction === "user-ledger-storage"}
-                  onClick={() => void onUpdateUserLedgerStorage(storage)}
-                  className={`rounded-xl border p-3 text-left text-[10px] font-bold ${workspace.organization.userLedgerStorage === storage ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-emerald-100 bg-white text-slate-600"}`}
-                >
-                  {storage === "CLOUD" ? "Database" : "Phone storage"}
-                </button>
-              ))}
-            </div>
-          </WorkspaceCard>
-
-        </>
+      {mode === "SELLER" && (
+        <DailySellerEntry
+          organizationId={organizationId}
+          workspace={workspace}
+          editRequest={null}
+          onSaveDraft={(payload) => api.saveDailySellerDraft(payload)}
+          onUpdateDraft={(saleId, payload) =>
+            api.updateDailySellerDraft(saleId, payload)
+          }
+          onDeleteDraft={async (saleId) => {
+            await api.deleteDailySellerDraft(saleId, { organizationId });
+            await refreshWorkspace();
+            return true;
+          }}
+          onCorrectPosted={(saleId) =>
+            api.correctPostedSale(saleId, { organizationId })
+          }
+          onUpdateTdsRate={async (tdsRateBps) => {
+            await api.updateOrganizationTdsRate({ organizationId, tdsRateBps });
+            await refreshWorkspace();
+            return true;
+          }}
+        />
+      )}
+      {mode === "STOCKIST" && (
+        <DailyStockistEntry
+          organizationId={organizationId}
+          workspace={workspace}
+          editRequest={null}
+          onSave={async (payload) => {
+            const result = await api.saveDailyStockistEntry(payload);
+            await refreshWorkspace();
+            return result;
+          }}
+        />
+      )}
+      {mode === "CASH_CUSTOMER" && (
+        <CashCustomerEntry
+          workspace={workspace}
+          organizationId={organizationId}
+          busy={false}
+          onSave={(payload) =>
+            run(
+              "customer-bill",
+              () => api.recordCustomerBill(payload),
+              "Customer sale saved.",
+            )
+          }
+        />
+      )}
+      {mode === "EXPENSE" && (
+        <ExpenseBillEntry
+          workspace={workspace}
+          organizationId={organizationId}
+          busy={false}
+          onSave={(payload) =>
+            run(
+              "expense-bill",
+              () => api.recordExpenseBill(payload),
+              "Expense bill saved. It is now available in Payment and Ledger.",
+            )
+          }
+        />
       )}
     </div>
   );
 }
 
-function EntryPanel({
+function CashCustomerEntry({
   workspace,
   organizationId,
-  workingAction,
-  onPayment,
-}: Readonly<{
-  workspace: LotteryWorkspace;
-  organizationId: string;
-  workingAction: string | null;
-  onPayment: (payload: Record<string, unknown>) => Promise<boolean>;
-}>) {
-  return (
-    <div className="space-y-3">
-      <PaymentForm
-        organizationId={organizationId}
-        workspace={workspace}
-        busy={workingAction === "payment"}
-        onSubmit={onPayment}
-      />
-    </div>
-  );
-}
-
-function DailyCleanupPanel({
-  organizationId,
   busy,
-  onClear,
-}: Readonly<{
-  organizationId: string;
-  busy: boolean;
-  onClear: (payload: {
-    organizationId: string;
-    occurredAt: string;
-    scope: "ALL" | "SELLER" | "STOCKIST" | "PAYMENT";
-  }) => Promise<boolean>;
-}>) {
-  const [occurredAt, setOccurredAt] = useState(todayInputValue());
-  const [scope, setScope] = useState<"ALL" | "SELLER" | "STOCKIST" | "PAYMENT">("ALL");
-  const [confirmed, setConfirmed] = useState(false);
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!confirmed) return;
-    await onClear({ organizationId, occurredAt, scope });
-    setConfirmed(false);
-  };
-  return (
-    <WorkspaceCard title="Correct or clear one date">
-      <p className="text-[10px] leading-relaxed text-slate-600">
-        Use this only when an entire day was entered wrongly. Party profiles stay safe. You can immediately enter the same date again; the newest saved entry will be used.
-      </p>
-      <form className="mt-3 space-y-3" onSubmit={(event) => void submit(event)}>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label htmlFor="daily-clear-date">Date</Label>
-            <input id="daily-clear-date" type="date" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} className={CONTROL_CLASS} />
-          </div>
-          <div>
-            <Label htmlFor="daily-clear-scope">Clear</Label>
-            <select id="daily-clear-scope" value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} className={CONTROL_CLASS}>
-              <option value="ALL">All entries for this date</option>
-              <option value="SELLER">Seller entries only</option>
-              <option value="STOCKIST">Stockist purchase / return only</option>
-              <option value="PAYMENT">Payments only</option>
-            </select>
-          </div>
-        </div>
-        <label className="flex items-start gap-2 rounded-xl border border-orange-100 bg-orange-50 p-3 text-[10px] text-orange-800">
-          <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-0.5" />
-          I want to clear these entries and enter this date again.
-        </label>
-        <button type="submit" disabled={!confirmed || busy} className="min-h-[42px] rounded-xl border border-orange-200 bg-white px-4 text-[10px] font-bold text-orange-800 disabled:opacity-50">
-          {busy ? "Clearing…" : "Clear selected date"}
-        </button>
-      </form>
-    </WorkspaceCard>
-  );
-}
-
-type AccountingFormProps = {
-  organizationId: string;
-  workspace: LotteryWorkspace;
-  busy: boolean;
-  onSubmit: (payload: Record<string, unknown>) => Promise<boolean>;
-};
-
-type PaymentDirection = "PAYMENT" | "RECEIPT" | "EXPENSE";
-
-const PAYMENT_DIRECTION_LABELS: Record<PaymentDirection, string> = {
-  PAYMENT: "Money paid to stockist",
-  RECEIPT: "Money received from seller",
-  EXPENSE: "Expense",
-};
-
-function paymentDirectionForParty(
-  partyType: LotteryWorkspace["parties"][number]["partyType"] | undefined,
-): PaymentDirection {
-  if (partyType === "STOCKIST" || partyType === "SERVICE_STOCKIST") {
-    return "PAYMENT";
-  }
-  if (partyType === "SELLER") return "RECEIPT";
-  return "EXPENSE";
-}
-
-function PaymentForm({
-  organizationId,
-  workspace,
-  busy,
-  onSubmit,
-}: Readonly<AccountingFormProps>) {
-  const [partyId, setPartyId] = useState("");
-  const [occurredAt, setOccurredAt] = useState(todayInputValue());
-  const [rows, setRows] = useState<PaymentInputRow[]>(initialPaymentRows);
+  onSave,
+}: SimpleEntryProps) {
+  const customers = workspace.parties.filter((party) => party.partyType === "CUSTOMER");
+  const cashCustomer =
+    customers.find((party) => party.name.toLowerCase() === "cash customer") ||
+    customers[0];
+  const [partyId, setPartyId] = useState(cashCustomer?.id || "");
+  const [date, setDate] = useState(businessDateToday());
+  const [quantity, setQuantity] = useState("");
+  const [rate, setRate] = useState("");
+  const [received, setReceived] = useState("");
   const [error, setError] = useState<string | null>(null);
-
-  const selectedParty = workspace.parties.find((party) => party.id === partyId);
-  const direction = paymentDirectionForParty(selectedParty?.partyType);
-  const directionLabel = PAYMENT_DIRECTION_LABELS[direction];
-
-  const availableBalances = paymentMethodBalances(
-    workspace.payments,
-    occurredAt,
-  );
-  const outstanding = partyOutstandingAt(workspace, partyId, occurredAt);
-
-  const previewSplit = Object.fromEntries(
-    PAYMENT_METHODS.map(([key]) => [key, 0n]),
-  ) as Record<PaymentMethodKey, bigint>;
-  let previewTotal = 0n;
-  for (const row of rows) {
-    const paise = row.amount.trim() ? rupeesToPaise(row.amount) : null;
-    if (!paise) continue;
-    const amountPaise = BigInt(paise);
-    previewSplit[row.method] += amountPaise;
-    previewTotal += amountPaise;
-  }
-
-  const projectedBalances = { ...availableBalances };
-  if (selectedParty) {
-    const sign = direction === "RECEIPT" ? 1n : -1n;
-    for (const [key] of PAYMENT_METHODS) {
-      projectedBalances[key] += sign * previewSplit[key];
-    }
-  }
-
-  const updateRow = (
-    id: number,
-    patch: Partial<Pick<PaymentInputRow, "method" | "amount">>,
-  ) => {
-    setRows((current) =>
-      current.map((row) => (row.id === id ? { ...row, ...patch } : row)),
-    );
-  };
-
-  const addRow = () => {
-    setRows((current) => {
-      const nextId = current.reduce((max, row) => Math.max(max, row.id), 0) + 1;
-      const used = new Set(current.map((row) => row.method));
-      const method =
-        PAYMENT_METHODS.find(([key]) => !used.has(key))?.[0] || "cashPaise";
-      return [...current, { id: nextId, method, amount: "" }];
-    });
-  };
-
-  const removeRow = (id: number) => {
-    setRows((current) =>
-      current.length > 1 ? current.filter((row) => row.id !== id) : current,
-    );
-  };
+  const quantityValue = BigInt(quantity || "0");
+  const ratePaise = parseAmount(rate) || 0n;
+  const bill = quantityValue * ratePaise;
+  const receivedPaise = parseAmount(received) || 0n;
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    if (!partyId) {
-      setError("Select a party first.");
+    if (!partyId || quantityValue <= 0n || ratePaise <= 0n) {
+      setError("Choose a customer and enter quantity and rate.");
       return;
     }
-
-    const methodSplit = Object.fromEntries(
-      PAYMENT_METHODS.map(([key]) => [key, "0"]),
-    ) as Record<PaymentMethodKey, string>;
-    let totalAmount = 0n;
-
-    for (const [index, row] of rows.entries()) {
-      if (!row.amount.trim()) continue;
-      const paise = rupeesToPaise(row.amount);
-      if (!paise || paise === "0") {
-        setError(`Enter a valid amount in payment row ${index + 1}.`);
-        return;
-      }
-      methodSplit[row.method] = (
-        BigInt(methodSplit[row.method]) + BigInt(paise)
-      ).toString();
-      totalAmount += BigInt(paise);
-    }
-
-    if (totalAmount === 0n) {
-      setError("Enter at least one payment amount.");
+    if (receivedPaise > bill) {
+      setError("Received amount cannot be more than the bill.");
       return;
     }
-
-    if (direction !== "RECEIPT") {
-      for (const [key, label] of PAYMENT_METHODS) {
-        const requested = BigInt(methodSplit[key]);
-        if (requested > availableBalances[key]) {
-          setError(
-            `${label} balance is ${formatPaise(availableBalances[key])}. You cannot pay ${formatPaise(requested)} from that method.`,
-          );
-          return;
-        }
-      }
-    }
-
     setError(null);
     if (
-      await onSubmit({
+      await onSave({
         organizationId,
         partyId,
-        periodId: null,
-        direction,
-        occurredAt,
-        totalAmountPaise: totalAmount.toString(),
-        methodSplit,
+        occurredAt: date,
+        quantity: quantityValue.toString(),
+        unitRatePaise: ratePaise.toString(),
+        receivedPaise: receivedPaise.toString(),
       })
     ) {
-      setRows(initialPaymentRows());
+      setQuantity("");
+      setReceived("");
     }
   };
 
-  if (!workspace.parties.length)
-    return (
-      <WorkspaceCard title="Post a payment">
-        <EmptyState>
-          Create a party in Setup before recording a payment.
-        </EmptyState>
-      </WorkspaceCard>
-    );
+  const customerDateField = <EntryDateField value={date} onChange={setDate} />;
 
   return (
-    <WorkspaceCard title="Payment">
+    <SectionCard
+      title="Cash Customer Sale"
+      hint="This is the special direct-sale flow where the rate may be entered here."
+    >
+      {!customers.length ? (
+        <InlineNotice tone="orange">Add a Customer in Masters first.</InlineNotice>
+      ) : (
+        <form className="space-y-3" onSubmit={(event) => void submit(event)}>
+          <div className="grid grid-cols-2 gap-2">
+            {customerDateField}
+            <label>
+              <span className="text-[8px] font-bold text-slate-500">Customer</span>
+              <select
+                aria-label="Cash Customer"
+                value={partyId}
+                onChange={(e) => setPartyId(e.target.value)}
+                className={CONTROL}
+              >
+                {customers.map((party) => (
+                  <option key={party.id} value={party.id}>
+                    {party.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="text-[8px] font-bold text-slate-500">Quantity</span>
+              <input inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value)} className={CONTROL} />
+            </label>
+            <label>
+              <span className="text-[8px] font-bold text-slate-500">Rate ₹</span>
+              <input inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} className={CONTROL} />
+            </label>
+            <label className="col-span-2">
+              <span className="text-[8px] font-bold text-slate-500">Amount received ₹</span>
+              <input inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} className={CONTROL} />
+            </label>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <Metric label="Bill" value={formatPaise(bill)} />
+            <Metric label="Received" value={formatPaise(receivedPaise)} tone="blue" />
+            <Metric label="Balance" value={formatPaise(bill - receivedPaise)} tone="orange" />
+          </div>
+          {error && <InlineNotice tone="orange">{error}</InlineNotice>}
+          <button disabled={busy} className={ACTIVE_BUTTON} type="submit">
+            Save Cash Customer Sale
+          </button>
+        </form>
+      )}
+    </SectionCard>
+  );
+}
+
+function ExpenseBillEntry({
+  workspace,
+  organizationId,
+  busy,
+  onSave,
+}: SimpleEntryProps) {
+  const [categoryId, setCategoryId] = useState(workspace.expenseCategories[0]?.id || "");
+  const profiles = workspace.expenseProfiles.filter(
+    (profile) => profile.categoryId === categoryId,
+  );
+  const [profileId, setProfileId] = useState(profiles[0]?.id || "");
+  const [date, setDate] = useState(businessDateToday());
+  const [amount, setAmount] = useState("");
+  const [reference, setReference] = useState("");
+
+  useEffect(() => {
+    const next = workspace.expenseProfiles.find(
+      (profile) => profile.categoryId === categoryId,
+    );
+    setProfileId((current) =>
+      workspace.expenseProfiles.some(
+        (profile) => profile.id === current && profile.categoryId === categoryId,
+      )
+        ? current
+        : next?.id || "",
+    );
+  }, [categoryId, workspace.expenseProfiles]);
+
+  useEffect(() => {
+    const profile = workspace.expenseProfiles.find((item) => item.id === profileId);
+    if (profile && profile.usualAmountPaise !== "0") {
+      setAmount(paiseInput(BigInt(profile.usualAmountPaise)));
+    }
+  }, [profileId, workspace.expenseProfiles]);
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const amountPaise = parseAmount(amount);
+    if (!profileId || !amountPaise || amountPaise <= 0n) return;
+    if (
+      await onSave({
+        organizationId,
+        profileId,
+        occurredAt: date,
+        amountPaise: amountPaise.toString(),
+        reference: reference.trim() || undefined,
+      })
+    ) {
+      setReference("");
+    }
+  };
+
+  return (
+    <SectionCard
+      title="Expense Bill Entry"
+      hint="Create the bill first. Universal Payment pays the current outstanding later."
+    >
+      {!workspace.expenseCategories.length ? (
+        <InlineNotice tone="orange">
+          Add an Expense Category and Expense Profile in Masters first.
+        </InlineNotice>
+      ) : (
+        <form className="space-y-3" onSubmit={(event) => void submit(event)}>
+          <div className="grid grid-cols-2 gap-2">
+            <EntryDateField value={date} onChange={setDate} />
+            <label>
+              <span className="text-[8px] font-bold text-slate-500">Expense category</span>
+              <ExpenseCategorySelect
+                categories={workspace.expenseCategories}
+                value={categoryId}
+                onChange={setCategoryId}
+              />
+            </label>
+            <label className="col-span-2">
+              <span className="text-[8px] font-bold text-slate-500">Profile / Name</span>
+              <select
+                value={profileId}
+                onChange={(e) => setProfileId(e.target.value)}
+                className={CONTROL}
+              >
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="text-[8px] font-bold text-slate-500">Bill amount ₹</span>
+              <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={CONTROL} />
+            </label>
+            <label>
+              <span className="text-[8px] font-bold text-slate-500">Reference</span>
+              <input value={reference} onChange={(e) => setReference(e.target.value)} className={CONTROL} />
+            </label>
+          </div>
+          <button disabled={busy} className={ACTIVE_BUTTON} type="submit">
+            Save Expense Bill
+          </button>
+        </form>
+      )}
+    </SectionCard>
+  );
+}
+
+function PaymentPanel({
+  workspace,
+  organizationId,
+  api,
+  working,
+  run,
+}: Readonly<{
+  workspace: LotteryWorkspace;
+  organizationId: string;
+  api: LotteryAccountingClient;
+  working: string | null;
+  run: (
+    key: string,
+    action: () => Promise<unknown>,
+    success: string,
+  ) => Promise<boolean>;
+}>) {
+  const [kind, setKind] = useState<PaymentKind>("SELLER");
+  const [expenseCategoryId, setExpenseCategoryId] = useState(
+    workspace.expenseCategories[0]?.id || "",
+  );
+  const accounts = useMemo(() => {
+    if (kind === "EXPENSE") {
+      return workspace.expenseProfiles
+        .filter((profile) => profile.categoryId === expenseCategoryId)
+        .map((profile) => ({
+          id: profile.id,
+          name: expenseProfileLabel(profile, workspace.expenseCategories),
+        }));
+    }
+    const partyType =
+      kind === "SELLER" ? "SELLER" : kind === "CUSTOMER" ? "CUSTOMER" : null;
+    return workspace.parties
+      .filter((party) =>
+        kind === "STOCKIST"
+          ? party.partyType === "STOCKIST" ||
+            party.partyType === "SERVICE_STOCKIST"
+          : party.partyType === partyType,
+      )
+      .map((party) => ({ id: party.id, name: party.name }));
+  }, [expenseCategoryId, kind, workspace]);
+  const [accountId, setAccountId] = useState(accounts[0]?.id || "");
+  const [date, setDate] = useState(businessDateToday());
+  const [amounts, setAmounts] = useState<Record<MoneyMethod, string>>({
+    cashPaise: "",
+    bankPaise: "",
+    upiPaise: "",
+    pwtPaise: "",
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAccountId((current) =>
+      accounts.some((item) => item.id === current) ? current : accounts[0]?.id || "",
+    );
+    setAmounts({ cashPaise: "", bankPaise: "", upiPaise: "", pwtPaise: "" });
+  }, [accounts]);
+
+  const outstanding =
+    kind === "SELLER"
+      ? sellerOutstanding(workspace, accountId, date)
+      : kind === "CUSTOMER"
+        ? customerOutstanding(workspace, accountId, date)
+        : kind === "STOCKIST"
+          ? stockistOutstanding(workspace, accountId, date)
+          : expenseOutstanding(workspace, accountId, date);
+  const methods =
+    kind === "EXPENSE"
+      ? PARTY_PAYMENT_METHODS.filter(([method]) =>
+          new Set<MoneyMethod>(["cashPaise", "bankPaise"]).has(method),
+        )
+      : PARTY_PAYMENT_METHODS;
+  const parsed = Object.fromEntries(
+    PARTY_PAYMENT_METHODS.map(([method]) => [
+      method,
+      parseAmount(amounts[method]) || 0n,
+    ]),
+  ) as Record<MoneyMethod, bigint>;
+  const entered = methods.reduce((total, [method]) => total + parsed[method], 0n);
+  const after = outstanding - entered;
+  const direction = kind === "SELLER" || kind === "CUSTOMER" ? "RECEIPT" : "PAYMENT";
+  const balances = moneyMethodBalances(workspace, date);
+  const latestExpenseBill =
+    kind === "EXPENSE"
+      ? workspace.expenseBills
+          .filter(
+            (bill) => bill.profileId === accountId && throughDate(bill.occurredAt, date),
+          )
+          .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))[0]
+      : null;
+  const latestExpensePayment =
+    kind === "EXPENSE"
+      ? workspace.expensePayments
+          .filter(
+            (payment) =>
+              payment.profileId === accountId &&
+              throughDate(payment.occurredAt, date),
+          )
+          .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))[0]
+      : null;
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!accountId || entered <= 0n) {
+      setError("Choose an account and enter an amount.");
+      return;
+    }
+    if (outstanding >= 0n && entered > outstanding) {
+      setError("Entered amount is greater than the current outstanding.");
+      return;
+    }
+    setError(null);
+    if (kind === "EXPENSE") {
+      const ok = await run(
+        "expense-payment",
+        () =>
+          api.recordExpensePayment({
+            organizationId,
+            profileId: accountId,
+            occurredAt: date,
+            totalAmountPaise: entered.toString(),
+            cashPaise: parsed.cashPaise.toString(),
+            bankPaise: parsed.bankPaise.toString(),
+          }),
+        "Expense payment saved.",
+      );
+      if (ok)
+        setAmounts({ cashPaise: "", bankPaise: "", upiPaise: "", pwtPaise: "" });
+      return;
+    }
+    const methodSplit = {
+      cashPaise: parsed.cashPaise.toString(),
+      bankPaise: parsed.bankPaise.toString(),
+      upiPaise: parsed.upiPaise.toString(),
+      chequePaise: "0",
+      pwtPaise: parsed.pwtPaise.toString(),
+    };
+    const ok = await run(
+      "payment",
+      () =>
+        api.recordPayment({
+          organizationId,
+          partyId: accountId,
+          periodId: null,
+          direction,
+          occurredAt: date,
+          totalAmountPaise: entered.toString(),
+          methodSplit,
+        }),
+      direction === "RECEIPT" ? "Receipt saved." : "Payment saved.",
+    );
+    if (ok)
+      setAmounts({ cashPaise: "", bankPaise: "", upiPaise: "", pwtPaise: "" });
+  };
+
+  return (
+    <SectionCard
+      title="Universal Payment"
+      hint="Seller / Customer = Receive. Stockist / Expense = Pay. No settlement screen is required here."
+    >
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label htmlFor="lottery-payment-party">Party</Label>
+        <div className="grid grid-cols-1 gap-2">
+          <label>
+            <span className="text-[8px] font-bold uppercase text-slate-500">
+              Account type
+            </span>
             <select
-              id="lottery-payment-party"
-              value={partyId}
-              onChange={(event) => {
-                setPartyId(event.target.value);
-                setError(null);
-              }}
-              className={CONTROL_CLASS}
+              aria-label="Payment account type"
+              value={kind}
+              onChange={(event) => setKind(event.target.value as PaymentKind)}
+              className={CONTROL}
             >
-              <option value="">Select party</option>
-              {workspace.parties.map((party) => (
-                <option key={party.id} value={party.id}>
-                  {party.name}
+              <option value="SELLER">Seller</option>
+              <option value="STOCKIST">Stockist</option>
+              <option value="CUSTOMER">Customer</option>
+              <option value="EXPENSE">Expenses</option>
+            </select>
+          </label>
+          {kind === "EXPENSE" && (
+            <label>
+              <span className="text-[8px] font-bold uppercase text-slate-500">
+                Expense subcategory
+              </span>
+              <ExpenseCategorySelect
+                ariaLabel="Expense subcategory"
+                categories={workspace.expenseCategories}
+                value={expenseCategoryId}
+                onChange={setExpenseCategoryId}
+              />
+            </label>
+          )}
+          <label>
+            <span className="text-[8px] font-bold uppercase text-slate-500">
+              {kind === "EXPENSE" ? "Expense / Payee" : `${kind.toLowerCase()} name`}
+            </span>
+            <select
+              aria-label="Payment party"
+              value={accountId}
+              onChange={(event) => setAccountId(event.target.value)}
+              className={CONTROL}
+            >
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
                 </option>
               ))}
             </select>
-          </div>
-          <div>
-            <Label htmlFor="lottery-payment-date">Date</Label>
-            <input
-              id="lottery-payment-date"
-              type="date"
-              value={occurredAt}
-              onChange={(event) => {
-                setOccurredAt(event.target.value);
-                setError(null);
-              }}
-              className={CONTROL_CLASS}
-            />
-          </div>
+          </label>
         </div>
 
-        {selectedParty && outstanding && (
-          <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-            <p className="text-[9px] font-bold uppercase tracking-wide text-emerald-700">
-              {outstanding.label}
-            </p>
-            <p className="mt-1 text-xl font-black text-slate-900">
-              {formatPaise(outstanding.amountPaise)}
-            </p>
-            <p className="mt-1 text-[9px] text-slate-600">
-              Balance through {displayDate(`${occurredAt}T00:00:00.000Z`)} before this payment.
-            </p>
+        {kind === "EXPENSE" ? (
+          <div className="grid grid-cols-3 gap-2">
+            <Metric
+              label="Last Paid"
+              value={formatPaise(latestExpensePayment?.totalAmountPaise || "0")}
+            />
+            <Metric
+              label="Current Bill"
+              value={formatPaise(latestExpenseBill?.amountPaise || "0")}
+              tone="blue"
+            />
+            <Metric
+              label="Pending"
+              value={formatPaise(outstanding)}
+              tone="orange"
+            />
           </div>
+        ) : (
+          <Metric
+            label={direction === "RECEIPT" ? "Amount to receive" : "Amount to pay"}
+            value={formatPaise(outstanding)}
+          />
         )}
 
-        <div className="space-y-2 rounded-xl border border-emerald-100 bg-white p-3">
-          <div>
-            <p className="text-[10px] font-black text-slate-900">Payment methods</p>
-            <p className="mt-1 text-[9px] text-slate-500">
-              Use one row for each method. Save once for the whole payment.
-            </p>
-          </div>
+        <div className="grid grid-cols-2 gap-2">
+          {methods.map(([method, label]) => (
+            <label key={method}>
+              <span className="text-[8px] font-bold uppercase text-slate-500">
+                {label} ₹
+              </span>
+              <input
+                aria-label={`Payment ${label}`}
+                inputMode="decimal"
+                value={amounts[method]}
+                onChange={(event) =>
+                  setAmounts((current) => ({
+                    ...current,
+                    [method]: event.target.value,
+                  }))
+                }
+                className={CONTROL}
+              />
+              {direction === "PAYMENT" && kind !== "EXPENSE" && (
+                <span className="mt-1 block text-[7px] text-slate-400">
+                  Available {formatPaise(balances[method])}
+                </span>
+              )}
+            </label>
+          ))}
+        </div>
 
-          {rows.map((row, index) => (
-            <div
-              key={row.id}
-              className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded-xl bg-slate-50 p-2"
-            >
-              <div>
-                <Label htmlFor={`lottery-payment-method-${row.id}`}>
-                  Method {index + 1}
-                </Label>
+        <div className="grid grid-cols-3 gap-2">
+          <Metric label="Entered" value={formatPaise(entered)} tone="blue" />
+          <Metric label="Before" value={formatPaise(outstanding)} />
+          <Metric
+            label="After"
+            value={formatPaise(after > 0n ? after : 0n)}
+            tone="orange"
+          />
+        </div>
+        <label>
+          <span className="text-[8px] font-bold uppercase text-slate-500">Date</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={CONTROL} />
+        </label>
+        {error && <InlineNotice tone="orange">{error}</InlineNotice>}
+        <button
+          type="submit"
+          disabled={working === "payment" || working === "expense-payment"}
+          className={ACTIVE_BUTTON}
+        >
+          {direction === "RECEIPT" ? "Receive" : "Pay"} {formatPaise(entered)}
+        </button>
+      </form>
+    </SectionCard>
+  );
+}
+
+type LedgerTxn = {
+  id: string;
+  occurredAt: string;
+  business: string;
+  money: string;
+  balance: string;
+  detail: string;
+};
+
+type LedgerBook = {
+  id: string;
+  category: LedgerBookType;
+  subtype: string;
+  accountId: string | null;
+  accountKind: "party" | "expense" | null;
+  name: string;
+  typeLabel: string;
+  summary: Array<[string, string]>;
+  transactions: LedgerTxn[];
+};
+
+function LedgerPanel({
+  workspace,
+  editParty,
+  editExpense,
+}: Readonly<{
+  workspace: LotteryWorkspace;
+  editParty: (party: LotteryParty) => void;
+  editExpense: (profile: LotteryExpenseProfile) => void;
+}>) {
+  const today = businessDateToday();
+  const [bookType, setBookType] = useState<LedgerBookType>("seller");
+  const [subtype, setSubtype] = useState("seller");
+  const [accountId, setAccountId] = useState("");
+  const [period, setPeriod] = useState<LedgerPeriod>("today");
+  const [from, setFrom] = useState(today);
+  const [to, setTo] = useState(today);
+  const [view, setView] = useState<"list" | "table">("list");
+  const [statementOpen, setStatementOpen] = useState(false);
+
+  const bounds = periodBounds(period, from, to);
+  const subtypeOptions = useMemo(
+    () => ledgerSubtypeOptions(workspace, bookType),
+    [bookType, workspace],
+  );
+
+  useEffect(() => {
+    setSubtype((current) =>
+      subtypeOptions.some(([value]) => value === current)
+        ? current
+        : subtypeOptions[0]?.[0] || "",
+    );
+    setStatementOpen(false);
+  }, [bookType, subtypeOptions]);
+
+  const books = useMemo(
+    () => buildLedgerBooks(workspace, bookType, subtype, bounds.from, bounds.to),
+    [bookType, bounds.from, bounds.to, subtype, workspace],
+  );
+
+  useEffect(() => {
+    setAccountId((current) =>
+      books.some((book) => book.id === current) ? current : books[0]?.id || "",
+    );
+    setStatementOpen(false);
+  }, [books]);
+
+  const selected = books.find((book) => book.id === accountId) || books[0];
+  const needsSubtype = subtypeOptions.length > 1 || bookType === "expense";
+  const needsAccount = !new Set<LedgerBookType>(["money", "pwt", "stock"]).has(
+    bookType,
+  );
+
+  return (
+    <div className="space-y-3">
+      <SectionCard
+        title="Universal Ledger Hub"
+        hint="Ledger Book → Type/Subcategory → Particular Party/Account → Period. The same filtering pattern works for every accounting book."
+      >
+        <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/65 via-white to-orange-50/70 p-3">
+          <div className="space-y-2">
+            <label>
+              <span className="text-[8px] font-black uppercase text-slate-500">
+                1 · Ledger Book
+              </span>
+              <select
+                aria-label="Ledger Book"
+                value={bookType}
+                onChange={(event) =>
+                  setBookType(event.target.value as LedgerBookType)
+                }
+                className={CONTROL}
+              >
+                {LEDGER_BOOK_LABELS.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {needsSubtype && (
+              <label>
+                <span className="text-[8px] font-black uppercase text-slate-500">
+                  2 · {bookType === "expense" ? "Expense Category" : "Type"}
+                </span>
                 <select
-                  id={`lottery-payment-method-${row.id}`}
-                  aria-label={`Payment method ${index + 1}`}
-                  value={row.method}
-                  onChange={(event) =>
-                    updateRow(row.id, {
-                      method: event.target.value as PaymentMethodKey,
-                    })
-                  }
-                  className={CONTROL_CLASS}
+                  aria-label="Ledger type"
+                  value={subtype}
+                  onChange={(event) => setSubtype(event.target.value)}
+                  className={CONTROL}
                 >
-                  {PAYMENT_METHODS.map(([key, label]) => (
-                    <option key={key} value={key}>
+                  {subtypeOptions.map(([value, label]) => (
+                    <option key={value} value={value}>
                       {label}
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <Label htmlFor={`lottery-payment-amount-${row.id}`}>
-                  Amount (₹)
-                </Label>
-                <input
-                  id={`lottery-payment-amount-${row.id}`}
-                  aria-label={`Payment amount ${index + 1}`}
-                  inputMode="decimal"
-                  value={row.amount}
-                  onChange={(event) =>
-                    updateRow(row.id, { amount: event.target.value })
-                  }
-                  className={CONTROL_CLASS}
-                />
-              </div>
-              <button
-                type="button"
-                aria-label={`Remove payment row ${index + 1}`}
-                disabled={rows.length === 1}
-                onClick={() => removeRow(row.id)}
-                className="h-[42px] rounded-xl border border-slate-200 px-2.5 text-[9px] font-bold text-slate-500 disabled:opacity-30"
+              </label>
+            )}
+            {needsAccount && (
+              <label>
+                <span className="text-[8px] font-black uppercase text-slate-500">
+                  {needsSubtype ? "3" : "2"} · Party / Account
+                </span>
+                <select
+                  aria-label="Ledger Party"
+                  value={accountId}
+                  onChange={(event) => setAccountId(event.target.value)}
+                  className={CONTROL}
+                >
+                  {books.map((book) => (
+                    <option key={book.id} value={book.id}>
+                      {book.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+          <p className="mt-2 rounded-xl border border-white bg-white/70 px-3 py-2 text-[8px] font-bold text-emerald-800">
+            {ledgerBookLabel(bookType)}
+            {needsSubtype && subtypeOptions.find(([value]) => value === subtype)
+              ? ` › ${subtypeOptions.find(([value]) => value === subtype)?.[1]}`
+              : ""}
+            {needsAccount && selected ? ` › ${selected.name}` : ""}
+          </p>
+
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            {(
+              [
+                ["today", "Today"],
+                ["7d", "7 Days"],
+                ["10d", "10 Days"],
+                ["month", "Month"],
+                ["year", "Year"],
+                ["custom", "Custom"],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                active={period === value}
+                className="shrink-0"
+                onClick={() => setPeriod(value)}
               >
-                Remove
-              </button>
-            </div>
-          ))}
-
-          <button
-            type="button"
-            onClick={addRow}
-            className="w-full rounded-xl border border-dashed border-emerald-300 px-3 py-2.5 text-[10px] font-bold text-emerald-700"
-          >
-            + Add payment row
-          </button>
-        </div>
-
-        <div className="rounded-xl border border-emerald-100 bg-slate-50 p-3">
-          <p className="text-[9px] font-bold uppercase text-slate-500">
-            Total payment
-          </p>
-          <p className="mt-1 text-lg font-black text-slate-900">
-            {formatPaise(previewTotal)}
-          </p>
-        </div>
-
-        <div>
-          <p className="mb-2 text-[10px] font-black text-slate-900">
-            Method balances on selected date
-          </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {PAYMENT_METHODS.map(([key, label]) => (
-              <div
-                key={key}
-                className="rounded-xl border border-emerald-100 bg-white p-2.5"
-              >
-                <p className="text-[8px] font-bold uppercase text-slate-500">
-                  {label === "Cash" ? "Cash in hand" : label}
-                </p>
-                <p className="mt-1 text-xs font-black text-slate-900">
-                  {formatPaise(availableBalances[key])}
-                </p>
-                {selectedParty && previewSplit[key] > 0n && (
-                  <p className="mt-1 text-[8px] text-slate-500">
-                    After save: {formatPaise(projectedBalances[key])}
-                  </p>
-                )}
-              </div>
+                {label}
+              </Button>
             ))}
           </div>
+          {period === "custom" && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <input
+                aria-label="Ledger from date"
+                type="date"
+                value={from}
+                onChange={(event) => setFrom(event.target.value)}
+                className={CONTROL}
+              />
+              <input
+                aria-label="Ledger to date"
+                type="date"
+                value={to}
+                onChange={(event) => setTo(event.target.value)}
+                className={CONTROL}
+              />
+            </div>
+          )}
         </div>
+      </SectionCard>
 
-        <p className="rounded-xl bg-slate-50 p-3 text-[10px] text-slate-600">
-          <strong>{selectedParty ? directionLabel : "Select a party first"}</strong>.
-          {" "}Each method updates only its own balance and the party ledger updates once for the total.
-        </p>
-
-        <InlineError message={error} />
-        <SubmitButton busy={busy}>Save payment</SubmitButton>
-      </form>
-    </WorkspaceCard>
+      {!selected ? (
+        <InlineNotice tone="orange">No account exists for this filter.</InlineNotice>
+      ) : statementOpen ? (
+        <LedgerStatement
+          book={selected}
+          bounds={bounds}
+          onBack={() => setStatementOpen(false)}
+          onEdit={() => {
+            if (selected.accountKind === "party" && selected.accountId) {
+              const party = workspace.parties.find(
+                (item) => item.id === selected.accountId,
+              );
+              if (party) editParty(party);
+            } else if (
+              selected.accountKind === "expense" &&
+              selected.accountId
+            ) {
+              const profile = workspace.expenseProfiles.find(
+                (item) => item.id === selected.accountId,
+              );
+              if (profile) editExpense(profile);
+            }
+          }}
+        />
+      ) : (
+        <SectionCard title="Selected ledger">
+          <div className="mb-2 flex gap-2">
+            <Button active={view === "list"} onClick={() => setView("list")}>
+              Compact List
+            </Button>
+            <Button active={view === "table"} onClick={() => setView("table")}>
+              Table View
+            </Button>
+          </div>
+          {view === "list" ? (
+            <button
+              type="button"
+              onClick={() => setStatementOpen(true)}
+              className="grid w-full grid-cols-[minmax(90px,1.3fr)_repeat(3,minmax(55px,.8fr))] items-center gap-1 border-y border-slate-100 bg-white px-1 py-2.5 text-left"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-[9px] font-black">{selected.name}</p>
+                <p className="truncate text-[6px] uppercase text-slate-400">
+                  {selected.typeLabel}
+                </p>
+              </div>
+              {selected.summary.slice(-3).map(([label, value]) => (
+                <div key={label} className="min-w-0">
+                  <p className="truncate text-[5.5px] font-bold uppercase text-slate-400">
+                    {label}
+                  </p>
+                  <p className="truncate text-[7.5px] font-black">{value}</p>
+                </div>
+              ))}
+            </button>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-100">
+              <table className="min-w-[580px] border-collapse text-left text-[9px]">
+                <thead className="bg-emerald-50/60 text-[7px] uppercase text-slate-500">
+                  <tr>
+                    <th className="px-2 py-2">Account</th>
+                    {selected.summary.slice(-3).map(([label]) => (
+                      <th key={label} className="px-2 py-2">
+                        {label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setStatementOpen(true)}
+                    className="cursor-pointer"
+                  >
+                    <td className="px-2 py-2 font-black">{selected.name}</td>
+                    {selected.summary.slice(-3).map(([label, value]) => (
+                      <td key={label} className="px-2 py-2">
+                        {value}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SectionCard>
+      )}
+    </div>
   );
 }
 
+const LEDGER_BOOK_LABELS: Array<[LedgerBookType, string]> = [
+  ["seller", "Seller Ledger"],
+  ["customer", "Customer Ledger"],
+  ["stockist", "Stockist Ledger"],
+  ["sale", "Sales Ledger"],
+  ["purchase", "Purchase Ledger"],
+  ["return", "Return Ledger"],
+  ["commission", "Commission Ledger"],
+  ["tds", "TDS Ledger"],
+  ["expense", "Expenses Ledger"],
+  ["payment", "Payment Ledger"],
+  ["money", "Cash Flow Ledger"],
+  ["pwt", "PWT / Prize Ledger"],
+  ["stock", "Stock Ledger"],
+];
 
-type StatementRow = {
-  id: string;
-  occurredAt: string;
-  category: string;
-  party: string;
-  quantity: string;
-  returnQuantity: string;
-  netQuantity: string;
-  amountPaise: string;
-  paymentPaise: string;
-  balancePaise: string | null;
-  methodSplit: Record<string, string> | null;
-};
-
-type DailyStockClearanceRow = {
-  day: string;
-  purchased: bigint;
-  dispatched: bigint;
-  returned: bigint;
-  stockistReturned: bigint;
-  adjustment: bigint;
-  newStock: bigint;
-  returnWaiting: bigint;
-  totalStock: bigint;
-};
-
-function inputDateKey(value: string) {
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+function ledgerBookLabel(value: LedgerBookType) {
+  return LEDGER_BOOK_LABELS.find(([key]) => key === value)?.[1] || "Ledger";
 }
 
-function occurredDateKey(value: string) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
-}
-
-function nextInputDate(day: string) {
-  const date = new Date(`${day}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + 1);
-  return date.toISOString().slice(0, 10);
-}
-
-function dailyStockClearanceRows(
+function ledgerSubtypeOptions(
   workspace: LotteryWorkspace,
-  fromDate: string,
-  toDate: string,
+  type: LedgerBookType,
+): Array<[string, string]> {
+  if (type === "sale")
+    return [
+      ["seller", "Seller Sale"],
+      ["customer", "Customer Sale"],
+    ];
+  if (type === "return")
+    return [
+      ["seller", "Seller Return"],
+      ["stockist", "Stockist Return"],
+    ];
+  if (type === "commission")
+    return [
+      ["seller", "Seller Commission"],
+      ["stockist", "Stockist Commission"],
+    ];
+  if (type === "tds")
+    return [
+      ["seller", "Seller TDS Payable"],
+      ["stockist", "Stockist TDS Credit"],
+    ];
+  if (type === "expense")
+    return workspace.expenseCategories.map((category) => [
+      category.id,
+      category.name,
+    ]);
+  if (type === "payment")
+    return [
+      ["seller", "Seller Receipt"],
+      ["customer", "Customer Receipt"],
+      ["stockist", "Stockist Payment"],
+      ["expense", "Expense Payment"],
+    ];
+  if (type === "money")
+    return [
+      ["cashPaise", "Cash Book"],
+      ["bankPaise", "Bank Book"],
+      ["upiPaise", "UPI Book"],
+      ["pwtPaise", "PWT Book"],
+    ];
+  if (type === "pwt")
+    return [
+      ["received", "PWT Received"],
+      ["redeemed", "PWT Redeemed"],
+    ];
+  return [[type, ledgerBookLabel(type)]];
+}
+
+type PartyLedgerEvent = {
+  id: string;
+  date: string;
+  business: bigint;
+  money: bigint;
+  detail: string;
+};
+
+function appendReceiptEvents(
+  events: PartyLedgerEvent[],
+  workspace: LotteryWorkspace,
+  partyId: string,
+  to: string,
 ) {
-  const from = inputDateKey(fromDate);
-  const to = inputDateKey(toDate);
-  if (!from || !to || to < from) return [];
-
-  const rows: DailyStockClearanceRow[] = [];
-
-  for (let day = from; day <= to; day = nextInputDate(day)) {
-    const movements = workspace.stockMovements.filter(
-      (movement) => occurredDateKey(movement.occurredAt) === day,
-    );
-    const dayStockistEntries = workspace.stockistEntries.filter(
-      (entry) => occurredDateKey(entry.occurredAt) === day,
-    );
-    const purchased =
-      movements
-        .filter(
-          (movement) =>
-            movement.movementType === "RECEIPT" && !movement.partyId,
-        )
-        .reduce((total, movement) => total + BigInt(movement.quantity), 0n) +
-      dayStockistEntries.reduce(
-        (total, entry) => total + BigInt(entry.purchaseQuantity),
-        0n,
-      );
-    const daySales = [...workspace.sales, ...workspace.draftSales].filter(
-      (sale) => occurredDateKey(sale.occurredAt) === day,
-    );
-    const dispatched = daySales.reduce(
-      (total, sale) => total + BigInt(sale.dispatchQuantity),
-      0n,
-    );
-    const returned = daySales.reduce(
-      (total, sale) => total + BigInt(sale.returnQuantity),
-      0n,
-    );
-    const stockistReturned = dayStockistEntries.reduce(
-      (total, entry) => total + BigInt(entry.totalReturnQuantity),
-      0n,
-    );
-    const adjustment = movements
-      .filter((movement) => movement.movementType === "ADJUSTMENT")
-      .reduce((total, movement) => total + BigInt(movement.quantity), 0n);
-    const newStock = purchased - dispatched + adjustment;
-    const returnWaiting = returned - stockistReturned;
-    rows.push({
-      day,
-      purchased,
-      dispatched,
-      returned,
-      stockistReturned,
-      adjustment,
-      newStock,
-      returnWaiting,
-      totalStock: newStock + returnWaiting,
+  for (const payment of workspace.payments) {
+    if (
+      payment.partyId !== partyId ||
+      payment.direction !== "RECEIPT" ||
+      !throughDate(payment.occurredAt, to)
+    )
+      continue;
+    events.push({
+      id: `payment-${payment.id}`,
+      date: payment.occurredAt,
+      business: 0n,
+      money: BigInt(payment.totalAmountPaise),
+      detail: `Received ${formatPaise(payment.totalAmountPaise)} · ${splitText(
+        payment.methodSplit,
+      )}`,
     });
   }
-  return rows;
 }
 
-function StatementPanel({
-  workspace,
+function ledgerParties(workspace: LotteryWorkspace, sellerSide: boolean) {
+  return workspace.parties.filter((party) =>
+    sellerSide
+      ? party.partyType === "SELLER"
+      : party.partyType === "STOCKIST" ||
+        party.partyType === "SERVICE_STOCKIST",
+  );
+}
+
+function makePartyLedgerTransactions(
+  workspace: LotteryWorkspace,
+  party: LotteryParty,
+  from: string,
+  to: string,
+): { summary: Array<[string, string]>; transactions: LedgerTxn[] } {
+  const allEvents: PartyLedgerEvent[] = [];
+  if (party.partyType === "SELLER") {
+    for (const sale of [...workspace.sales, ...workspace.draftSales]) {
+      if (sale.partyId !== party.id || !throughDate(sale.occurredAt, to)) continue;
+      allEvents.push({
+        id: `sale-${sale.id}`,
+        date: sale.occurredAt,
+        business: BigInt(sale.netPayablePaise),
+        money: 0n,
+        detail: `${sale.netTickets} tickets · Gross ${formatPaise(
+          sale.grossSalesPaise,
+        )} · Commission ${formatPaise(sale.commissionPaise)} · TDS ${formatPaise(
+          sale.tdsPaise,
+        )}`,
+      });
+    }
+    appendReceiptEvents(allEvents, workspace, party.id, to);
+  } else if (
+    party.partyType === "STOCKIST" ||
+    party.partyType === "SERVICE_STOCKIST"
+  ) {
+    for (const entry of workspace.stockistEntries) {
+      if (entry.partyId !== party.id || !throughDate(entry.occurredAt, to)) continue;
+      allEvents.push({
+        id: `purchase-${entry.id}`,
+        date: entry.occurredAt,
+        business: BigInt(entry.netPayablePaise),
+        money: 0n,
+        detail: `${entry.netPurchaseQuantity} tickets · Gross ${formatPaise(
+          entry.grossPurchasePaise,
+        )} · Commission ${formatPaise(entry.commissionPaise)} · TDS ${formatPaise(
+          entry.tdsPaise,
+        )}`,
+      });
+    }
+    for (const payment of workspace.payments) {
+      if (
+        payment.partyId !== party.id ||
+        payment.direction !== "PAYMENT" ||
+        !throughDate(payment.occurredAt, to)
+      )
+        continue;
+      allEvents.push({
+        id: `payment-${payment.id}`,
+        date: payment.occurredAt,
+        business: 0n,
+        money: BigInt(payment.totalAmountPaise),
+        detail: `Paid ${formatPaise(payment.totalAmountPaise)} · ${splitText(
+          payment.methodSplit,
+        )}`,
+      });
+    }
+  } else {
+    for (const bill of workspace.customerBills) {
+      if (bill.partyId !== party.id || !throughDate(bill.occurredAt, to)) continue;
+      allEvents.push({
+        id: `customer-${bill.id}`,
+        date: bill.occurredAt,
+        business: BigInt(bill.amountPaise),
+        money: 0n,
+        detail: `${bill.quantity} tickets · Rate ${formatPaise(bill.unitRatePaise)}`,
+      });
+    }
+    appendReceiptEvents(allEvents, workspace, party.id, to);
+  }
+  allEvents.sort((left, right) => left.date.localeCompare(right.date));
+  let balance = 0n;
+  const transactions: LedgerTxn[] = [];
+  for (const event of allEvents) {
+    balance += event.business - event.money;
+    if (inDateRange(event.date, from, to)) {
+      transactions.push({
+        id: event.id,
+        occurredAt: event.date,
+        business: formatPaise(event.business),
+        money: formatPaise(event.money),
+        balance: formatPaise(balance),
+        detail: event.detail,
+      });
+    }
+  }
+  const business = allEvents
+    .filter((event) => inDateRange(event.date, from, to))
+    .reduce((total, event) => total + event.business, 0n);
+  const money = allEvents
+    .filter((event) => inDateRange(event.date, from, to))
+    .reduce((total, event) => total + event.money, 0n);
+  return {
+    summary: [
+      ["Net Business", formatPaise(business)],
+      [
+        party.partyType === "STOCKIST" || party.partyType === "SERVICE_STOCKIST"
+          ? "Paid"
+          : "Received",
+        formatPaise(money),
+      ],
+      ["Balance", formatPaise(balance)],
+    ],
+    transactions,
+  };
+}
+
+function splitText(split: Record<string, string>) {
+  return PARTY_PAYMENT_METHODS.filter(([method]) => BigInt(split[method] || "0") > 0n)
+    .map(([method, label]) => `${label} ${formatPaise(split[method] || "0")}`)
+    .join(" + ");
+}
+
+function buildLedgerBooks(
+  workspace: LotteryWorkspace,
+  type: LedgerBookType,
+  subtype: string,
+  from: string,
+  to: string,
+): LedgerBook[] {
+  if (type === "seller" || type === "stockist" || type === "customer") {
+    const parties = workspace.parties.filter((party) =>
+      type === "seller"
+        ? party.partyType === "SELLER"
+        : type === "stockist"
+          ? party.partyType === "STOCKIST" ||
+            party.partyType === "SERVICE_STOCKIST"
+          : party.partyType === "CUSTOMER",
+    );
+    return parties.map((party) => {
+      const ledger = makePartyLedgerTransactions(workspace, party, from, to);
+      return {
+        id: party.id,
+        category: type,
+        subtype: type,
+        accountId: party.id,
+        accountKind: "party",
+        name: party.name,
+        typeLabel: ledgerBookLabel(type),
+        summary: ledger.summary,
+        transactions: ledger.transactions,
+      };
+    });
+  }
+
+  if (type === "sale") {
+    if (subtype === "seller") {
+      return workspace.parties
+        .filter((party) => party.partyType === "SELLER")
+        .map((party) => {
+          const rows = [...workspace.sales, ...workspace.draftSales].filter(
+            (sale) =>
+              sale.partyId === party.id &&
+              inDateRange(sale.occurredAt, from, to),
+          );
+          return simpleDerivedBook({
+            id: `sale-${party.id}`,
+            type,
+            subtype,
+            accountId: party.id,
+            accountKind: "party",
+            name: party.name,
+            typeLabel: "Seller Sales",
+            rows: rows.map((sale) => ({
+              id: sale.id,
+              occurredAt: sale.occurredAt,
+              business: formatPaise(sale.grossSalesPaise),
+              money: formatPaise(sale.netPayablePaise),
+              balance: `${sale.netTickets} tickets`,
+              detail: `Gross ${formatPaise(sale.grossSalesPaise)} · Commission ${formatPaise(
+                sale.commissionPaise,
+              )} · TDS ${formatPaise(sale.tdsPaise)}`,
+            })),
+            summary: [
+              ["Tickets", rows.reduce((total, sale) => total + sale.netTickets, 0).toString()],
+              ["Gross", formatPaise(sumBigInt(rows.map((sale) => sale.grossSalesPaise)))],
+              ["Net Due", formatPaise(sumBigInt(rows.map((sale) => sale.netPayablePaise)))],
+            ],
+          });
+        });
+    }
+    return workspace.parties
+      .filter((party) => party.partyType === "CUSTOMER")
+      .map((party) => {
+        const rows = workspace.customerBills.filter(
+          (bill) =>
+            bill.partyId === party.id && inDateRange(bill.occurredAt, from, to),
+        );
+        return simpleDerivedBook({
+          id: `customer-sale-${party.id}`,
+          type,
+          subtype,
+          accountId: party.id,
+          accountKind: "party",
+          name: party.name,
+          typeLabel: "Customer Sales",
+          rows: rows.map((bill) => ({
+            id: bill.id,
+            occurredAt: bill.occurredAt,
+            business: formatPaise(bill.amountPaise),
+            money: "—",
+            balance: `${bill.quantity} tickets`,
+            detail: `Rate ${formatPaise(bill.unitRatePaise)} · ${bill.reference}`,
+          })),
+          summary: [
+            ["Tickets", sumBigInt(rows.map((bill) => bill.quantity)).toString()],
+            ["Gross", formatPaise(sumBigInt(rows.map((bill) => bill.amountPaise)))],
+            ["Entries", rows.length.toString()],
+          ],
+        });
+      });
+  }
+
+  if (type === "purchase") {
+    return workspace.parties
+      .filter(
+        (party) =>
+          party.partyType === "STOCKIST" ||
+          party.partyType === "SERVICE_STOCKIST",
+      )
+      .map((party) => {
+        const rows = workspace.stockistEntries.filter(
+          (entry) =>
+            entry.partyId === party.id &&
+            inDateRange(entry.occurredAt, from, to),
+        );
+        return simpleDerivedBook({
+          id: `purchase-${party.id}`,
+          type,
+          subtype,
+          accountId: party.id,
+          accountKind: "party",
+          name: party.name,
+          typeLabel: "Purchase Ledger",
+          rows: rows.map((entry) => ({
+            id: entry.id,
+            occurredAt: entry.occurredAt,
+            business: formatPaise(entry.grossPurchasePaise),
+            money: formatPaise(entry.netPayablePaise),
+            balance: `${entry.netPurchaseQuantity} tickets`,
+            detail: `Gross ${formatPaise(entry.grossPurchasePaise)} · Commission ${formatPaise(
+              entry.commissionPaise,
+            )} · TDS ${formatPaise(entry.tdsPaise)}`,
+          })),
+          summary: [
+            ["Tickets", sumBigInt(rows.map((entry) => entry.netPurchaseQuantity)).toString()],
+            ["Gross", formatPaise(sumBigInt(rows.map((entry) => entry.grossPurchasePaise)))],
+            ["Net Payable", formatPaise(sumBigInt(rows.map((entry) => entry.netPayablePaise)))],
+          ],
+        });
+      });
+  }
+
+  if (type === "return") {
+    const sellerSide = subtype === "seller";
+    const parties = ledgerParties(workspace, sellerSide);
+    return parties.map((party) => {
+      const rows = sellerSide
+        ? [...workspace.sales, ...workspace.draftSales]
+            .filter(
+              (sale) =>
+                sale.partyId === party.id &&
+                inDateRange(sale.occurredAt, from, to),
+            )
+            .map((sale) => ({
+              id: sale.id,
+              occurredAt: sale.occurredAt,
+              quantity: String(sale.dispatchQuantity),
+              returned: String(sale.returnQuantity),
+              net: String(sale.netTickets),
+              detail: `Morning ${sale.morningReturnQuantity} · Day ${sale.dayReturnQuantity} · Evening ${sale.eveningReturnQuantity}`,
+            }))
+        : workspace.stockistEntries
+            .filter(
+              (entry) =>
+                entry.partyId === party.id &&
+                inDateRange(entry.occurredAt, from, to),
+            )
+            .map((entry) => ({
+              id: entry.id,
+              occurredAt: entry.occurredAt,
+              quantity: entry.purchaseQuantity,
+              returned: entry.totalReturnQuantity,
+              net: entry.netPurchaseQuantity,
+              detail: `Morning ${entry.morningReturnQuantity} · Day ${entry.dayReturnQuantity} · Evening ${entry.eveningReturnQuantity}`,
+            }));
+      return simpleDerivedBook({
+        id: `return-${subtype}-${party.id}`,
+        type,
+        subtype,
+        accountId: party.id,
+        accountKind: "party",
+        name: party.name,
+        typeLabel: sellerSide ? "Seller Return" : "Stockist Return",
+        rows: rows.map((row) => ({
+          id: row.id,
+          occurredAt: row.occurredAt,
+          business: `${row.quantity} issued`,
+          money: `${row.returned} return`,
+          balance: `${row.net} net`,
+          detail: row.detail,
+        })),
+        summary: [
+          ["Issued", sumBigInt(rows.map((row) => row.quantity)).toString()],
+          ["Return", sumBigInt(rows.map((row) => row.returned)).toString()],
+          ["Net", sumBigInt(rows.map((row) => row.net)).toString()],
+        ],
+      });
+    });
+  }
+
+  if (type === "commission" || type === "tds") {
+    const sellerSide = subtype === "seller";
+    const parties = ledgerParties(workspace, sellerSide);
+    return parties.map((party) => {
+      const entries = sellerSide
+        ? [...workspace.sales, ...workspace.draftSales].filter(
+            (sale) =>
+              sale.partyId === party.id &&
+              inDateRange(sale.occurredAt, from, to),
+          )
+        : workspace.stockistEntries.filter(
+            (entry) =>
+              entry.partyId === party.id &&
+              inDateRange(entry.occurredAt, from, to),
+          );
+      const gross = sumBigInt(entries.map((entry) => entry.commissionPaise));
+      const tax = sumBigInt(entries.map((entry) => entry.tdsPaise));
+      return simpleDerivedBook({
+        id: `${type}-${subtype}-${party.id}`,
+        type,
+        subtype,
+        accountId: party.id,
+        accountKind: "party",
+        name: party.name,
+        typeLabel:
+          type === "commission"
+            ? sellerSide
+              ? "Seller Commission"
+              : "Stockist Commission"
+            : sellerSide
+              ? "Seller TDS Payable"
+              : "Stockist TDS Credit",
+        rows: entries.map((entry) => ({
+          id: entry.id,
+          occurredAt: entry.occurredAt,
+          business:
+            type === "commission"
+              ? formatPaise(entry.commissionPaise)
+              : formatPaise(entry.tdsPaise),
+          money:
+            type === "commission" ? formatPaise(entry.tdsPaise) : "—",
+          balance:
+            type === "commission"
+              ? formatPaise(
+                  BigInt(entry.commissionPaise) - BigInt(entry.tdsPaise),
+                )
+              : formatPaise(entry.tdsPaise),
+          detail: `Gross commission ${formatPaise(
+            entry.commissionPaise,
+          )} · TDS ${formatPaise(entry.tdsPaise)}`,
+        })),
+        summary:
+          type === "commission"
+            ? [
+                ["Gross Commission", formatPaise(gross)],
+                ["TDS", formatPaise(tax)],
+                ["Net Commission", formatPaise(gross - tax)],
+              ]
+            : [
+                [sellerSide ? "TDS Generated" : "TDS Credit", formatPaise(tax)],
+                [sellerSide ? "Deposited" : "Claimed", formatPaise(0)],
+                ["Balance", formatPaise(tax)],
+              ],
+      });
+    });
+  }
+
+  if (type === "expense") {
+    return workspace.expenseProfiles
+      .filter((profile) => profile.categoryId === subtype)
+      .map((profile) => {
+        const allBills = workspace.expenseBills.filter(
+          (bill) => bill.profileId === profile.id && throughDate(bill.occurredAt, to),
+        );
+        const allPayments = workspace.expensePayments.filter(
+          (payment) =>
+            payment.profileId === profile.id && throughDate(payment.occurredAt, to),
+        );
+        const events = [
+          ...allBills.map((bill) => ({
+            id: `bill-${bill.id}`,
+            occurredAt: bill.occurredAt,
+            business: BigInt(bill.amountPaise),
+            money: 0n,
+            detail: `Bill ${bill.reference}`,
+          })),
+          ...allPayments.map((payment) => ({
+            id: `pay-${payment.id}`,
+            occurredAt: payment.occurredAt,
+            business: 0n,
+            money: BigInt(payment.totalAmountPaise),
+            detail: `Cash ${formatPaise(payment.cashPaise)} · Bank ${formatPaise(
+              payment.bankPaise,
+            )}`,
+          })),
+        ].sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+        let balance = 0n;
+        const transactions: LedgerTxn[] = [];
+        for (const event of events) {
+          balance += event.business - event.money;
+          if (inDateRange(event.occurredAt, from, to)) {
+            transactions.push({
+              id: event.id,
+              occurredAt: event.occurredAt,
+              business: formatPaise(event.business),
+              money: formatPaise(event.money),
+              balance: formatPaise(balance),
+              detail: event.detail,
+            });
+          }
+        }
+        const periodBills = allBills.filter((bill) =>
+          inDateRange(bill.occurredAt, from, to),
+        );
+        const periodPayments = allPayments.filter((payment) =>
+          inDateRange(payment.occurredAt, from, to),
+        );
+        return {
+          id: profile.id,
+          category: type,
+          subtype,
+          accountId: profile.id,
+          accountKind: "expense",
+          name: expenseProfileLabel(profile, workspace.expenseCategories),
+          typeLabel: "Expense Ledger",
+          summary: [
+            ["Bills", formatPaise(sumBigInt(periodBills.map((bill) => bill.amountPaise)))],
+            ["Paid", formatPaise(sumBigInt(periodPayments.map((p) => p.totalAmountPaise)))],
+            ["Balance", formatPaise(balance)],
+          ],
+          transactions,
+        };
+      });
+  }
+
+  if (type === "payment") {
+    if (subtype === "expense") {
+      return workspace.expenseProfiles.map((profile) => {
+        const rows = workspace.expensePayments.filter(
+          (payment) =>
+            payment.profileId === profile.id &&
+            inDateRange(payment.occurredAt, from, to),
+        );
+        return simpleDerivedBook({
+          id: `expense-payment-${profile.id}`,
+          type,
+          subtype,
+          accountId: profile.id,
+          accountKind: "expense",
+          name: expenseProfileLabel(profile, workspace.expenseCategories),
+          typeLabel: "Expense Payment",
+          rows: rows.map((payment) => ({
+            id: payment.id,
+            occurredAt: payment.occurredAt,
+            business: formatPaise(payment.totalAmountPaise),
+            money: `Cash ${formatPaise(payment.cashPaise)}`,
+            balance: `Bank ${formatPaise(payment.bankPaise)}`,
+            detail: payment.reference,
+          })),
+          summary: [
+            ["Entries", rows.length.toString()],
+            ["Paid", formatPaise(sumBigInt(rows.map((p) => p.totalAmountPaise)))],
+            ["Methods", "Cash + Bank"],
+          ],
+        });
+      });
+    }
+    const partyType =
+      subtype === "seller"
+        ? "SELLER"
+        : subtype === "customer"
+          ? "CUSTOMER"
+          : "STOCKIST";
+    return workspace.parties
+      .filter((party) =>
+        subtype === "stockist"
+          ? party.partyType === "STOCKIST" ||
+            party.partyType === "SERVICE_STOCKIST"
+          : party.partyType === partyType,
+      )
+      .map((party) => {
+        const direction = subtype === "stockist" ? "PAYMENT" : "RECEIPT";
+        const rows = workspace.payments.filter(
+          (payment) =>
+            payment.partyId === party.id &&
+            payment.direction === direction &&
+            inDateRange(payment.occurredAt, from, to),
+        );
+        return simpleDerivedBook({
+          id: `payment-${subtype}-${party.id}`,
+          type,
+          subtype,
+          accountId: party.id,
+          accountKind: "party",
+          name: party.name,
+          typeLabel: subtype === "stockist" ? "Stockist Payment" : "Receipt",
+          rows: rows.map((payment) => ({
+            id: payment.id,
+            occurredAt: payment.occurredAt,
+            business: formatPaise(payment.totalAmountPaise),
+            money: splitText(payment.methodSplit),
+            balance: "—",
+            detail: payment.reference,
+          })),
+          summary: [
+            ["Entries", rows.length.toString()],
+            [
+              direction === "RECEIPT" ? "Received" : "Paid",
+              formatPaise(sumBigInt(rows.map((p) => p.totalAmountPaise))),
+            ],
+            ["Methods", "Cash/Bank/UPI/PWT"],
+          ],
+        });
+      });
+  }
+
+  if (type === "money") {
+    const method = subtype as MoneyMethod;
+    const rows: LedgerTxn[] = [];
+    let moneyIn = 0n;
+    let moneyOut = 0n;
+    for (const payment of workspace.payments) {
+      if (!inDateRange(payment.occurredAt, from, to)) continue;
+      const amount = BigInt(payment.methodSplit[method] || "0");
+      if (amount === 0n) continue;
+      const incoming = payment.direction === "RECEIPT";
+      if (incoming) moneyIn += amount;
+      else moneyOut += amount;
+      rows.push({
+        id: payment.id,
+        occurredAt: payment.occurredAt,
+        business: incoming ? formatPaise(amount) : "—",
+        money: incoming ? "—" : formatPaise(amount),
+        balance: incoming ? "Money In" : "Money Out",
+        detail: `${payment.partyName} · ${payment.reference}`,
+      });
+    }
+    if (method === "cashPaise" || method === "bankPaise") {
+      for (const payment of workspace.expensePayments) {
+        if (!inDateRange(payment.occurredAt, from, to)) continue;
+        const amount =
+          method === "cashPaise"
+            ? BigInt(payment.cashPaise)
+            : BigInt(payment.bankPaise);
+        if (amount === 0n) continue;
+        moneyOut += amount;
+        rows.push({
+          id: `expense-${payment.id}`,
+          occurredAt: payment.occurredAt,
+          business: "—",
+          money: formatPaise(amount),
+          balance: "Money Out",
+          detail: `${payment.profileName} · ${payment.reference}`,
+        });
+      }
+    }
+    return [
+      simpleDerivedBook({
+        id: `money-${method}`,
+        type,
+        subtype,
+        accountId: null,
+        accountKind: null,
+        name:
+          PARTY_PAYMENT_METHODS.find(([key]) => key === method)?.[1] || "Money",
+        typeLabel: "Cash Flow Ledger",
+        rows,
+        summary: [
+          ["Money In", formatPaise(moneyIn)],
+          ["Money Out", formatPaise(moneyOut)],
+          ["Net Flow", formatPaise(moneyIn - moneyOut)],
+        ],
+      }),
+    ];
+  }
+
+  if (type === "pwt") {
+    const incoming = subtype === "received";
+    const rows = workspace.payments.filter(
+      (payment) =>
+        inDateRange(payment.occurredAt, from, to) &&
+        BigInt(payment.methodSplit.pwtPaise || "0") > 0n &&
+        (incoming
+          ? payment.direction === "RECEIPT"
+          : payment.direction !== "RECEIPT"),
+    );
+    const total = sumBigInt(rows.map((p) => p.methodSplit.pwtPaise || "0"));
+    return [
+      simpleDerivedBook({
+        id: `pwt-${subtype}`,
+        type,
+        subtype,
+        accountId: null,
+        accountKind: null,
+        name: incoming ? "PWT Received" : "PWT Redeemed",
+        typeLabel: "PWT / Prize Ledger",
+        rows: rows.map((payment) => ({
+          id: payment.id,
+          occurredAt: payment.occurredAt,
+          business: formatPaise(payment.methodSplit.pwtPaise || "0"),
+          money: "—",
+          balance: incoming ? "Received" : "Redeemed",
+          detail: `${payment.partyName} · ${payment.reference}`,
+        })),
+        summary: [
+          ["Entries", rows.length.toString()],
+          [incoming ? "Received" : "Redeemed", formatPaise(total)],
+          ["PWT", formatPaise(total)],
+        ],
+      }),
+    ];
+  }
+
+  const days = new Set<string>();
+  for (const sale of [...workspace.sales, ...workspace.draftSales])
+    if (inDateRange(sale.occurredAt, from, to)) days.add(dateKey(sale.occurredAt));
+  for (const entry of workspace.stockistEntries)
+    if (inDateRange(entry.occurredAt, from, to)) days.add(dateKey(entry.occurredAt));
+  for (const bill of workspace.customerBills)
+    if (inDateRange(bill.occurredAt, from, to)) days.add(dateKey(bill.occurredAt));
+  const transactions = [...days]
+    .sort()
+    .map((day) => {
+      const purchase = workspace.stockistEntries
+        .filter((entry) => dateKey(entry.occurredAt) === day)
+        .reduce((total, entry) => total + BigInt(entry.netPurchaseQuantity), 0n);
+      const sellerSale = [...workspace.sales, ...workspace.draftSales]
+        .filter((sale) => dateKey(sale.occurredAt) === day)
+        .reduce((total, sale) => total + BigInt(sale.netTickets), 0n);
+      const customerSale = workspace.customerBills
+        .filter((bill) => dateKey(bill.occurredAt) === day)
+        .reduce((total, bill) => total + BigInt(bill.quantity), 0n);
+      return {
+        id: day,
+        occurredAt: `${day}T00:00:00.000Z`,
+        business: `${purchase} purchase`,
+        money: `${sellerSale + customerSale} sold`,
+        balance: `${purchase - sellerSale - customerSale} diff`,
+        detail: "Stock is checked per business date.",
+      };
+    });
+  const purchase = workspace.stockistEntries
+    .filter((entry) => inDateRange(entry.occurredAt, from, to))
+    .reduce((total, entry) => total + BigInt(entry.netPurchaseQuantity), 0n);
+  const sale =
+    [...workspace.sales, ...workspace.draftSales]
+      .filter((entry) => inDateRange(entry.occurredAt, from, to))
+      .reduce((total, entry) => total + BigInt(entry.netTickets), 0n) +
+    workspace.customerBills
+      .filter((entry) => inDateRange(entry.occurredAt, from, to))
+      .reduce((total, entry) => total + BigInt(entry.quantity), 0n);
+  return [
+    simpleDerivedBook({
+      id: "stock-summary",
+      type,
+      subtype: "stock",
+      accountId: null,
+      accountKind: null,
+      name: "Lottery Stock",
+      typeLabel: "Stock Ledger",
+      rows: transactions,
+      summary: [
+        ["Net Purchase", purchase.toString()],
+        ["Net Sale", sale.toString()],
+        ["Difference", (purchase - sale).toString()],
+      ],
+    }),
+  ];
+}
+
+function simpleDerivedBook({
+  id,
+  type,
+  subtype,
+  accountId,
+  accountKind,
+  name,
+  typeLabel,
+  rows,
+  summary,
+}: {
+  id: string;
+  type: LedgerBookType;
+  subtype: string;
+  accountId: string | null;
+  accountKind: "party" | "expense" | null;
+  name: string;
+  typeLabel: string;
+  rows: LedgerTxn[];
+  summary: Array<[string, string]>;
+}): LedgerBook {
+  return {
+    id,
+    category: type,
+    subtype,
+    accountId,
+    accountKind,
+    name,
+    typeLabel,
+    summary,
+    transactions: rows,
+  };
+}
+
+function LedgerStatement({
+  book,
+  bounds,
+  onBack,
   onEdit,
 }: Readonly<{
-  workspace: LotteryWorkspace;
-  onEdit: (operation: "SALE" | "PURCHASE", partyId: string, occurredAt: string) => void;
+  book: LedgerBook;
+  bounds: { from: string; to: string };
+  onBack: () => void;
+  onEdit: () => void;
 }>) {
-  const [fromDate, setFromDate] = useState(todayInputValue());
-  const [toDate, setToDate] = useState(todayInputValue());
-  const [partyId, setPartyId] = useState("");
-  const from = new Date(`${fromDate}T00:00:00Z`);
-  const endCandidate = new Date(`${toDate || fromDate}T00:00:00Z`);
-  const to =
-    endCandidate >= from
-      ? new Date(endCandidate.getTime() + 86_400_000)
-      : new Date(from.getTime() + 86_400_000);
-  const inRange = (occurredAt: string) => {
-    const date = new Date(occurredAt);
-    return date >= from && date < to;
-  };
-  const includesParty = (entryPartyId: string | null) =>
-    Boolean(partyId) && entryPartyId === partyId;
-  const visibleStock = workspace.stockMovements.filter(
-    (movement) => inRange(movement.occurredAt) && includesParty(movement.partyId),
+  const editable = Boolean(book.accountKind);
+  return (
+    <SectionCard
+      title={book.name}
+      hint={`${displayDate(bounds.from)} → ${displayDate(bounds.to)} · ${book.typeLabel}`}
+    >
+      <div className="mb-2 flex flex-wrap justify-between gap-2">
+        <Button onClick={onBack}>Back</Button>
+        {editable && (
+          <Button onClick={onEdit}>
+            Edit {book.accountKind === "expense" ? "Expense Profile" : "Profile"}
+          </Button>
+        )}
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-slate-100">
+        <table className="min-w-[640px] border-collapse text-left text-[9px]">
+          <thead className="bg-emerald-50/60 text-[7px] uppercase text-slate-500">
+            <tr>
+              <th className="px-2 py-2">Date</th>
+              <th className="px-2 py-2">Business / Bill</th>
+              <th className="px-2 py-2">Paid / Received / TDS</th>
+              <th className="px-2 py-2">Balance / Net</th>
+              <th className="px-2 py-2">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {book.transactions.length ? (
+              book.transactions.map((row) => (
+                <tr key={row.id} className="border-t border-slate-100">
+                  <td className="px-2 py-2">{displayDate(row.occurredAt)}</td>
+                  <td className="px-2 py-2">{row.business}</td>
+                  <td className="px-2 py-2">{row.money}</td>
+                  <td className="px-2 py-2 font-black">{row.balance}</td>
+                  <td className="max-w-[230px] whitespace-normal px-2 py-2 text-[8px] text-slate-500">
+                    {row.detail}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
+                  No transaction in this period.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
   );
-  const visibleStockistEntries = workspace.stockistEntries.filter(
-    (entry) => inRange(entry.occurredAt) && includesParty(entry.partyId),
+}
+
+function AiPanel({ workspace }: Readonly<{ workspace: LotteryWorkspace }>) {
+  const [period, setPeriod] = useState<LedgerPeriod>("today");
+  const today = businessDateToday();
+  const bounds = periodBounds(period, today, today);
+  const { sellerCommission, stockistCommission, profit } =
+    periodBusinessMetrics(workspace, bounds.from, bounds.to);
+  const receivable = receivablePriority(workspace, bounds.to).reduce(
+    (total, row) => total + row.amountPaise,
+    0n,
   );
-  const visibleSales = [...workspace.sales, ...workspace.draftSales].filter(
-    (sale) => inRange(sale.occurredAt) && includesParty(sale.partyId),
+  const payable = payablePriority(workspace, bounds.to).reduce(
+    (total, row) => total + row.amountPaise,
+    0n,
   );
-  const visiblePayments = workspace.payments.filter(
-    (payment) => inRange(payment.occurredAt) && includesParty(payment.partyId),
+  const commissionDifference = stockistCommission - sellerCommission;
+  let health = 100;
+  if (receivable > 0n) health -= 8;
+  if (payable > 0n) health -= 8;
+  if (commissionDifference !== 0n) health -= 15;
+  if (profit < 0n) health -= 25;
+
+  return (
+    <SectionCard
+      title="ORBIS AI · Accounting Health"
+      hint="This AI surface is limited to this module's accounting data. It does not answer general questions."
+    >
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {(
+          [
+            ["today", "Today"],
+            ["7d", "7 Days"],
+            ["10d", "10 Days"],
+            ["month", "Month"],
+            ["year", "Year"],
+          ] as const
+        ).map(([value, label]) => (
+          <Button
+            key={value}
+            active={period === value}
+            onClick={() => setPeriod(value)}
+            className="shrink-0"
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Metric label="Profit" value={formatPaise(profit)} />
+        <Metric label="Receivable" value={formatPaise(receivable)} tone="blue" />
+        <Metric label="Payable" value={formatPaise(payable)} tone="orange" />
+        <Metric label="Health Score" value={`${Math.max(0, health)}/100`} tone="violet" />
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <AiCard
+          title="Profit / Loss"
+          text={`Selected period result is ${formatPaise(profit)}.`}
+        />
+        <AiCard
+          title="Commission"
+          text={
+            commissionDifference === 0n
+              ? "Gross Seller and Stockist commission are clear."
+              : `Mismatch ${formatPaise(
+                  commissionDifference < 0n
+                    ? -commissionDifference
+                    : commissionDifference,
+                )}.`
+          }
+        />
+        <AiCard
+          title="Receivable"
+          text={
+            receivable > 0n
+              ? `${formatPaise(receivable)} remains to receive.`
+              : "No open receivable."
+          }
+        />
+        <AiCard
+          title="Payable"
+          text={
+            payable > 0n
+              ? `${formatPaise(payable)} remains to pay.`
+              : "No open payable."
+          }
+        />
+      </div>
+      <div className="mt-3">
+        <InlineNotice>
+          Existing verified backend insights remain available:{" "}
+          {workspace.insights.map((item) => `${item.skill}: ${item.status}`).join(" · ") ||
+            "No insight rows."}
+        </InlineNotice>
+      </div>
+    </SectionCard>
   );
-  const rawRows = [
-    ...visibleStockistEntries.map((entry) => ({
-      id: `stockist-${entry.id}`,
-      occurredAt: entry.occurredAt,
-      category: BigInt(entry.purchaseQuantity) > 0n ? "Stockist purchase" : "Stockist return",
-      party: entry.partyName,
-      quantity: entry.purchaseQuantity,
-      returnQuantity: entry.totalReturnQuantity,
-      netQuantity: entry.netPurchaseQuantity,
-      amountPaise: entry.netPayablePaise,
-      paymentPaise: "0",
-      methodSplit: null,
-      balanceEffectPaise: BigInt(entry.netPayablePaise),
-    })),
-    ...visibleSales.map((sale) => ({
-      id: `sale-${sale.id}`,
-      occurredAt: sale.occurredAt,
-      category: "Seller sale",
-      party: sale.partyName,
-      quantity: String(sale.dispatchQuantity),
-      returnQuantity: String(sale.returnQuantity),
-      netQuantity: String(sale.netTickets),
-      amountPaise: sale.netPayablePaise,
-      paymentPaise: "0",
-      methodSplit: null,
-      balanceEffectPaise: BigInt(sale.netPayablePaise),
-    })),
-    ...visiblePayments.map((payment) => ({
-      id: `payment-${payment.id}`,
-      occurredAt: payment.occurredAt,
-      category:
-        payment.direction === "RECEIPT"
-          ? "Money received"
-          : payment.direction === "PAYMENT"
-            ? "Money paid"
-            : "Expense",
-      party: payment.partyName,
-      quantity: "—",
-      returnQuantity: "—",
-      netQuantity: "—",
-      amountPaise: "0",
-      paymentPaise: payment.totalAmountPaise,
-      methodSplit: payment.methodSplit,
-      balanceEffectPaise:
-        payment.direction === "EXPENSE"
-          ? 0n
-          : -BigInt(payment.totalAmountPaise),
-    })),
-  ].sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
-  const selectedStatementParty = workspace.parties.find(
-    (party) => party.id === partyId,
+}
+
+function MastersPanel({
+  workspace,
+  organizationId,
+  api,
+  working,
+  createOrganization,
+  run,
+}: Readonly<{
+  workspace: LotteryWorkspace | null;
+  organizationId: string;
+  api: LotteryAccountingClient;
+  working: string | null;
+  createOrganization: (name: string) => Promise<boolean>;
+  run: (
+    key: string,
+    action: () => Promise<unknown>,
+    success: string,
+  ) => Promise<boolean>;
+}>) {
+  const [organizationName, setOrganizationName] = useState("");
+  const [type, setType] = useState<PartyMasterType | "EXPENSE">("SELLER");
+  const [selectedPartyId, setSelectedPartyId] = useState("");
+  const [partyEditorOpen, setPartyEditorOpen] = useState(false);
+  const [partyName, setPartyName] = useState("");
+  const [partyPhone, setPartyPhone] = useState("");
+  const [partyRate, setPartyRate] = useState("");
+  const [expenseCategoryId, setExpenseCategoryId] = useState(
+    workspace?.expenseCategories[0]?.id || "",
   );
-  const beforeRange = (occurredAt: string) => new Date(occurredAt) < from;
-  let runningBalance = 0n;
-  if (selectedStatementParty?.partyType === "SELLER") {
-    runningBalance += [...workspace.sales, ...workspace.draftSales]
-      .filter((sale) => sale.partyId === partyId && beforeRange(sale.occurredAt))
-      .reduce((total, sale) => total + BigInt(sale.netPayablePaise), 0n);
-    runningBalance -= workspace.payments
-      .filter(
-        (payment) =>
-          payment.partyId === partyId &&
-          payment.direction === "RECEIPT" &&
-          beforeRange(payment.occurredAt),
-      )
-      .reduce(
-        (total, payment) => total + BigInt(payment.totalAmountPaise),
-        0n,
-      );
-  } else if (
-    selectedStatementParty?.partyType === "STOCKIST" ||
-    selectedStatementParty?.partyType === "SERVICE_STOCKIST"
-  ) {
-    runningBalance += workspace.stockistEntries
-      .filter(
-        (entry) => entry.partyId === partyId && beforeRange(entry.occurredAt),
-      )
-      .reduce(
-        (total, entry) => total + BigInt(entry.netPayablePaise),
-        0n,
-      );
-    runningBalance -= workspace.payments
-      .filter(
-        (payment) =>
-          payment.partyId === partyId &&
-          payment.direction === "PAYMENT" &&
-          beforeRange(payment.occurredAt),
-      )
-      .reduce(
-        (total, payment) => total + BigInt(payment.totalAmountPaise),
-        0n,
-      );
+  const [categoryEditorOpen, setCategoryEditorOpen] = useState(false);
+  const [categoryName, setCategoryName] = useState("");
+  const [categoryEditId, setCategoryEditId] = useState("");
+  const [expenseProfileId, setExpenseProfileId] = useState("");
+  const [expenseEditorOpen, setExpenseEditorOpen] = useState(false);
+  const [expenseName, setExpenseName] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseNote, setExpenseNote] = useState("");
+  const [tdsPercent, setTdsPercent] = useState(
+    ((workspace?.organization.tdsRateBps || 200) / 100).toFixed(2),
+  );
+
+  const parties =
+    workspace?.parties.filter((party) =>
+      type === "STOCKIST"
+        ? party.partyType === "STOCKIST" ||
+          party.partyType === "SERVICE_STOCKIST"
+        : party.partyType === type,
+    ) || [];
+  const profiles =
+    workspace?.expenseProfiles.filter(
+      (profile) => profile.categoryId === expenseCategoryId,
+    ) || [];
+
+  const populatePartyEditor = useCallback((party: LotteryParty) => {
+    setSelectedPartyId(party.id);
+    setPartyName(party.name);
+    setPartyPhone(party.phone || "");
+    setPartyRate(
+      BigInt(party.ticketRatePaise) > 0n
+        ? paiseInput(BigInt(party.ticketRatePaise))
+        : "",
+    );
+    setPartyEditorOpen(true);
+  }, []);
+
+  const populateExpenseEditor = useCallback((profile: LotteryExpenseProfile) => {
+    setExpenseProfileId(profile.id);
+    setExpenseName(profile.name);
+    setExpenseAmount(
+      BigInt(profile.usualAmountPaise) > 0n
+        ? paiseInput(BigInt(profile.usualAmountPaise))
+        : "",
+    );
+    setExpenseNote(profile.note || "");
+    setExpenseEditorOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (!workspace) return;
+    const partyId = sessionStorage.getItem("orbis-accounting-edit-party");
+    if (partyId) {
+      sessionStorage.removeItem("orbis-accounting-edit-party");
+      const party = workspace.parties.find((item) => item.id === partyId);
+      if (party && new Set(["SELLER", "STOCKIST", "CUSTOMER"]).has(party.partyType)) {
+        setType(party.partyType as PartyMasterType);
+        populatePartyEditor(party);
+      }
+    }
+    const expenseId = sessionStorage.getItem("orbis-accounting-edit-expense");
+    if (expenseId) {
+      sessionStorage.removeItem("orbis-accounting-edit-expense");
+      const profile = workspace.expenseProfiles.find((item) => item.id === expenseId);
+      if (profile) {
+        setType("EXPENSE");
+        setExpenseCategoryId(profile.categoryId);
+        populateExpenseEditor(profile);
+      }
+    }
+  }, [populateExpenseEditor, populatePartyEditor, workspace]);
+
+  if (!workspace) {
+    return (
+      <SectionCard title="Create your first accounting workspace">
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (organizationName.trim())
+              void createOrganization(organizationName.trim());
+          }}
+        >
+          <input
+            aria-label="Business organization name"
+            value={organizationName}
+            onChange={(event) => setOrganizationName(event.target.value)}
+            className={`${CONTROL} flex-1`}
+            placeholder="Business name"
+          />
+          <button className={ACTIVE_BUTTON} type="submit">
+            Create
+          </button>
+        </form>
+      </SectionCard>
+    );
   }
-  const rows: StatementRow[] = rawRows.map((row) => {
-    runningBalance += row.balanceEffectPaise;
-    return {
-      ...row,
-      balancePaise: partyId ? runningBalance.toString() : null,
+
+  const openNewParty = () => {
+    setSelectedPartyId("");
+    setPartyName("");
+    setPartyPhone("");
+    setPartyRate("");
+    setPartyEditorOpen(true);
+  };
+  const openParty = populatePartyEditor;
+  const saveParty = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const ticketRatePaise =
+      type === "CUSTOMER" ? "0" : parseAmount(partyRate)?.toString();
+    if (!partyName.trim() || (type !== "CUSTOMER" && !ticketRatePaise)) return;
+    if (selectedPartyId) {
+      const ok = await run(
+        "party-profile",
+        () =>
+          api.updatePartyProfile({
+            organizationId,
+            partyId: selectedPartyId,
+            name: partyName.trim(),
+            phone: partyPhone.trim() || undefined,
+            ticketRatePaise: ticketRatePaise || "0",
+          }),
+        "Party profile updated.",
+      );
+      if (ok) setPartyEditorOpen(false);
+    } else {
+      const ok = await run(
+        "party",
+        () =>
+          api.createParty({
+            organizationId,
+            partyType: type,
+            name: partyName.trim(),
+            phone: partyPhone.trim() || undefined,
+            ticketRatePaise: ticketRatePaise || "0",
+          }),
+        "New party added.",
+      );
+      if (ok) setPartyEditorOpen(false);
+    }
+  };
+
+  const saveCategory = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!categoryName.trim()) return;
+    const ok = categoryEditId
+      ? await run(
+          "expense-category",
+          () =>
+            api.updateExpenseCategory(categoryEditId, {
+              organizationId,
+              name: categoryName.trim(),
+            }),
+          "Expense category updated.",
+        )
+      : await run(
+          "expense-category",
+          () =>
+            api.createExpenseCategory({
+              organizationId,
+              name: categoryName.trim(),
+            }),
+          "Expense category added.",
+        );
+    if (ok) {
+      setCategoryEditorOpen(false);
+      setCategoryEditId("");
+      setCategoryName("");
+    }
+  };
+
+  const openExpense = populateExpenseEditor;
+  const saveExpense = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!expenseCategoryId || !expenseName.trim()) return;
+    const payload = {
+      organizationId,
+      categoryId: expenseCategoryId,
+      name: expenseName.trim(),
+      usualAmountPaise: (parseAmount(expenseAmount) || 0n).toString(),
+      note: expenseNote.trim() || undefined,
     };
-  });
-  const purchased = visibleStockistEntries.reduce(
-    (total, entry) => total + BigInt(entry.purchaseQuantity),
-    visibleStock
-      .filter(
-        (movement) =>
-          movement.movementType === "RECEIPT" && !movement.partyId,
-      )
-      .reduce((total, movement) => total + BigInt(movement.quantity), 0n),
-  );
-  const dispatched = visibleSales.reduce(
-    (total, sale) => total + BigInt(sale.dispatchQuantity),
-    0n,
-  );
-  const returned = visibleSales.reduce(
-    (total, sale) => total + BigInt(sale.returnQuantity),
-    0n,
-  );
-  const netSale = visibleSales.reduce(
-    (total, sale) => total + BigInt(sale.netTickets),
-    0n,
-  );
-  const grossSales = sumPaise(
-    visibleSales.map((sale) => sale.grossSalesPaise),
-  );
-  const received = sumPaise(
-    visiblePayments
-      .filter((payment) => payment.direction === "RECEIPT")
-      .map((payment) => payment.totalAmountPaise),
-  );
-  const expenses = sumPaise(
-    visiblePayments
-      .filter((payment) => payment.direction === "EXPENSE")
-      .map((payment) => payment.totalAmountPaise),
-  );
+    const ok = expenseProfileId
+      ? await run(
+          "expense-profile",
+          () => api.updateExpenseProfile(expenseProfileId, payload),
+          "Expense profile updated.",
+        )
+      : await run(
+          "expense-profile",
+          () => api.createExpenseProfile(payload),
+          "Expense profile added.",
+        );
+    if (ok) {
+      setExpenseEditorOpen(false);
+      setExpenseProfileId("");
+      setExpenseName("");
+      setExpenseAmount("");
+      setExpenseNote("");
+    }
+  };
 
   return (
     <div className="space-y-3">
-      <WorkspaceCard title="Party ledger">
-        <p className="text-[10px] leading-relaxed text-slate-600">
-          Choose a party and date. Its purchase or sale, return, payment and
-          running balance appear together in one day-wise ledger.
-        </p>
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <label>
-            <Label htmlFor="statement-from-date">From date</Label>
-            <input
-              id="statement-from-date"
-              type="date"
-              value={fromDate}
-              onChange={(event) => setFromDate(event.target.value)}
-              className={CONTROL_CLASS}
-            />
-          </label>
-          <label>
-            <Label htmlFor="statement-to-date">To date</Label>
-            <input
-              id="statement-to-date"
-              type="date"
-              value={toDate}
-              onChange={(event) => setToDate(event.target.value)}
-              className={CONTROL_CLASS}
-            />
-          </label>
-          <label>
-            <Label htmlFor="statement-party">Party</Label>
-            <select
-              id="statement-party"
-              value={partyId}
-              onChange={(event) => setPartyId(event.target.value)}
-              className={CONTROL_CLASS}
+      <SectionCard
+        title="Masters"
+        hint="Choose one specification. The list stays simple; tap a name to open its editor."
+      >
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {(
+            [
+              ["SELLER", "Seller"],
+              ["STOCKIST", "Stockist"],
+              ["CUSTOMER", "Customer"],
+              ["EXPENSE", "Expenses"],
+            ] as const
+          ).map(([value, label]) => (
+            <Button
+              key={value}
+              active={type === value}
+              className="shrink-0"
+              onClick={() => {
+                setType(value);
+                setPartyEditorOpen(false);
+                setExpenseEditorOpen(false);
+              }}
             >
-              <option value="">Choose a party</option>
-              {workspace.parties.map((party) => (
-                <option key={party.id} value={party.id}>
-                  {party.name} · {party.partyType.toLowerCase()}
-                </option>
-              ))}
-            </select>
-          </label>
+              {label}
+            </Button>
+          ))}
         </div>
-      </WorkspaceCard>
+      </SectionCard>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Metric label="Bought" value={purchased.toString()} />
-        <Metric label="Given" value={dispatched.toString()} />
-        <Metric label="Returned" value={returned.toString()} />
-        <Metric label="Net" value={netSale.toString()} />
-        <Metric label="Sale amount" value={formatPaise(grossSales)} />
-        <Metric label="Received" value={formatPaise(received)} />
-        <Metric label="Expenses" value={formatPaise(expenses)} tone="orange" />
-        <Metric
-          label="Net cash"
-          value={formatPaise(BigInt(received) - BigInt(expenses))}
-        />
-      </div>
-
-      <WorkspaceCard title="Day-wise ledger">
-        {rows.length ? (
-          <div className="overflow-x-auto rounded-xl border border-emerald-100">
-            <table className="min-w-[920px] border-collapse text-left text-[10px]">
-              <thead className="bg-emerald-50 text-[8px] uppercase tracking-wide text-slate-600">
-                <tr>
-                  {[
-                    "Date",
-                    "Category",
-                    "Party",
-                    "Bought / given",
-                    "Return",
-                    "Net",
-                    "Amount",
-                    "Payment",
-                    "Balance",
-                    "Details / Edit",
-                  ].map((heading) => (
-                    <th
-                      key={heading}
-                      className="border-b border-emerald-100 px-2 py-2 font-black"
-                    >
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-100 last:border-0">
-                    <td className="px-2 py-2">{displayDate(row.occurredAt)}</td>
-                    <td className="px-2 py-2 capitalize">{row.category}</td>
-                    <td className="px-2 py-2 font-bold">{row.party}</td>
-                    <td className="px-2 py-2">{row.quantity}</td>
-                    <td className="px-2 py-2">{row.returnQuantity}</td>
-                    <td className="px-2 py-2">{row.netQuantity}</td>
-                    <td className="px-2 py-2">{formatPaise(row.amountPaise)}</td>
-                    <td className="px-2 py-2">{formatPaise(row.paymentPaise)}</td>
-                    <td className="px-2 py-2 font-black">
-                      {row.balancePaise === null ? "Choose one party" : formatPaise(row.balancePaise)}
-                    </td>
-                    <td className="px-2 py-2">
-                      {row.methodSplit ? (
-                        <details>
-                          <summary className="cursor-pointer rounded-lg border border-emerald-200 px-2 py-1 text-[8px] font-bold text-emerald-800">
-                            Details
-                          </summary>
-                          <div className="mt-2 min-w-[150px] space-y-1 rounded-lg bg-slate-50 p-2 text-[8px] text-slate-700">
-                            {PAYMENT_METHODS.filter(
-                              ([key]) => BigInt(row.methodSplit?.[key] || "0") > 0n,
-                            ).map(([key, label]) => (
-                              <p key={key}>
-                                <strong>{label}:</strong>{" "}
-                                {formatPaise(row.methodSplit?.[key] || "0")}
-                              </p>
-                            ))}
-                          </div>
-                        </details>
-                      ) : partyId ? (
-                        <button type="button" className="rounded-lg border border-emerald-200 px-2 py-1 text-[8px] font-bold text-emerald-800" onClick={() => onEdit(workspace.parties.find((party) => party.id === partyId)?.partyType === "SELLER" ? "SALE" : "PURCHASE", partyId, row.occurredAt)}>Edit</button>
-                      ) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {type !== "EXPENSE" ? (
+        <SectionCard
+          title={`${type === "SELLER" ? "Seller" : type === "STOCKIST" ? "Stockist" : "Customer"} Profiles`}
+        >
+          <div className="mb-2 flex justify-end">
+            <Button active onClick={openNewParty}>
+              + Add {type === "SELLER" ? "Seller" : type === "STOCKIST" ? "Stockist" : "Customer"}
+            </Button>
           </div>
-        ) : (
-          <EmptyState>No saved accounting row matches this date and party.</EmptyState>
-        )}
-      </WorkspaceCard>
+          {partyEditorOpen && (
+            <form
+              className="mb-3 rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-orange-50 p-3"
+              onSubmit={(event) => void saveParty(event)}
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  aria-label="Party name"
+                  value={partyName}
+                  onChange={(event) => setPartyName(event.target.value)}
+                  className={`${CONTROL} col-span-2`}
+                  placeholder="Name"
+                />
+                {type !== "CUSTOMER" && (
+                  <input
+                    aria-label="Party fixed rate"
+                    value={partyRate}
+                    onChange={(event) => setPartyRate(event.target.value)}
+                    inputMode="decimal"
+                    className={CONTROL}
+                    placeholder="Fixed rate ₹"
+                  />
+                )}
+                <input
+                  aria-label="Party phone"
+                  value={partyPhone}
+                  onChange={(event) => setPartyPhone(event.target.value)}
+                  className={type === "CUSTOMER" ? `${CONTROL} col-span-2` : CONTROL}
+                  placeholder="Phone optional"
+                />
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button className={ACTIVE_BUTTON} type="submit">
+                  {selectedPartyId ? "Save Changes" : "Save"}
+                </button>
+                <Button onClick={() => setPartyEditorOpen(false)}>Close</Button>
+              </div>
+            </form>
+          )}
+          <div className="divide-y divide-slate-100 border-y border-slate-100">
+            {parties.map((party) => (
+              <button
+                key={party.id}
+                type="button"
+                onClick={() => openParty(party)}
+                className="flex w-full items-center justify-between gap-3 bg-white px-2 py-3 text-left"
+              >
+                <span className="text-[10px] font-black">{party.name}</span>
+                <ChevronRight className="h-4 w-4 text-slate-300" />
+              </button>
+            ))}
+          </div>
+        </SectionCard>
+      ) : (
+        <SectionCard
+          title="Expenses"
+          hint="Expenses → Category → Profile/Name. Both Category and Profile can be added or edited."
+        >
+          <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/60 to-orange-50/60 p-3">
+            <p className="text-[7px] font-black uppercase text-slate-500">Top Type</p>
+            <p className="mt-1 text-sm font-black">Expenses</p>
+            <label className="mt-2 block">
+              <span className="text-[8px] font-bold text-slate-500">Category</span>
+              <ExpenseCategorySelect
+                ariaLabel="Expense master category"
+                categories={workspace.expenseCategories}
+                value={expenseCategoryId}
+                onChange={(value) => {
+                  setExpenseCategoryId(value);
+                  setExpenseEditorOpen(false);
+                }}
+              />
+            </label>
+            <div className="mt-2 flex gap-2">
+              <Button
+                active
+                onClick={() => {
+                  setCategoryEditId("");
+                  setCategoryName("");
+                  setCategoryEditorOpen(true);
+                }}
+              >
+                + Add Category
+              </Button>
+              <Button
+                onClick={() => {
+                  const category = workspace.expenseCategories.find(
+                    (item) => item.id === expenseCategoryId,
+                  );
+                  if (!category) return;
+                  setCategoryEditId(category.id);
+                  setCategoryName(category.name);
+                  setCategoryEditorOpen(true);
+                }}
+              >
+                Edit Category
+              </Button>
+            </div>
+          </div>
+
+          {categoryEditorOpen && (
+            <form
+              className="mt-3 rounded-2xl border border-emerald-100 bg-white p-3"
+              onSubmit={(event) => void saveCategory(event)}
+            >
+              <input
+                aria-label="Expense category name"
+                value={categoryName}
+                onChange={(event) => setCategoryName(event.target.value)}
+                className={CONTROL}
+                placeholder="Category name"
+              />
+              <div className="mt-2 flex gap-2">
+                <button className={ACTIVE_BUTTON} type="submit">
+                  Save Category
+                </button>
+                <Button onClick={() => setCategoryEditorOpen(false)}>Close</Button>
+              </div>
+            </form>
+          )}
+
+          <div className="mt-3 flex justify-end">
+            <Button
+              active
+              onClick={() => {
+                setExpenseProfileId("");
+                setExpenseName("");
+                setExpenseAmount("");
+                setExpenseNote("");
+                setExpenseEditorOpen(true);
+              }}
+            >
+              + Add Profile
+            </Button>
+          </div>
+
+          {expenseEditorOpen && (
+            <form
+              className="mt-2 rounded-2xl border border-emerald-100 bg-gradient-to-br from-white to-emerald-50/50 p-3"
+              onSubmit={(event) => void saveExpense(event)}
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  aria-label="Expense profile name"
+                  value={expenseName}
+                  onChange={(event) => setExpenseName(event.target.value)}
+                  className={`${CONTROL} col-span-2`}
+                  placeholder="e.g. Raju"
+                />
+                <input
+                  aria-label="Expense usual amount"
+                  value={expenseAmount}
+                  onChange={(event) => setExpenseAmount(event.target.value)}
+                  inputMode="decimal"
+                  className={CONTROL}
+                  placeholder="Usual amount ₹"
+                />
+                <input
+                  aria-label="Expense profile note"
+                  value={expenseNote}
+                  onChange={(event) => setExpenseNote(event.target.value)}
+                  className={CONTROL}
+                  placeholder="Note optional"
+                />
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button className={ACTIVE_BUTTON} type="submit">
+                  Save Profile
+                </button>
+                <Button onClick={() => setExpenseEditorOpen(false)}>Close</Button>
+              </div>
+            </form>
+          )}
+
+          <div className="mt-3 divide-y divide-slate-100 border-y border-slate-100">
+            {profiles.map((profile) => (
+              <button
+                key={profile.id}
+                type="button"
+                onClick={() => openExpense(profile)}
+                className="flex w-full items-center justify-between bg-white px-2 py-3 text-left"
+              >
+                <span className="text-[10px] font-black">{profile.name}</span>
+                <ChevronRight className="h-4 w-4 text-slate-300" />
+              </button>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      <SectionCard
+        title="Global TDS Rule"
+        hint="New entries use the current TDS. Historical seller/stockist rows keep their saved TDS snapshot."
+      >
+        <div className="flex gap-2">
+          <input
+            aria-label="Global TDS percentage"
+            inputMode="decimal"
+            value={tdsPercent}
+            onChange={(event) => setTdsPercent(event.target.value)}
+            className={CONTROL}
+          />
+          <button
+            type="button"
+            disabled={working === "tds"}
+            onClick={() => {
+              const rate = Number(tdsPercent);
+              if (!Number.isFinite(rate) || rate < 0 || rate > 100) return;
+              void run(
+                "tds",
+                () =>
+                  api.updateOrganizationTdsRate({
+                    organizationId,
+                    tdsRateBps: Math.round(rate * 100),
+                  }),
+                "TDS rule updated for new entries.",
+              );
+            }}
+            className={ACTIVE_BUTTON}
+          >
+            Save TDS
+          </button>
+        </div>
+      </SectionCard>
     </div>
   );
 }

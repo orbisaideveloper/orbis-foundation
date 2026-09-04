@@ -531,6 +531,535 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     });
   }
 
+
+  async function ensureExpenseCategory(client, organizationId, categoryId) {
+    const category = await client.foundationAccountingExpenseCategory.findFirst({
+      where: { id: categoryId, organizationId, status: "ACTIVE" },
+    });
+    if (!category) throw accountingError("EXPENSE_CATEGORY_NOT_FOUND", "categoryId");
+    return category;
+  }
+
+  async function ensureExpenseProfile(client, organizationId, profileId) {
+    const profile = await client.foundationAccountingExpenseProfile.findFirst({
+      where: { id: profileId, organizationId, status: "ACTIVE" },
+    });
+    if (!profile) throw accountingError("EXPENSE_PROFILE_NOT_FOUND", "profileId");
+    return profile;
+  }
+
+  async function ensureCustomerParty(client, organizationId, partyId) {
+    const party = await ensureParty(client, organizationId, partyId);
+    if (party.partyType !== "CUSTOMER") {
+      throw accountingError("INVALID_CUSTOMER_PARTY", "partyId");
+    }
+    return party;
+  }
+
+  function expenseCategoryAuditData(
+    organizationId,
+    eventType,
+    categoryId,
+    actorAdminId,
+    name,
+  ) {
+    return {
+      organizationId,
+      eventType,
+      entityType: "EXPENSE_CATEGORY",
+      entityId: categoryId,
+      actorAdminId,
+      metadata: { name },
+    };
+  }
+
+  async function recordExpenseProfileAudit(
+    client,
+    eventType,
+    organizationId,
+    profileId,
+    actorAdminId,
+    categoryId,
+    name,
+    usualAmountPaise,
+  ) {
+    await client.foundationLotteryAuditEvent.create({
+      data: {
+        organizationId,
+        eventType,
+        entityType: "EXPENSE_PROFILE",
+        entityId: profileId,
+        actorAdminId,
+        metadata: {
+          categoryId,
+          name,
+          usualAmountPaise: usualAmountPaise.toString(),
+        },
+      },
+    });
+  }
+
+  async function createExpenseCategory(input, actorAdminId) {
+    const organizationId = requiredText(input?.organizationId, "organizationId");
+    const name = requiredText(input?.name, "name");
+    return prisma.$transaction(async (client) => {
+      await ensureOrganization(client, organizationId);
+      const category = await client.foundationAccountingExpenseCategory.create({
+        data: { organizationId, name, status: "ACTIVE" },
+      });
+      await client.foundationLotteryAuditEvent.create({ data: expenseCategoryAuditData(organizationId, "EXPENSE_CATEGORY_CREATED", category.id, actorAdminId, name) });
+      return serialize(category);
+    });
+  }
+
+  async function updateExpenseCategory(input, actorAdminId) {
+    const organizationId = requiredText(input?.organizationId, "organizationId");
+    const categoryId = requiredText(input?.categoryId, "categoryId");
+    const name = requiredText(input?.name, "name");
+    return prisma.$transaction(async (client) => {
+      const category = await ensureExpenseCategory(client, organizationId, categoryId);
+      const updated = await client.foundationAccountingExpenseCategory.update({
+        where: { id: category.id },
+        data: { name },
+      });
+      await client.foundationLotteryAuditEvent.create({ data: expenseCategoryAuditData(organizationId, "EXPENSE_CATEGORY_UPDATED", category.id, actorAdminId, name) });
+      return serialize(updated);
+    });
+  }
+
+  function expenseProfileFields(input) {
+    return {
+      organizationId: requiredText(input?.organizationId, "organizationId"),
+      categoryId: requiredText(input?.categoryId, "categoryId"),
+      name: requiredText(input?.name, "name"),
+      usualAmountPaise: optionalMoney(
+        input?.usualAmountPaise,
+        "usualAmountPaise",
+      ),
+    };
+  }
+
+  async function createExpenseProfile(input, actorAdminId) {
+    const { organizationId, categoryId, name, usualAmountPaise } =
+      expenseProfileFields(input);
+    return prisma.$transaction(async (client) => {
+      await ensureExpenseCategory(client, organizationId, categoryId);
+      const profile = await client.foundationAccountingExpenseProfile.create({
+        data: {
+          organizationId,
+          categoryId,
+          name,
+          usualAmountPaise,
+          note: input?.note?.trim() || null,
+          status: "ACTIVE",
+        },
+      });
+      await recordExpenseProfileAudit(client, "EXPENSE_PROFILE_CREATED", organizationId, profile.id, actorAdminId, categoryId, name, usualAmountPaise);
+      return serialize(profile);
+    });
+  }
+
+  async function updateExpenseProfile(input, actorAdminId) {
+    const profileId = requiredText(input?.profileId, "profileId");
+    const { organizationId, categoryId, name, usualAmountPaise } =
+      expenseProfileFields(input);
+    return prisma.$transaction(async (client) => {
+      const profile = await ensureExpenseProfile(client, organizationId, profileId);
+      await ensureExpenseCategory(client, organizationId, categoryId);
+      const updated = await client.foundationAccountingExpenseProfile.update({
+        where: { id: profile.id },
+        data: {
+          categoryId,
+          name,
+          usualAmountPaise,
+          note: input?.note?.trim() || null,
+        },
+      });
+      await recordExpenseProfileAudit(client, "EXPENSE_PROFILE_UPDATED", organizationId, profile.id, actorAdminId, categoryId, name, usualAmountPaise);
+      return serialize(updated);
+    });
+  }
+
+  async function recordExpenseBill(input, actorAdminId) {
+    const organizationId = requiredText(input?.organizationId, "organizationId");
+    const profileId = requiredText(input?.profileId, "profileId");
+    const amountPaise = nonNegativeInteger(input?.amountPaise, "amountPaise");
+    if (amountPaise === 0n) throw accountingError("INVALID_PAYMENT", "amountPaise");
+    const occurredAt = optionalDate(input?.occurredAt, "occurredAt", now());
+    const suppliedReference = optionalReference(input?.reference);
+    return prisma.$transaction(async (client) => {
+      await ensureExpenseProfile(client, organizationId, profileId);
+      const reference = await nextReference(client, {
+        organizationId,
+        occurredAt,
+        documentType: "EXB",
+        reference: suppliedReference,
+      });
+      const bill = await client.foundationAccountingExpenseBill.create({
+        data: {
+          organizationId,
+          profileId,
+          amountPaise,
+          reference,
+          occurredAt,
+          createdByAdminId: actorAdminId,
+        },
+      });
+      await client.foundationLotteryLedgerEntry.createMany({
+        data: [
+          {
+            organizationId,
+            transactionId: bill.id,
+            sourceType: "ACCOUNTING_EXPENSE_BILL",
+            sourceId: bill.id,
+            lineNumber: 1,
+            accountCode: "OPERATING_EXPENSE",
+            side: "DEBIT",
+            amountPaise,
+            occurredAt,
+            createdByAdminId: actorAdminId,
+          },
+          {
+            organizationId,
+            transactionId: bill.id,
+            sourceType: "ACCOUNTING_EXPENSE_BILL",
+            sourceId: bill.id,
+            lineNumber: 2,
+            accountCode: "EXPENSE_PAYABLE",
+            side: "CREDIT",
+            amountPaise,
+            occurredAt,
+            createdByAdminId: actorAdminId,
+          },
+        ],
+      });
+      await client.foundationLotteryAuditEvent.create({
+        data: {
+          organizationId,
+          eventType: "EXPENSE_BILL_RECORDED",
+          entityType: "EXPENSE_BILL",
+          entityId: bill.id,
+          actorAdminId,
+          metadata: { profileId, reference, amountPaise: amountPaise.toString() },
+        },
+      });
+      return serialize(bill);
+    });
+  }
+
+  async function recordExpensePayment(input, actorAdminId) {
+    const organizationId = requiredText(input?.organizationId, "organizationId");
+    const profileId = requiredText(input?.profileId, "profileId");
+    const totalAmountPaise = nonNegativeInteger(
+      input?.totalAmountPaise,
+      "totalAmountPaise",
+    );
+    const cashPaise = optionalMoney(input?.cashPaise, "cashPaise");
+    const bankPaise = optionalMoney(input?.bankPaise, "bankPaise");
+    if (
+      totalAmountPaise === 0n ||
+      cashPaise + bankPaise !== totalAmountPaise
+    ) {
+      throw accountingError("PAYMENT_SPLIT_MISMATCH", "totalAmountPaise");
+    }
+    const occurredAt = optionalDate(input?.occurredAt, "occurredAt", now());
+    const suppliedReference = optionalReference(input?.reference);
+    return prisma.$transaction(async (client) => {
+      await ensureExpenseProfile(client, organizationId, profileId);
+      const [bills, previousExpensePayments, priorLotteryPayments] =
+        await Promise.all([
+          client.foundationAccountingExpenseBill.findMany({
+            where: {
+              organizationId,
+              profileId,
+              occurredAt: { lte: occurredAt },
+            },
+          }),
+          client.foundationAccountingExpensePayment.findMany({
+            where: {
+              organizationId,
+              profileId,
+              occurredAt: { lte: occurredAt },
+            },
+          }),
+          client.foundationLotteryPayment.findMany({
+            where: {
+              organizationId,
+              status: "POSTED",
+              occurredAt: { lte: occurredAt },
+            },
+          }),
+        ]);
+      const billed = bills.reduce(
+        (total, bill) => total + BigInt(bill.amountPaise),
+        0n,
+      );
+      const alreadyPaid = previousExpensePayments.reduce(
+        (total, payment) => total + BigInt(payment.totalAmountPaise),
+        0n,
+      );
+      if (totalAmountPaise > billed - alreadyPaid) {
+        throw accountingError("INVALID_PAYMENT", "totalAmountPaise");
+      }
+
+      const priorAllExpensePayments =
+        await client.foundationAccountingExpensePayment.findMany({
+          where: {
+            organizationId,
+            occurredAt: { lte: occurredAt },
+          },
+        });
+      const availableCash =
+        paymentMethodBalance(priorLotteryPayments, "cashPaise") -
+        priorAllExpensePayments.reduce(
+          (total, payment) => total + BigInt(payment.cashPaise),
+          0n,
+        );
+      const availableBank =
+        paymentMethodBalance(priorLotteryPayments, "bankPaise") -
+        priorAllExpensePayments.reduce(
+          (total, payment) => total + BigInt(payment.bankPaise),
+          0n,
+        );
+      if (cashPaise > 0n && cashPaise > availableCash) {
+        throw accountingError("INVALID_PAYMENT", "cashPaise");
+      }
+      if (bankPaise > 0n && bankPaise > availableBank) {
+        throw accountingError("INVALID_PAYMENT", "bankPaise");
+      }
+
+      const reference = await nextReference(client, {
+        organizationId,
+        occurredAt,
+        documentType: "EXP",
+        reference: suppliedReference,
+      });
+      const payment = await client.foundationAccountingExpensePayment.create({
+        data: {
+          organizationId,
+          profileId,
+          totalAmountPaise,
+          cashPaise,
+          bankPaise,
+          reference,
+          occurredAt,
+          createdByAdminId: actorAdminId,
+        },
+      });
+      const methodEntries = [
+        ["PAYMENT_CASH", cashPaise],
+        ["PAYMENT_BANK", bankPaise],
+      ]
+        .filter(([, amount]) => amount > 0n)
+        .map(([accountCode, amount], index) => ({
+          organizationId,
+          transactionId: payment.id,
+          sourceType: "ACCOUNTING_EXPENSE_PAYMENT",
+          sourceId: payment.id,
+          lineNumber: index + 1,
+          accountCode,
+          side: "CREDIT",
+          amountPaise: amount,
+          occurredAt,
+          createdByAdminId: actorAdminId,
+        }));
+      await client.foundationLotteryLedgerEntry.createMany({
+        data: [
+          ...methodEntries,
+          {
+            organizationId,
+            transactionId: payment.id,
+            sourceType: "ACCOUNTING_EXPENSE_PAYMENT",
+            sourceId: payment.id,
+            lineNumber: methodEntries.length + 1,
+            accountCode: "EXPENSE_PAYABLE",
+            side: "DEBIT",
+            amountPaise: totalAmountPaise,
+            occurredAt,
+            createdByAdminId: actorAdminId,
+          },
+        ],
+      });
+      await client.foundationLotteryAuditEvent.create({
+        data: {
+          organizationId,
+          eventType: "EXPENSE_PAYMENT_RECORDED",
+          entityType: "EXPENSE_PAYMENT",
+          entityId: payment.id,
+          actorAdminId,
+          metadata: {
+            profileId,
+            reference,
+            totalAmountPaise: totalAmountPaise.toString(),
+          },
+        },
+      });
+      return serialize(payment);
+    });
+  }
+
+  async function recordCustomerBill(input, actorAdminId) {
+    const organizationId = requiredText(input?.organizationId, "organizationId");
+    const partyId = requiredText(input?.partyId, "partyId");
+    const quantity = nonNegativeInteger(input?.quantity, "quantity");
+    const unitRatePaise = nonNegativeInteger(
+      input?.unitRatePaise,
+      "unitRatePaise",
+    );
+    const receivedPaise = optionalMoney(input?.receivedPaise, "receivedPaise");
+    if (quantity === 0n || unitRatePaise === 0n) {
+      throw accountingError("INVALID_SALE_QUANTITY", "quantity");
+    }
+    const amountPaise = quantity * unitRatePaise;
+    if (receivedPaise > amountPaise) {
+      throw accountingError("INVALID_PAYMENT", "receivedPaise");
+    }
+    const occurredAt = optionalDate(input?.occurredAt, "occurredAt", now());
+    const suppliedReference = optionalReference(input?.reference);
+    return prisma.$transaction(async (client) => {
+      const party = await ensureCustomerParty(client, organizationId, partyId);
+      const reference = await nextReference(client, {
+        organizationId,
+        occurredAt,
+        documentType: "CUS",
+        reference: suppliedReference,
+      });
+      const bill = await client.foundationAccountingCustomerBill.create({
+        data: {
+          organizationId,
+          partyId,
+          quantity,
+          unitRatePaise,
+          amountPaise,
+          reference,
+          occurredAt,
+          createdByAdminId: actorAdminId,
+        },
+      });
+      await client.foundationLotteryStockMovement.create({
+        data: {
+          organizationId,
+          partyId,
+          movementType: "DISPATCH",
+          quantity,
+          unitRatePaise,
+          grossPurchasePaise: 0n,
+          commissionPaise: 0n,
+          tdsRateBps: 0,
+          tdsPaise: 0n,
+          netPayablePaise: 0n,
+          reference,
+          occurredAt,
+          createdByAdminId: actorAdminId,
+        },
+      });
+      await client.foundationLotteryLedgerEntry.createMany({
+        data: [
+          {
+            organizationId,
+            transactionId: bill.id,
+            sourceType: "ACCOUNTING_CUSTOMER_BILL",
+            sourceId: bill.id,
+            lineNumber: 1,
+            accountCode: "PARTY_RECEIVABLE",
+            side: "DEBIT",
+            amountPaise,
+            occurredAt,
+            createdByAdminId: actorAdminId,
+          },
+          {
+            organizationId,
+            transactionId: bill.id,
+            sourceType: "ACCOUNTING_CUSTOMER_BILL",
+            sourceId: bill.id,
+            lineNumber: 2,
+            accountCode: "LOTTERY_SALES",
+            side: "CREDIT",
+            amountPaise,
+            occurredAt,
+            createdByAdminId: actorAdminId,
+          },
+        ],
+      });
+
+      let payment = null;
+      if (receivedPaise > 0n) {
+        const paymentReference = await nextReference(client, {
+          organizationId,
+          occurredAt,
+          documentType: "PAY",
+        });
+        const methodSplit = {
+          cashPaise: receivedPaise.toString(),
+          bankPaise: "0",
+          upiPaise: "0",
+          chequePaise: "0",
+          pwtPaise: "0",
+        };
+        payment = await client.foundationLotteryPayment.create({
+          data: {
+            organizationId,
+            partyId: party.id,
+            periodId: null,
+            direction: "RECEIPT",
+            totalAmountPaise: receivedPaise,
+            methodSplit,
+            reference: paymentReference,
+            occurredAt,
+            status: "POSTED",
+            createdByAdminId: actorAdminId,
+          },
+        });
+        await client.foundationLotteryLedgerEntry.createMany({
+          data: [
+            {
+              organizationId,
+              transactionId: payment.id,
+              sourceType: "LOTTERY_PAYMENT",
+              sourceId: payment.id,
+              lineNumber: 1,
+              accountCode: "PAYMENT_CASH",
+              side: "DEBIT",
+              amountPaise: receivedPaise,
+              occurredAt,
+              createdByAdminId: actorAdminId,
+            },
+            {
+              organizationId,
+              transactionId: payment.id,
+              sourceType: "LOTTERY_PAYMENT",
+              sourceId: payment.id,
+              lineNumber: 2,
+              accountCode: "PARTY_RECEIVABLE",
+              side: "CREDIT",
+              amountPaise: receivedPaise,
+              occurredAt,
+              createdByAdminId: actorAdminId,
+            },
+          ],
+        });
+      }
+
+      await client.foundationLotteryAuditEvent.create({
+        data: {
+          organizationId,
+          eventType: "CUSTOMER_BILL_RECORDED",
+          entityType: "CUSTOMER_BILL",
+          entityId: bill.id,
+          actorAdminId,
+          metadata: {
+            partyId,
+            reference,
+            quantity: quantity.toString(),
+            unitRatePaise: unitRatePaise.toString(),
+            amountPaise: amountPaise.toString(),
+            receivedPaise: receivedPaise.toString(),
+          },
+        },
+      });
+      return serialize({ bill, payment });
+    });
+  }
   async function createPeriod(input, actorAdminId) {
     const organizationId = requiredText(
       input?.organizationId,
@@ -1558,6 +2087,11 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       ledgerEntries,
       auditEvents,
       clearances,
+      expenseCategories,
+      expenseProfiles,
+      expenseBills,
+      expensePayments,
+      customerBills,
       summary,
     ] = await Promise.all([
       prisma.foundationAccountingParty.findMany({
@@ -1603,6 +2137,26 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       prisma.foundationLotteryEntryClearance.findMany({
         where: { organizationId: scopedOrganizationId },
         orderBy: { createdAt: "desc" },
+      }),
+      prisma.foundationAccountingExpenseCategory.findMany({
+        where: { organizationId: scopedOrganizationId, status: "ACTIVE" },
+        orderBy: { name: "asc" },
+      }),
+      prisma.foundationAccountingExpenseProfile.findMany({
+        where: { organizationId: scopedOrganizationId, status: "ACTIVE" },
+        orderBy: { name: "asc" },
+      }),
+      prisma.foundationAccountingExpenseBill.findMany({
+        where: { organizationId: scopedOrganizationId },
+        orderBy: { occurredAt: "desc" },
+      }),
+      prisma.foundationAccountingExpensePayment.findMany({
+        where: { organizationId: scopedOrganizationId },
+        orderBy: { occurredAt: "desc" },
+      }),
+      prisma.foundationAccountingCustomerBill.findMany({
+        where: { organizationId: scopedOrganizationId },
+        orderBy: { occurredAt: "desc" },
       }),
       getVerifiedSummary({ organizationId: scopedOrganizationId }),
     ]);
@@ -1718,6 +2272,36 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       })),
       ledgerEntries,
       auditEvents,
+      expenseCategories,
+      expenseProfiles,
+      expenseBills: expenseBills.map((bill) => {
+        const profile = expenseProfiles.find((item) => item.id === bill.profileId);
+        const category = profile
+          ? expenseCategories.find((item) => item.id === profile.categoryId)
+          : null;
+        return {
+          ...bill,
+          profileName: profile?.name || "Unknown expense",
+          categoryId: profile?.categoryId || "",
+          categoryName: category?.name || "Expense",
+        };
+      }),
+      expensePayments: expensePayments.map((payment) => {
+        const profile = expenseProfiles.find((item) => item.id === payment.profileId);
+        const category = profile
+          ? expenseCategories.find((item) => item.id === profile.categoryId)
+          : null;
+        return {
+          ...payment,
+          profileName: profile?.name || "Unknown expense",
+          categoryId: profile?.categoryId || "",
+          categoryName: category?.name || "Expense",
+        };
+      }),
+      customerBills: customerBills.map((bill) => ({
+        ...bill,
+        partyName: partyNames.get(bill.partyId) || UNKNOWN_PARTY_NAME,
+      })),
       summary,
       insights: analyzeLotterySummary(summary),
     });
@@ -1850,6 +2434,8 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     clearDailyEntries,
     correctPostedSale,
     createDailySellerDraft,
+    createExpenseCategory,
+    createExpenseProfile,
     createOrganization,
     createParty,
     createFinancialYearPeriod,
@@ -1859,6 +2445,9 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     getVerifiedSummary,
     listOrganizations,
     previewSale,
+    recordCustomerBill,
+    recordExpenseBill,
+    recordExpensePayment,
     recordPayment,
     recordSale,
     recordSettlement,
@@ -1868,6 +2457,8 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     updateOrganizationTdsRate,
     updateUserLedgerStorage,
     updateDailySellerDraft,
+    updateExpenseCategory,
+    updateExpenseProfile,
     updatePartyProfile,
   };
 }
