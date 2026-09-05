@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authenticatedAdminFetch = vi.hoisted(() => vi.fn());
+const EXPENSE_CATEGORY_ID = "category-1";
 
 vi.mock("../../auth/adminFetch", () => ({ authenticatedAdminFetch }));
 
@@ -18,18 +19,18 @@ describe("lotteryAccountingClient expense/customer additions", () => {
       organizationId: "org-1",
       name: "Salary",
     });
-    await lotteryAccountingClient.updateExpenseCategory("category-1", {
+    await lotteryAccountingClient.updateExpenseCategory(EXPENSE_CATEGORY_ID, {
       organizationId: "org-1",
       name: "Staff Salary",
     });
     await lotteryAccountingClient.createExpenseProfile({
       organizationId: "org-1",
-      categoryId: "category-1",
+      categoryId: EXPENSE_CATEGORY_ID,
       name: "Raju",
     });
     await lotteryAccountingClient.updateExpenseProfile("profile-1", {
       organizationId: "org-1",
-      categoryId: "category-1",
+      categoryId: EXPENSE_CATEGORY_ID,
       name: "Raju Kumar",
     });
     await lotteryAccountingClient.recordExpenseBill({

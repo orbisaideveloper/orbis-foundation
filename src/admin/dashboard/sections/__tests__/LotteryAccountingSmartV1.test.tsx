@@ -6,6 +6,10 @@ import type { LotteryAccountingClient } from "../../../models/lotteryAccountingC
 import type { LotteryWorkspace } from "../../../models/lotteryAccountingTypes";
 
 const RECORDED_AT = "2026-09-03T00:00:00.000Z";
+const STOCKIST_A_ID = "stockist-a";
+const CASH_CUSTOMER_ID = "cash-customer";
+const SALARY_RAJU_ID = "salary-raju";
+const DASHBOARD_TITLE = "Demo Lottery dashboard";
 const organization = {
   id: "org-1",
   name: "Demo Lottery",
@@ -43,7 +47,7 @@ const workspace: LotteryWorkspace = {
       status: "ACTIVE",
     },
     {
-      id: "stockist-a",
+      id: STOCKIST_A_ID,
       organizationId: "org-1",
       partyType: "STOCKIST",
       name: "Stockist A",
@@ -55,7 +59,7 @@ const workspace: LotteryWorkspace = {
       status: "ACTIVE",
     },
     {
-      id: "cash-customer",
+      id: CASH_CUSTOMER_ID,
       organizationId: "org-1",
       partyType: "CUSTOMER",
       name: "Cash Customer",
@@ -72,7 +76,7 @@ const workspace: LotteryWorkspace = {
   stockistEntries: [
     {
       id: "purchase-1",
-      partyId: "stockist-a",
+      partyId: STOCKIST_A_ID,
       partyName: "Stockist A",
       reference: "PUR-1",
       purchaseQuantity: "100",
@@ -143,7 +147,7 @@ const workspace: LotteryWorkspace = {
   ],
   expenseProfiles: [
     {
-      id: "salary-raju",
+      id: SALARY_RAJU_ID,
       organizationId: "org-1",
       categoryId: "salary",
       name: "Raju",
@@ -160,7 +164,7 @@ const workspace: LotteryWorkspace = {
     {
       id: "bill-1",
       organizationId: "org-1",
-      profileId: "salary-raju",
+      profileId: SALARY_RAJU_ID,
       profileName: "Raju",
       categoryId: "salary",
       categoryName: "Salary",
@@ -176,7 +180,7 @@ const workspace: LotteryWorkspace = {
     {
       id: "customer-bill-1",
       organizationId: "org-1",
-      partyId: "cash-customer",
+      partyId: CASH_CUSTOMER_ID,
       partyName: "Cash Customer",
       quantity: "1",
       unitRatePaise: "1000",
@@ -241,7 +245,7 @@ function createApi(): LotteryAccountingClient {
     createFinancialYearPeriod: vi.fn().mockResolvedValue(undefined),
     recordStockMovement: vi.fn().mockResolvedValue(undefined),
     saveDailyStockistEntry: vi.fn().mockResolvedValue({
-      partyId: "stockist-a",
+      partyId: STOCKIST_A_ID,
       occurredAt: RECORDED_AT,
     }),
     clearDailyEntries: vi.fn().mockResolvedValue(undefined),
@@ -281,7 +285,7 @@ function createApi(): LotteryAccountingClient {
 describe("LotteryAccountingWorkspace smart V1", () => {
   it("keeps the approved dashboard cards and priority dues", async () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
-    expect(await screen.findByText("Demo Lottery dashboard")).toBeInTheDocument();
+    expect(await screen.findByText(DASHBOARD_TITLE)).toBeInTheDocument();
     expect(screen.getByText("Net Profit")).toBeInTheDocument();
     expect(screen.getByText("Receivable")).toBeInTheDocument();
     expect(screen.getByText("Payable")).toBeInTheDocument();
@@ -291,7 +295,7 @@ describe("LotteryAccountingWorkspace smart V1", () => {
 
   it("uses one seller in Grid while Table can still show every seller", async () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
-    await screen.findByText("Demo Lottery dashboard");
+    await screen.findByText(DASHBOARD_TITLE);
     fireEvent.click(screen.getByRole("button", { name: "Daily entry" }));
     const grid = await screen.findByRole("region", { name: "Seller grid" });
     expect(within(grid).getByText("Seller A")).toBeInTheDocument();
@@ -305,7 +309,7 @@ describe("LotteryAccountingWorkspace smart V1", () => {
 
   it("filters Ledger Book then type then a particular account and period", async () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
-    await screen.findByText("Demo Lottery dashboard");
+    await screen.findByText(DASHBOARD_TITLE);
     fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
 
     const book = screen.getByLabelText("Ledger Book");
@@ -324,7 +328,7 @@ describe("LotteryAccountingWorkspace smart V1", () => {
 
   it("keeps Expenses as top type with editable Category and Profile lists", async () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
-    await screen.findByText("Demo Lottery dashboard");
+    await screen.findByText(DASHBOARD_TITLE);
     fireEvent.click(screen.getByRole("button", { name: "Masters" }));
     fireEvent.click(screen.getByRole("button", { name: "Expenses" }));
 
@@ -343,12 +347,12 @@ describe("LotteryAccountingWorkspace smart V1", () => {
   it("receives Customer money through the same Universal Payment", async () => {
     const api = createApi();
     render(<LotteryAccountingWorkspace api={api} />);
-    await screen.findByText("Demo Lottery dashboard");
+    await screen.findByText(DASHBOARD_TITLE);
     fireEvent.click(screen.getByRole("button", { name: "Payment" }));
     fireEvent.change(screen.getByLabelText("Payment account type"), {
       target: { value: "CUSTOMER" },
     });
-    expect(screen.getByLabelText("Payment party")).toHaveValue("cash-customer");
+    expect(screen.getByLabelText("Payment party")).toHaveValue(CASH_CUSTOMER_ID);
     fireEvent.change(screen.getByLabelText("Payment Cash"), {
       target: { value: "10" },
     });
@@ -357,7 +361,7 @@ describe("LotteryAccountingWorkspace smart V1", () => {
     await waitFor(() => expect(api.recordPayment).toHaveBeenCalled());
     expect(api.recordPayment).toHaveBeenCalledWith(
       expect.objectContaining({
-        partyId: "cash-customer",
+        partyId: CASH_CUSTOMER_ID,
         direction: "RECEIPT",
         totalAmountPaise: "1000",
       }),
@@ -366,7 +370,7 @@ describe("LotteryAccountingWorkspace smart V1", () => {
   it("shows a monthly expense due and accepts a partial payment from Universal Payment", async () => {
     const api = createApi();
     render(<LotteryAccountingWorkspace api={api} />);
-    await screen.findByText("Demo Lottery dashboard");
+    await screen.findByText(DASHBOARD_TITLE);
 
     fireEvent.click(screen.getByRole("button", { name: "Payment" }));
     fireEvent.change(screen.getByLabelText("Payment account type"), {
@@ -374,7 +378,7 @@ describe("LotteryAccountingWorkspace smart V1", () => {
     });
 
     expect(screen.getByLabelText("Expense subcategory")).toHaveValue("salary");
-    expect(screen.getByLabelText("Payment party")).toHaveValue("salary-raju");
+    expect(screen.getByLabelText("Payment party")).toHaveValue(SALARY_RAJU_ID);
 
     const currentBill = screen.getByText("Current Bill").parentElement;
     const pending = screen.getByText("Pending").parentElement;
@@ -390,7 +394,7 @@ describe("LotteryAccountingWorkspace smart V1", () => {
     await waitFor(() => expect(api.recordExpensePayment).toHaveBeenCalled());
     expect(api.recordExpensePayment).toHaveBeenCalledWith(
       expect.objectContaining({
-        profileId: "salary-raju",
+        profileId: SALARY_RAJU_ID,
         totalAmountPaise: "100000",
         cashPaise: "100000",
       }),

@@ -12,13 +12,18 @@ do
 done
 
 if [ "$SHOULD_VERIFY" -ne 1 ]; then
-  echo "ORBIS: not an origin/main push — full gate skipped."
+  echo "ORBIS: not an origin/main push — quality certificate check skipped."
   exit 0
 fi
 
 echo
-echo "🔒 ORBIS origin/main push detected."
-echo "🔒 Running mandatory full verification..."
+echo "ORBIS origin/main push detected."
+echo "Checking current full-quality certificate; expensive tests will NOT be repeated."
 echo
 
-bash scripts/orbis-prepush-verify.sh
+[ -z "$(git status --porcelain)" ] || {
+  echo "ORBIS: push blocked — working tree is not clean."
+  exit 1
+}
+
+bash scripts/orbis-quality-status.sh --require-current-pass

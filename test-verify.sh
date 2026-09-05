@@ -1,5 +1,5 @@
 #!/bin/bash
-SONAR_TOKEN="Ee7120c9b766c127339152f3c7abbf0177ad63ed"
+: "${SONAR_TOKEN:?SONAR_TOKEN environment variable is required}"
 PROJECT_KEY="orbisaideveloper_orbis-foundation"
 
 echo "📡 সোনারক্লাউড সার্ভারের সাথে কানেকশন টেস্ট করা হচ্ছে..."

@@ -10,9 +10,9 @@ try {
     // ৩. Madge circular
     execSync('npx madge --circular --extensions ts,tsx,cjs --exclude "^src/generated/.*" ./src ./orbis-server', { stdio: 'inherit' });
     
-    console.log("✅ [Sonar-Grade Guard] 100% Clean! Zero SonarCloud or GitHub issues.");
+    console.log("✅ [Local Logic Guard] TypeScript, ESLint and circular-dependency checks passed. SonarCloud/GitHub are separate audits.");
     process.exit(0);
 } catch (e) {
-    console.log("🛑 [Sonar-Grade Guard] Commit rejected! Clean code violations found.");
+    console.log("🛑 [Local Logic Guard] One or more local logic/quality checks failed.");
     process.exit(1);
 }

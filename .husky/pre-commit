@@ -1,16 +1,33 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-echo "🔄 [Logic Integrity Guard] Checking core business logic & data flows..."
-node orbis-logic-guard.cjs || {
-    echo "❌ Logic Mismatch Alert! Commit aborted."
-    exit 1
+echo "ORBIS: lightweight pre-commit safety check..."
+
+git diff --cached --check || {
+  echo "ORBIS: whitespace/diff error in staged changes."
+  exit 1
 }
 
-echo "🔄 [Madge Guard] সার্কুলার ডিপেন্ডেন্সি চেক..."
-npm run check:circular || {
-    echo "❌ Circular Dependency Alert!"
-    exit 1
+if git diff --cached --name-only | grep -q '^\.orbis-backup/'; then
+  echo "ORBIS: .orbis-backup/ must not be committed."
+  exit 1
+fi
+
+git diff --cached --name-only --diff-filter=ACMR |
+while IFS= read -r file
+do
+  case "$file" in
+    *.cjs)
+      [ -f "$file" ] && node --check "$file" || exit 1
+      ;;
+    *.sh)
+      [ -f "$file" ] && bash -n "$file" || exit 1
+      ;;
+  esac
+done || {
+  echo "ORBIS: staged syntax check failed."
+  exit 1
 }
 
-echo "✅ [Termux] Read-only pre-commit verification passed!"
+echo "ORBIS: pre-commit safety PASS."
+echo "Full quality is handled by 'orbis verify', not repeated here."

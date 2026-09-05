@@ -1,12 +1,10 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-# প্রিজমা ফোল্ডার বাদ দিয়ে শুধু ./src ফোল্ডারে লুপ চেক করা
-CIRCULAR_OUTPUT=$(./node_modules/.bin/madge --circular --extensions ts,tsx,cjs --exclude "generated" ./src 2>&1)
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+[[ -n "$ROOT" ]] || { echo "ORBIS: not inside a Git repository." >&2; exit 2; }
+cd "$ROOT"
 
-if echo "$CIRCULAR_OUTPUT" | grep -q "No circular dependency found"; then
-    echo "⚡ [Success]: Verification passed. Manually review, commit, and push your changes."
-else
-    echo "⚠️ [Loop Detected in Code]:"
-    echo "$CIRCULAR_OUTPUT"
-    exit 1
-fi
+echo "ORBIS: test-all.sh is now the full serial fail-fast quality runner."
+echo "Use 'orbis resume' after a reported failure to continue from that stage."
+exec bash scripts/orbis-quality-all.sh "$@"

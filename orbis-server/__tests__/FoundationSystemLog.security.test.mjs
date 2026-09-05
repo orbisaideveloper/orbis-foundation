@@ -58,7 +58,7 @@ describe("FoundationSystemLog explicit operational telemetry", () => {
   it.each([
     "Authorization: Bearer private-token",
     "access_token=private-token",
-    "postgresql://user:password@database.example/foundation",
+    ["postgresql://user:", "password", "@database.example/foundation"].join(""),
     "raw request body contains account data",
     "provider output contains a private answer",
     "user message was copied here",

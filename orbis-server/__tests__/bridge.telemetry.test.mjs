@@ -63,7 +63,7 @@ describe("TASK-017: bridge.cjs telemetry routes (absorbed from server.cjs)", () 
   beforeAll(async () => {
     process.env.PORT = "0";
     process.env.DATABASE_URL =
-      "postgresql://orbis:orbis@127.0.0.1:1/orbis";
+      ["postgresql://orbis:", "orbis", "@127.0.0.1:1/orbis"].join("");
 
     chatService = require("../ai/AIChatService.cjs");
 

@@ -64,6 +64,12 @@ const SOFT_BUTTON =
   "rounded-xl border border-emerald-100 bg-white px-3 py-2 text-[10px] font-bold text-slate-600";
 const ACTIVE_BUTTON =
   "rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-100 to-orange-100 px-3 py-2 text-[10px] font-black text-emerald-900";
+const EDIT_PARTY_STORAGE_KEY = "orbis-accounting-edit-party";
+const EDIT_EXPENSE_STORAGE_KEY = "orbis-accounting-edit-expense";
+
+function emptyPaymentAmounts(): Record<MoneyMethod, string> {
+  return { cashPaise: "", bankPaise: "", upiPaise: "", pwtPaise: "" };
+}
 
 function businessDateToday() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -716,14 +722,11 @@ export function LotteryAccountingWorkspace({
               workspace={workspace}
               editParty={(party) => {
                 setTab("masters");
-                sessionStorage.setItem("orbis-accounting-edit-party", party.id);
+                sessionStorage.setItem(EDIT_PARTY_STORAGE_KEY, party.id);
               }}
               editExpense={(profile) => {
                 setTab("masters");
-                sessionStorage.setItem(
-                  "orbis-accounting-edit-expense",
-                  profile.id,
-                );
+                sessionStorage.setItem(EDIT_EXPENSE_STORAGE_KEY, profile.id);
               }}
             />
           )}
@@ -1343,14 +1346,15 @@ function ExpenseBillEntry({
         <form className="space-y-3" onSubmit={(event) => void submit(event)}>
           <div className="grid grid-cols-2 gap-2">
             <EntryDateField value={date} onChange={setDate} />
-            <label>
+            <div>
               <span className="text-[8px] font-bold text-slate-500">Expense category</span>
               <ExpenseCategorySelect
+                ariaLabel="Expense category"
                 categories={workspace.expenseCategories}
                 value={categoryId}
                 onChange={setCategoryId}
               />
-            </label>
+            </div>
             <label className="col-span-2">
               <span className="text-[8px] font-bold text-slate-500">Profile / Name</span>
               <select
@@ -1383,6 +1387,236 @@ function ExpenseBillEntry({
   );
 }
 
+type AccountingRun = (
+  key: string,
+  action: () => Promise<unknown>,
+  success: string,
+) => Promise<boolean>;
+
+function paymentAccounts(
+  workspace: LotteryWorkspace,
+  kind: PaymentKind,
+  expenseCategoryId: string,
+) {
+  if (kind === "EXPENSE") {
+    return workspace.expenseProfiles
+      .filter((profile) => profile.categoryId === expenseCategoryId)
+      .map((profile) => ({
+        id: profile.id,
+        name: expenseProfileLabel(profile, workspace.expenseCategories),
+      }));
+  }
+  if (kind === "STOCKIST") {
+    return workspace.parties
+      .filter(
+        (party) =>
+          party.partyType === "STOCKIST" ||
+          party.partyType === "SERVICE_STOCKIST",
+      )
+      .map((party) => ({ id: party.id, name: party.name }));
+  }
+  const partyType = kind === "SELLER" ? "SELLER" : "CUSTOMER";
+  return workspace.parties
+    .filter((party) => party.partyType === partyType)
+    .map((party) => ({ id: party.id, name: party.name }));
+}
+
+function paymentOutstanding(
+  workspace: LotteryWorkspace,
+  kind: PaymentKind,
+  accountId: string,
+  date: string,
+) {
+  switch (kind) {
+    case "SELLER":
+      return sellerOutstanding(workspace, accountId, date);
+    case "CUSTOMER":
+      return customerOutstanding(workspace, accountId, date);
+    case "STOCKIST":
+      return stockistOutstanding(workspace, accountId, date);
+    default:
+      return expenseOutstanding(workspace, accountId, date);
+  }
+}
+
+function paymentMethods(kind: PaymentKind) {
+  if (kind !== "EXPENSE") return PARTY_PAYMENT_METHODS;
+  const expenseMethods = new Set<MoneyMethod>(["cashPaise", "bankPaise"]);
+  return PARTY_PAYMENT_METHODS.filter(([method]) => expenseMethods.has(method));
+}
+
+function paymentDirection(kind: PaymentKind) {
+  return kind === "SELLER" || kind === "CUSTOMER" ? "RECEIPT" : "PAYMENT";
+}
+
+function expensePaymentContext(
+  workspace: LotteryWorkspace,
+  kind: PaymentKind,
+  accountId: string,
+  date: string,
+) {
+  if (kind !== "EXPENSE") {
+    return {
+      profile: null,
+      latestPayment: null,
+      currentBillAmount: "0",
+    };
+  }
+  const profile =
+    workspace.expenseProfiles.find((item) => item.id === accountId) || null;
+  const latestBill = workspace.expenseBills
+    .filter(
+      (bill) => bill.profileId === accountId && throughDate(bill.occurredAt, date),
+    )
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))[0];
+  const latestPayment = workspace.expensePayments
+    .filter(
+      (payment) =>
+        payment.profileId === accountId && throughDate(payment.occurredAt, date),
+    )
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))[0];
+  const currentBill =
+    profile?.scheduleType === "MONTHLY"
+      ? workspace.expenseBills.find(
+          (bill) =>
+            bill.profileId === accountId && bill.billingMonth === date.slice(0, 7),
+        ) || null
+      : latestBill;
+  return {
+    profile,
+    latestPayment,
+    currentBillAmount:
+      currentBill?.amountPaise ||
+      (profile?.scheduleType === "MONTHLY" ? profile.usualAmountPaise : "0"),
+  };
+}
+
+async function saveUniversalPayment({
+  kind,
+  accountId,
+  date,
+  entered,
+  outstanding,
+  parsed,
+  organizationId,
+  api,
+  run,
+  setError,
+  resetAmounts,
+}: Readonly<{
+  kind: PaymentKind;
+  accountId: string;
+  date: string;
+  entered: bigint;
+  outstanding: bigint;
+  parsed: Record<MoneyMethod, bigint>;
+  organizationId: string;
+  api: LotteryAccountingClient;
+  run: AccountingRun;
+  setError: (value: string | null) => void;
+  resetAmounts: () => void;
+}>) {
+  if (!accountId || entered <= 0n) {
+    setError("Choose an account and enter an amount.");
+    return;
+  }
+  if (outstanding >= 0n && entered > outstanding) {
+    setError("Entered amount is greater than the current outstanding.");
+    return;
+  }
+  setError(null);
+  if (kind === "EXPENSE") {
+    const ok = await run(
+      "expense-payment",
+      () =>
+        api.recordExpensePayment({
+          organizationId,
+          profileId: accountId,
+          occurredAt: date,
+          totalAmountPaise: entered.toString(),
+          cashPaise: parsed.cashPaise.toString(),
+          bankPaise: parsed.bankPaise.toString(),
+        }),
+      "Expense payment saved.",
+    );
+    if (ok) resetAmounts();
+    return;
+  }
+  const direction = paymentDirection(kind);
+  const methodSplit = {
+    cashPaise: parsed.cashPaise.toString(),
+    bankPaise: parsed.bankPaise.toString(),
+    upiPaise: parsed.upiPaise.toString(),
+    chequePaise: "0",
+    pwtPaise: parsed.pwtPaise.toString(),
+  };
+  const ok = await run(
+    "payment",
+    () =>
+      api.recordPayment({
+        organizationId,
+        partyId: accountId,
+        periodId: null,
+        direction,
+        occurredAt: date,
+        totalAmountPaise: entered.toString(),
+        methodSplit,
+      }),
+    direction === "RECEIPT" ? "Receipt saved." : "Payment saved.",
+  );
+  if (ok) resetAmounts();
+}
+
+function PaymentOutstandingSummary({
+  kind,
+  direction,
+  outstanding,
+  date,
+  profile,
+  latestPayment,
+  currentBillAmount,
+}: Readonly<{
+  kind: PaymentKind;
+  direction: "RECEIPT" | "PAYMENT";
+  outstanding: bigint;
+  date: string;
+  profile: LotteryExpenseProfile | null;
+  latestPayment: LotteryWorkspace["expensePayments"][number] | null | undefined;
+  currentBillAmount: string;
+}>) {
+  if (kind !== "EXPENSE") {
+    return (
+      <Metric
+        label={direction === "RECEIPT" ? "Amount to receive" : "Amount to pay"}
+        value={formatPaise(outstanding)}
+      />
+    );
+  }
+  const monthly = profile?.scheduleType === "MONTHLY";
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      <Metric
+        label="Last Paid"
+        value={formatPaise(latestPayment?.totalAmountPaise || "0")}
+      >
+        <p className="mt-1 text-[7px] text-slate-500">
+          {latestPayment ? displayDate(latestPayment.occurredAt) : "No payment yet"}
+        </p>
+      </Metric>
+      <Metric label="Current Bill" value={formatPaise(currentBillAmount)} tone="blue">
+        <p className="mt-1 text-[7px] text-slate-500">
+          {monthly ? `Monthly · ${date.slice(0, 7)}` : "Latest one-time bill"}
+        </p>
+      </Metric>
+      <Metric label="Pending" value={formatPaise(outstanding)} tone="orange">
+        <p className="mt-1 text-[7px] text-slate-500">
+          {monthly ? "Carries forward until fully paid" : "Bill minus payments"}
+        </p>
+      </Metric>
+    </div>
+  );
+}
+
 function PaymentPanel({
   workspace,
   organizationId,
@@ -1394,67 +1628,32 @@ function PaymentPanel({
   organizationId: string;
   api: LotteryAccountingClient;
   working: string | null;
-  run: (
-    key: string,
-    action: () => Promise<unknown>,
-    success: string,
-  ) => Promise<boolean>;
+  run: AccountingRun;
 }>) {
   const [kind, setKind] = useState<PaymentKind>("SELLER");
   const [expenseCategoryId, setExpenseCategoryId] = useState(
     workspace.expenseCategories[0]?.id || "",
   );
-  const accounts = useMemo(() => {
-    if (kind === "EXPENSE") {
-      return workspace.expenseProfiles
-        .filter((profile) => profile.categoryId === expenseCategoryId)
-        .map((profile) => ({
-          id: profile.id,
-          name: expenseProfileLabel(profile, workspace.expenseCategories),
-        }));
-    }
-    const partyType =
-      kind === "SELLER" ? "SELLER" : kind === "CUSTOMER" ? "CUSTOMER" : null;
-    return workspace.parties
-      .filter((party) =>
-        kind === "STOCKIST"
-          ? party.partyType === "STOCKIST" ||
-            party.partyType === "SERVICE_STOCKIST"
-          : party.partyType === partyType,
-      )
-      .map((party) => ({ id: party.id, name: party.name }));
-  }, [expenseCategoryId, kind, workspace]);
+  const accounts = useMemo(
+    () => paymentAccounts(workspace, kind, expenseCategoryId),
+    [expenseCategoryId, kind, workspace],
+  );
   const [accountId, setAccountId] = useState(accounts[0]?.id || "");
   const [date, setDate] = useState(businessDateToday());
-  const [amounts, setAmounts] = useState<Record<MoneyMethod, string>>({
-    cashPaise: "",
-    bankPaise: "",
-    upiPaise: "",
-    pwtPaise: "",
-  });
+  const [amounts, setAmounts] = useState<Record<MoneyMethod, string>>(
+    emptyPaymentAmounts,
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setAccountId((current) =>
       accounts.some((item) => item.id === current) ? current : accounts[0]?.id || "",
     );
-    setAmounts({ cashPaise: "", bankPaise: "", upiPaise: "", pwtPaise: "" });
+    setAmounts(emptyPaymentAmounts());
   }, [accounts]);
 
-  const outstanding =
-    kind === "SELLER"
-      ? sellerOutstanding(workspace, accountId, date)
-      : kind === "CUSTOMER"
-        ? customerOutstanding(workspace, accountId, date)
-        : kind === "STOCKIST"
-          ? stockistOutstanding(workspace, accountId, date)
-          : expenseOutstanding(workspace, accountId, date);
-  const methods =
-    kind === "EXPENSE"
-      ? PARTY_PAYMENT_METHODS.filter(([method]) =>
-          new Set<MoneyMethod>(["cashPaise", "bankPaise"]).has(method),
-        )
-      : PARTY_PAYMENT_METHODS;
+  const outstanding = paymentOutstanding(workspace, kind, accountId, date);
+  const methods = paymentMethods(kind);
   const parsed = Object.fromEntries(
     PARTY_PAYMENT_METHODS.map(([method]) => [
       method,
@@ -1463,96 +1662,26 @@ function PaymentPanel({
   ) as Record<MoneyMethod, bigint>;
   const entered = methods.reduce((total, [method]) => total + parsed[method], 0n);
   const after = outstanding - entered;
-  const direction = kind === "SELLER" || kind === "CUSTOMER" ? "RECEIPT" : "PAYMENT";
+  const direction = paymentDirection(kind);
   const balances = moneyMethodBalances(workspace, date);
-  const selectedExpenseProfile =
-    kind === "EXPENSE"
-      ? workspace.expenseProfiles.find((profile) => profile.id === accountId) || null
-      : null;
-  const latestExpenseBill =
-    kind === "EXPENSE"
-      ? workspace.expenseBills
-          .filter(
-            (bill) => bill.profileId === accountId && throughDate(bill.occurredAt, date),
-          )
-          .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))[0]
-      : null;
-  const latestExpensePayment =
-    kind === "EXPENSE"
-      ? workspace.expensePayments
-          .filter(
-            (payment) =>
-              payment.profileId === accountId &&
-              throughDate(payment.occurredAt, date),
-          )
-          .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))[0]
-      : null;
-  const currentExpenseBill =
-    kind === "EXPENSE" && selectedExpenseProfile?.scheduleType === "MONTHLY"
-      ? workspace.expenseBills.find(
-          (bill) =>
-            bill.profileId === accountId &&
-            bill.billingMonth === date.slice(0, 7),
-        ) || null
-      : latestExpenseBill;
-  const currentExpenseBillAmount =
-    currentExpenseBill?.amountPaise ||
-    (selectedExpenseProfile?.scheduleType === "MONTHLY"
-      ? selectedExpenseProfile.usualAmountPaise
-      : "0");
+  const expenseContext = expensePaymentContext(workspace, kind, accountId, date);
+  const resetAmounts = () => setAmounts(emptyPaymentAmounts());
 
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!accountId || entered <= 0n) {
-      setError("Choose an account and enter an amount.");
-      return;
-    }
-    if (outstanding >= 0n && entered > outstanding) {
-      setError("Entered amount is greater than the current outstanding.");
-      return;
-    }
-    setError(null);
-    if (kind === "EXPENSE") {
-      const ok = await run(
-        "expense-payment",
-        () =>
-          api.recordExpensePayment({
-            organizationId,
-            profileId: accountId,
-            occurredAt: date,
-            totalAmountPaise: entered.toString(),
-            cashPaise: parsed.cashPaise.toString(),
-            bankPaise: parsed.bankPaise.toString(),
-          }),
-        "Expense payment saved.",
-      );
-      if (ok)
-        setAmounts({ cashPaise: "", bankPaise: "", upiPaise: "", pwtPaise: "" });
-      return;
-    }
-    const methodSplit = {
-      cashPaise: parsed.cashPaise.toString(),
-      bankPaise: parsed.bankPaise.toString(),
-      upiPaise: parsed.upiPaise.toString(),
-      chequePaise: "0",
-      pwtPaise: parsed.pwtPaise.toString(),
-    };
-    const ok = await run(
-      "payment",
-      () =>
-        api.recordPayment({
-          organizationId,
-          partyId: accountId,
-          periodId: null,
-          direction,
-          occurredAt: date,
-          totalAmountPaise: entered.toString(),
-          methodSplit,
-        }),
-      direction === "RECEIPT" ? "Receipt saved." : "Payment saved.",
-    );
-    if (ok)
-      setAmounts({ cashPaise: "", bankPaise: "", upiPaise: "", pwtPaise: "" });
+    void saveUniversalPayment({
+      kind,
+      accountId,
+      date,
+      entered,
+      outstanding,
+      parsed,
+      organizationId,
+      api,
+      run,
+      setError,
+      resetAmounts,
+    });
   };
 
   return (
@@ -1560,7 +1689,7 @@ function PaymentPanel({
       title="Universal Payment"
       hint="Seller / Customer = Receive. Stockist / Expense = Pay. No settlement screen is required here."
     >
-      <form className="space-y-3" onSubmit={(event) => void submit(event)}>
+      <form className="space-y-3" onSubmit={submit}>
         <div className="grid grid-cols-1 gap-2">
           <label>
             <span className="text-[8px] font-bold uppercase text-slate-500">
@@ -1579,7 +1708,7 @@ function PaymentPanel({
             </select>
           </label>
           {kind === "EXPENSE" && (
-            <label>
+            <div>
               <span className="text-[8px] font-bold uppercase text-slate-500">
                 Expense subcategory
               </span>
@@ -1589,7 +1718,7 @@ function PaymentPanel({
                 value={expenseCategoryId}
                 onChange={setExpenseCategoryId}
               />
-            </label>
+            </div>
           )}
           <label>
             <span className="text-[8px] font-bold uppercase text-slate-500">
@@ -1610,47 +1739,15 @@ function PaymentPanel({
           </label>
         </div>
 
-        {kind === "EXPENSE" ? (
-          <div className="grid grid-cols-3 gap-2">
-            <Metric
-              label="Last Paid"
-              value={formatPaise(latestExpensePayment?.totalAmountPaise || "0")}
-            >
-              <p className="mt-1 text-[7px] text-slate-500">
-                {latestExpensePayment
-                  ? displayDate(latestExpensePayment.occurredAt)
-                  : "No payment yet"}
-              </p>
-            </Metric>
-            <Metric
-              label="Current Bill"
-              value={formatPaise(currentExpenseBillAmount)}
-              tone="blue"
-            >
-              <p className="mt-1 text-[7px] text-slate-500">
-                {selectedExpenseProfile?.scheduleType === "MONTHLY"
-                  ? `Monthly · ${date.slice(0, 7)}`
-                  : "Latest one-time bill"}
-              </p>
-            </Metric>
-            <Metric
-              label="Pending"
-              value={formatPaise(outstanding)}
-              tone="orange"
-            >
-              <p className="mt-1 text-[7px] text-slate-500">
-                {selectedExpenseProfile?.scheduleType === "MONTHLY"
-                  ? "Carries forward until fully paid"
-                  : "Bill minus payments"}
-              </p>
-            </Metric>
-          </div>
-        ) : (
-          <Metric
-            label={direction === "RECEIPT" ? "Amount to receive" : "Amount to pay"}
-            value={formatPaise(outstanding)}
-          />
-        )}
+        <PaymentOutstandingSummary
+          kind={kind}
+          direction={direction}
+          outstanding={outstanding}
+          date={date}
+          profile={expenseContext.profile}
+          latestPayment={expenseContext.latestPayment}
+          currentBillAmount={expenseContext.currentBillAmount}
+        />
 
         <div className="grid grid-cols-2 gap-2">
           {methods.map(([method, label]) => (
@@ -1690,7 +1787,12 @@ function PaymentPanel({
         </div>
         <label>
           <span className="text-[8px] font-bold uppercase text-slate-500">Date</span>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={CONTROL} />
+          <input
+            type="date"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+            className={CONTROL}
+          />
         </label>
         {error && <InlineNotice tone="orange">{error}</InlineNotice>}
         <button
@@ -2099,108 +2201,146 @@ function ledgerParties(workspace: LotteryWorkspace, sellerSide: boolean) {
   );
 }
 
+function sellerPartyLedgerEvents(
+  workspace: LotteryWorkspace,
+  partyId: string,
+  to: string,
+) {
+  const events: PartyLedgerEvent[] = [];
+  for (const sale of [...workspace.sales, ...workspace.draftSales]) {
+    if (sale.partyId !== partyId || !throughDate(sale.occurredAt, to)) continue;
+    events.push({
+      id: `sale-${sale.id}`,
+      date: sale.occurredAt,
+      business: BigInt(sale.netPayablePaise),
+      money: 0n,
+      detail: `${sale.netTickets} tickets · Gross ${formatPaise(
+        sale.grossSalesPaise,
+      )} · Commission ${formatPaise(sale.commissionPaise)} · TDS ${formatPaise(
+        sale.tdsPaise,
+      )}`,
+    });
+  }
+  appendReceiptEvents(events, workspace, partyId, to);
+  return events;
+}
+
+function stockistPartyLedgerEvents(
+  workspace: LotteryWorkspace,
+  partyId: string,
+  to: string,
+) {
+  const events: PartyLedgerEvent[] = [];
+  for (const entry of workspace.stockistEntries) {
+    if (entry.partyId !== partyId || !throughDate(entry.occurredAt, to)) continue;
+    events.push({
+      id: `purchase-${entry.id}`,
+      date: entry.occurredAt,
+      business: BigInt(entry.netPayablePaise),
+      money: 0n,
+      detail: `${entry.netPurchaseQuantity} tickets · Gross ${formatPaise(
+        entry.grossPurchasePaise,
+      )} · Commission ${formatPaise(entry.commissionPaise)} · TDS ${formatPaise(
+        entry.tdsPaise,
+      )}`,
+    });
+  }
+  for (const payment of workspace.payments) {
+    if (
+      payment.partyId !== partyId ||
+      payment.direction !== "PAYMENT" ||
+      !throughDate(payment.occurredAt, to)
+    ) {
+      continue;
+    }
+    events.push({
+      id: `payment-${payment.id}`,
+      date: payment.occurredAt,
+      business: 0n,
+      money: BigInt(payment.totalAmountPaise),
+      detail: `Paid ${formatPaise(payment.totalAmountPaise)} · ${splitText(
+        payment.methodSplit,
+      )}`,
+    });
+  }
+  return events;
+}
+
+function customerPartyLedgerEvents(
+  workspace: LotteryWorkspace,
+  partyId: string,
+  to: string,
+) {
+  const events: PartyLedgerEvent[] = [];
+  for (const bill of workspace.customerBills) {
+    if (bill.partyId !== partyId || !throughDate(bill.occurredAt, to)) continue;
+    events.push({
+      id: `customer-${bill.id}`,
+      date: bill.occurredAt,
+      business: BigInt(bill.amountPaise),
+      money: 0n,
+      detail: `${bill.quantity} tickets · Rate ${formatPaise(bill.unitRatePaise)}`,
+    });
+  }
+  appendReceiptEvents(events, workspace, partyId, to);
+  return events;
+}
+
+function partyLedgerEvents(
+  workspace: LotteryWorkspace,
+  party: LotteryParty,
+  to: string,
+) {
+  switch (party.partyType) {
+    case "SELLER":
+      return sellerPartyLedgerEvents(workspace, party.id, to);
+    case "STOCKIST":
+    case "SERVICE_STOCKIST":
+      return stockistPartyLedgerEvents(workspace, party.id, to);
+    default:
+      return customerPartyLedgerEvents(workspace, party.id, to);
+  }
+}
+
 function makePartyLedgerTransactions(
   workspace: LotteryWorkspace,
   party: LotteryParty,
   from: string,
   to: string,
 ): { summary: Array<[string, string]>; transactions: LedgerTxn[] } {
-  const allEvents: PartyLedgerEvent[] = [];
-  if (party.partyType === "SELLER") {
-    for (const sale of [...workspace.sales, ...workspace.draftSales]) {
-      if (sale.partyId !== party.id || !throughDate(sale.occurredAt, to)) continue;
-      allEvents.push({
-        id: `sale-${sale.id}`,
-        date: sale.occurredAt,
-        business: BigInt(sale.netPayablePaise),
-        money: 0n,
-        detail: `${sale.netTickets} tickets · Gross ${formatPaise(
-          sale.grossSalesPaise,
-        )} · Commission ${formatPaise(sale.commissionPaise)} · TDS ${formatPaise(
-          sale.tdsPaise,
-        )}`,
-      });
-    }
-    appendReceiptEvents(allEvents, workspace, party.id, to);
-  } else if (
-    party.partyType === "STOCKIST" ||
-    party.partyType === "SERVICE_STOCKIST"
-  ) {
-    for (const entry of workspace.stockistEntries) {
-      if (entry.partyId !== party.id || !throughDate(entry.occurredAt, to)) continue;
-      allEvents.push({
-        id: `purchase-${entry.id}`,
-        date: entry.occurredAt,
-        business: BigInt(entry.netPayablePaise),
-        money: 0n,
-        detail: `${entry.netPurchaseQuantity} tickets · Gross ${formatPaise(
-          entry.grossPurchasePaise,
-        )} · Commission ${formatPaise(entry.commissionPaise)} · TDS ${formatPaise(
-          entry.tdsPaise,
-        )}`,
-      });
-    }
-    for (const payment of workspace.payments) {
-      if (
-        payment.partyId !== party.id ||
-        payment.direction !== "PAYMENT" ||
-        !throughDate(payment.occurredAt, to)
-      )
-        continue;
-      allEvents.push({
-        id: `payment-${payment.id}`,
-        date: payment.occurredAt,
-        business: 0n,
-        money: BigInt(payment.totalAmountPaise),
-        detail: `Paid ${formatPaise(payment.totalAmountPaise)} · ${splitText(
-          payment.methodSplit,
-        )}`,
-      });
-    }
-  } else {
-    for (const bill of workspace.customerBills) {
-      if (bill.partyId !== party.id || !throughDate(bill.occurredAt, to)) continue;
-      allEvents.push({
-        id: `customer-${bill.id}`,
-        date: bill.occurredAt,
-        business: BigInt(bill.amountPaise),
-        money: 0n,
-        detail: `${bill.quantity} tickets · Rate ${formatPaise(bill.unitRatePaise)}`,
-      });
-    }
-    appendReceiptEvents(allEvents, workspace, party.id, to);
-  }
-  allEvents.sort((left, right) => left.date.localeCompare(right.date));
+  const allEvents = partyLedgerEvents(workspace, party, to).sort((left, right) =>
+    left.date.localeCompare(right.date),
+  );
   let balance = 0n;
   const transactions: LedgerTxn[] = [];
   for (const event of allEvents) {
     balance += event.business - event.money;
-    if (inDateRange(event.date, from, to)) {
-      transactions.push({
-        id: event.id,
-        occurredAt: event.date,
-        business: formatPaise(event.business),
-        money: formatPaise(event.money),
-        balance: formatPaise(balance),
-        detail: event.detail,
-      });
-    }
+    if (!inDateRange(event.date, from, to)) continue;
+    transactions.push({
+      id: event.id,
+      occurredAt: event.date,
+      business: formatPaise(event.business),
+      money: formatPaise(event.money),
+      balance: formatPaise(balance),
+      detail: event.detail,
+    });
   }
-  const business = allEvents
-    .filter((event) => inDateRange(event.date, from, to))
-    .reduce((total, event) => total + event.business, 0n);
-  const money = allEvents
-    .filter((event) => inDateRange(event.date, from, to))
-    .reduce((total, event) => total + event.money, 0n);
+  const periodEvents = allEvents.filter((event) =>
+    inDateRange(event.date, from, to),
+  );
+  const business = periodEvents.reduce(
+    (total, event) => total + event.business,
+    0n,
+  );
+  const money = periodEvents.reduce((total, event) => total + event.money, 0n);
+  const paidLabel =
+    party.partyType === "STOCKIST" || party.partyType === "SERVICE_STOCKIST"
+      ? "Paid"
+      : "Received";
   return {
     summary: [
       ["Net Business", formatPaise(business)],
-      [
-        party.partyType === "STOCKIST" || party.partyType === "SERVICE_STOCKIST"
-          ? "Paid"
-          : "Received",
-        formatPaise(money),
-      ],
+      [paidLabel, formatPaise(money)],
       ["Balance", formatPaise(balance)],
     ],
     transactions,
@@ -2213,517 +2353,612 @@ function splitText(split: Record<string, string>) {
     .join(" + ");
 }
 
-function buildLedgerBooks(
+function buildPartyLedgerBooks(
   workspace: LotteryWorkspace,
-  type: LedgerBookType,
+  type: Extract<LedgerBookType, "seller" | "stockist" | "customer">,
+  from: string,
+  to: string,
+): LedgerBook[] {
+  const parties = workspace.parties.filter((party) =>
+    type === "seller"
+      ? party.partyType === "SELLER"
+      : type === "stockist"
+        ? party.partyType === "STOCKIST" ||
+          party.partyType === "SERVICE_STOCKIST"
+        : party.partyType === "CUSTOMER",
+  );
+  return parties.map((party) => {
+    const ledger = makePartyLedgerTransactions(workspace, party, from, to);
+    return {
+      id: party.id,
+      category: type,
+      subtype: type,
+      accountId: party.id,
+      accountKind: "party",
+      name: party.name,
+      typeLabel: ledgerBookLabel(type),
+      summary: ledger.summary,
+      transactions: ledger.transactions,
+    };
+  });
+}
+
+function buildSaleLedgerBooks(
+  workspace: LotteryWorkspace,
   subtype: string,
   from: string,
   to: string,
 ): LedgerBook[] {
-  if (type === "seller" || type === "stockist" || type === "customer") {
-    const parties = workspace.parties.filter((party) =>
-      type === "seller"
-        ? party.partyType === "SELLER"
-        : type === "stockist"
-          ? party.partyType === "STOCKIST" ||
-            party.partyType === "SERVICE_STOCKIST"
-          : party.partyType === "CUSTOMER",
-    );
-    return parties.map((party) => {
-      const ledger = makePartyLedgerTransactions(workspace, party, from, to);
-      return {
-        id: party.id,
-        category: type,
-        subtype: type,
-        accountId: party.id,
-        accountKind: "party",
-        name: party.name,
-        typeLabel: ledgerBookLabel(type),
-        summary: ledger.summary,
-        transactions: ledger.transactions,
-      };
-    });
-  }
-
-  if (type === "sale") {
-    if (subtype === "seller") {
-      return workspace.parties
-        .filter((party) => party.partyType === "SELLER")
-        .map((party) => {
-          const rows = [...workspace.sales, ...workspace.draftSales].filter(
-            (sale) =>
-              sale.partyId === party.id &&
-              inDateRange(sale.occurredAt, from, to),
-          );
-          return simpleDerivedBook({
-            id: `sale-${party.id}`,
-            type,
-            subtype,
-            accountId: party.id,
-            accountKind: "party",
-            name: party.name,
-            typeLabel: "Seller Sales",
-            rows: rows.map((sale) => ({
-              id: sale.id,
-              occurredAt: sale.occurredAt,
-              business: formatPaise(sale.grossSalesPaise),
-              money: formatPaise(sale.netPayablePaise),
-              balance: `${sale.netTickets} tickets`,
-              detail: `Gross ${formatPaise(sale.grossSalesPaise)} · Commission ${formatPaise(
-                sale.commissionPaise,
-              )} · TDS ${formatPaise(sale.tdsPaise)}`,
-            })),
-            summary: [
-              ["Tickets", rows.reduce((total, sale) => total + sale.netTickets, 0).toString()],
-              ["Gross", formatPaise(sumBigInt(rows.map((sale) => sale.grossSalesPaise)))],
-              ["Net Due", formatPaise(sumBigInt(rows.map((sale) => sale.netPayablePaise)))],
-            ],
-          });
-        });
-    }
+  const type: LedgerBookType = "sale";
+  if (subtype === "seller") {
     return workspace.parties
-      .filter((party) => party.partyType === "CUSTOMER")
+      .filter((party) => party.partyType === "SELLER")
       .map((party) => {
-        const rows = workspace.customerBills.filter(
-          (bill) =>
-            bill.partyId === party.id && inDateRange(bill.occurredAt, from, to),
+        const rows = [...workspace.sales, ...workspace.draftSales].filter(
+          (sale) =>
+            sale.partyId === party.id &&
+            inDateRange(sale.occurredAt, from, to),
         );
         return simpleDerivedBook({
-          id: `customer-sale-${party.id}`,
+          id: `sale-${party.id}`,
           type,
           subtype,
           accountId: party.id,
           accountKind: "party",
           name: party.name,
-          typeLabel: "Customer Sales",
-          rows: rows.map((bill) => ({
-            id: bill.id,
-            occurredAt: bill.occurredAt,
-            business: formatPaise(bill.amountPaise),
-            money: "—",
-            balance: `${bill.quantity} tickets`,
-            detail: `Rate ${formatPaise(bill.unitRatePaise)} · ${bill.reference}`,
+          typeLabel: "Seller Sales",
+          rows: rows.map((sale) => ({
+            id: sale.id,
+            occurredAt: sale.occurredAt,
+            business: formatPaise(sale.grossSalesPaise),
+            money: formatPaise(sale.netPayablePaise),
+            balance: `${sale.netTickets} tickets`,
+            detail: `Gross ${formatPaise(sale.grossSalesPaise)} · Commission ${formatPaise(
+              sale.commissionPaise,
+            )} · TDS ${formatPaise(sale.tdsPaise)}`,
           })),
           summary: [
-            ["Tickets", sumBigInt(rows.map((bill) => bill.quantity)).toString()],
-            ["Gross", formatPaise(sumBigInt(rows.map((bill) => bill.amountPaise)))],
-            ["Entries", rows.length.toString()],
+            ["Tickets", rows.reduce((total, sale) => total + sale.netTickets, 0).toString()],
+            ["Gross", formatPaise(sumBigInt(rows.map((sale) => sale.grossSalesPaise)))],
+            ["Net Due", formatPaise(sumBigInt(rows.map((sale) => sale.netPayablePaise)))],
           ],
         });
       });
   }
-
-  if (type === "purchase") {
-    return workspace.parties
-      .filter(
-        (party) =>
-          party.partyType === "STOCKIST" ||
-          party.partyType === "SERVICE_STOCKIST",
-      )
-      .map((party) => {
-        const rows = workspace.stockistEntries.filter(
-          (entry) =>
-            entry.partyId === party.id &&
-            inDateRange(entry.occurredAt, from, to),
-        );
-        return simpleDerivedBook({
-          id: `purchase-${party.id}`,
-          type,
-          subtype,
-          accountId: party.id,
-          accountKind: "party",
-          name: party.name,
-          typeLabel: "Purchase Ledger",
-          rows: rows.map((entry) => ({
-            id: entry.id,
-            occurredAt: entry.occurredAt,
-            business: formatPaise(entry.grossPurchasePaise),
-            money: formatPaise(entry.netPayablePaise),
-            balance: `${entry.netPurchaseQuantity} tickets`,
-            detail: `Gross ${formatPaise(entry.grossPurchasePaise)} · Commission ${formatPaise(
-              entry.commissionPaise,
-            )} · TDS ${formatPaise(entry.tdsPaise)}`,
-          })),
-          summary: [
-            ["Tickets", sumBigInt(rows.map((entry) => entry.netPurchaseQuantity)).toString()],
-            ["Gross", formatPaise(sumBigInt(rows.map((entry) => entry.grossPurchasePaise)))],
-            ["Net Payable", formatPaise(sumBigInt(rows.map((entry) => entry.netPayablePaise)))],
-          ],
-        });
-      });
-  }
-
-  if (type === "return") {
-    const sellerSide = subtype === "seller";
-    const parties = ledgerParties(workspace, sellerSide);
-    return parties.map((party) => {
-      const rows = sellerSide
-        ? [...workspace.sales, ...workspace.draftSales]
-            .filter(
-              (sale) =>
-                sale.partyId === party.id &&
-                inDateRange(sale.occurredAt, from, to),
-            )
-            .map((sale) => ({
-              id: sale.id,
-              occurredAt: sale.occurredAt,
-              quantity: String(sale.dispatchQuantity),
-              returned: String(sale.returnQuantity),
-              net: String(sale.netTickets),
-              detail: `Morning ${sale.morningReturnQuantity} · Day ${sale.dayReturnQuantity} · Evening ${sale.eveningReturnQuantity}`,
-            }))
-        : workspace.stockistEntries
-            .filter(
-              (entry) =>
-                entry.partyId === party.id &&
-                inDateRange(entry.occurredAt, from, to),
-            )
-            .map((entry) => ({
-              id: entry.id,
-              occurredAt: entry.occurredAt,
-              quantity: entry.purchaseQuantity,
-              returned: entry.totalReturnQuantity,
-              net: entry.netPurchaseQuantity,
-              detail: `Morning ${entry.morningReturnQuantity} · Day ${entry.dayReturnQuantity} · Evening ${entry.eveningReturnQuantity}`,
-            }));
+  return workspace.parties
+    .filter((party) => party.partyType === "CUSTOMER")
+    .map((party) => {
+      const rows = workspace.customerBills.filter(
+        (bill) =>
+          bill.partyId === party.id && inDateRange(bill.occurredAt, from, to),
+      );
       return simpleDerivedBook({
-        id: `return-${subtype}-${party.id}`,
+        id: `customer-sale-${party.id}`,
         type,
         subtype,
         accountId: party.id,
         accountKind: "party",
         name: party.name,
-        typeLabel: sellerSide ? "Seller Return" : "Stockist Return",
-        rows: rows.map((row) => ({
-          id: row.id,
-          occurredAt: row.occurredAt,
-          business: `${row.quantity} issued`,
-          money: `${row.returned} return`,
-          balance: `${row.net} net`,
-          detail: row.detail,
+        typeLabel: "Customer Sales",
+        rows: rows.map((bill) => ({
+          id: bill.id,
+          occurredAt: bill.occurredAt,
+          business: formatPaise(bill.amountPaise),
+          money: "—",
+          balance: `${bill.quantity} tickets`,
+          detail: `Rate ${formatPaise(bill.unitRatePaise)} · ${bill.reference}`,
         })),
         summary: [
-          ["Issued", sumBigInt(rows.map((row) => row.quantity)).toString()],
-          ["Return", sumBigInt(rows.map((row) => row.returned)).toString()],
-          ["Net", sumBigInt(rows.map((row) => row.net)).toString()],
+          ["Tickets", sumBigInt(rows.map((bill) => bill.quantity)).toString()],
+          ["Gross", formatPaise(sumBigInt(rows.map((bill) => bill.amountPaise)))],
+          ["Entries", rows.length.toString()],
         ],
       });
     });
-  }
+}
 
-  if (type === "commission" || type === "tds") {
-    const sellerSide = subtype === "seller";
-    const parties = ledgerParties(workspace, sellerSide);
-    return parties.map((party) => {
-      const entries = sellerSide
-        ? [...workspace.sales, ...workspace.draftSales].filter(
+function buildPurchaseLedgerBooks(
+  workspace: LotteryWorkspace,
+  subtype: string,
+  from: string,
+  to: string,
+): LedgerBook[] {
+  const type: LedgerBookType = "purchase";
+  return workspace.parties
+    .filter(
+      (party) =>
+        party.partyType === "STOCKIST" ||
+        party.partyType === "SERVICE_STOCKIST",
+    )
+    .map((party) => {
+      const rows = workspace.stockistEntries.filter(
+        (entry) =>
+          entry.partyId === party.id &&
+          inDateRange(entry.occurredAt, from, to),
+      );
+      return simpleDerivedBook({
+        id: `purchase-${party.id}`,
+        type,
+        subtype,
+        accountId: party.id,
+        accountKind: "party",
+        name: party.name,
+        typeLabel: "Purchase Ledger",
+        rows: rows.map((entry) => ({
+          id: entry.id,
+          occurredAt: entry.occurredAt,
+          business: formatPaise(entry.grossPurchasePaise),
+          money: formatPaise(entry.netPayablePaise),
+          balance: `${entry.netPurchaseQuantity} tickets`,
+          detail: `Gross ${formatPaise(entry.grossPurchasePaise)} · Commission ${formatPaise(
+            entry.commissionPaise,
+          )} · TDS ${formatPaise(entry.tdsPaise)}`,
+        })),
+        summary: [
+          ["Tickets", sumBigInt(rows.map((entry) => entry.netPurchaseQuantity)).toString()],
+          ["Gross", formatPaise(sumBigInt(rows.map((entry) => entry.grossPurchasePaise)))],
+          ["Net Payable", formatPaise(sumBigInt(rows.map((entry) => entry.netPayablePaise)))],
+        ],
+      });
+    });
+}
+
+function buildReturnLedgerBooks(
+  workspace: LotteryWorkspace,
+  subtype: string,
+  from: string,
+  to: string,
+): LedgerBook[] {
+  const type: LedgerBookType = "return";
+  const sellerSide = subtype === "seller";
+  const parties = ledgerParties(workspace, sellerSide);
+  return parties.map((party) => {
+    const rows = sellerSide
+      ? [...workspace.sales, ...workspace.draftSales]
+          .filter(
             (sale) =>
               sale.partyId === party.id &&
               inDateRange(sale.occurredAt, from, to),
           )
-        : workspace.stockistEntries.filter(
+          .map((sale) => ({
+            id: sale.id,
+            occurredAt: sale.occurredAt,
+            quantity: String(sale.dispatchQuantity),
+            returned: String(sale.returnQuantity),
+            net: String(sale.netTickets),
+            detail: `Morning ${sale.morningReturnQuantity} · Day ${sale.dayReturnQuantity} · Evening ${sale.eveningReturnQuantity}`,
+          }))
+      : workspace.stockistEntries
+          .filter(
             (entry) =>
               entry.partyId === party.id &&
               inDateRange(entry.occurredAt, from, to),
-          );
-      const gross = sumBigInt(entries.map((entry) => entry.commissionPaise));
-      const tax = sumBigInt(entries.map((entry) => entry.tdsPaise));
+          )
+          .map((entry) => ({
+            id: entry.id,
+            occurredAt: entry.occurredAt,
+            quantity: entry.purchaseQuantity,
+            returned: entry.totalReturnQuantity,
+            net: entry.netPurchaseQuantity,
+            detail: `Morning ${entry.morningReturnQuantity} · Day ${entry.dayReturnQuantity} · Evening ${entry.eveningReturnQuantity}`,
+          }));
+    return simpleDerivedBook({
+      id: `return-${subtype}-${party.id}`,
+      type,
+      subtype,
+      accountId: party.id,
+      accountKind: "party",
+      name: party.name,
+      typeLabel: sellerSide ? "Seller Return" : "Stockist Return",
+      rows: rows.map((row) => ({
+        id: row.id,
+        occurredAt: row.occurredAt,
+        business: `${row.quantity} issued`,
+        money: `${row.returned} return`,
+        balance: `${row.net} net`,
+        detail: row.detail,
+      })),
+      summary: [
+        ["Issued", sumBigInt(rows.map((row) => row.quantity)).toString()],
+        ["Return", sumBigInt(rows.map((row) => row.returned)).toString()],
+        ["Net", sumBigInt(rows.map((row) => row.net)).toString()],
+      ],
+    });
+  });
+}
+
+function buildCommissionOrTdsLedgerBooks(
+  workspace: LotteryWorkspace,
+  type: Extract<LedgerBookType, "commission" | "tds">,
+  subtype: string,
+  from: string,
+  to: string,
+): LedgerBook[] {
+  const sellerSide = subtype === "seller";
+  const parties = ledgerParties(workspace, sellerSide);
+  return parties.map((party) => {
+    const entries = sellerSide
+      ? [...workspace.sales, ...workspace.draftSales].filter(
+          (sale) =>
+            sale.partyId === party.id &&
+            inDateRange(sale.occurredAt, from, to),
+        )
+      : workspace.stockistEntries.filter(
+          (entry) =>
+            entry.partyId === party.id &&
+            inDateRange(entry.occurredAt, from, to),
+        );
+    const gross = sumBigInt(entries.map((entry) => entry.commissionPaise));
+    const tax = sumBigInt(entries.map((entry) => entry.tdsPaise));
+    return simpleDerivedBook({
+      id: `${type}-${subtype}-${party.id}`,
+      type,
+      subtype,
+      accountId: party.id,
+      accountKind: "party",
+      name: party.name,
+      typeLabel:
+        type === "commission"
+          ? sellerSide
+            ? "Seller Commission"
+            : "Stockist Commission"
+          : sellerSide
+            ? "Seller TDS Payable"
+            : "Stockist TDS Credit",
+      rows: entries.map((entry) => ({
+        id: entry.id,
+        occurredAt: entry.occurredAt,
+        business:
+          type === "commission"
+            ? formatPaise(entry.commissionPaise)
+            : formatPaise(entry.tdsPaise),
+        money:
+          type === "commission" ? formatPaise(entry.tdsPaise) : "—",
+        balance:
+          type === "commission"
+            ? formatPaise(
+                BigInt(entry.commissionPaise) - BigInt(entry.tdsPaise),
+              )
+            : formatPaise(entry.tdsPaise),
+        detail: `Gross commission ${formatPaise(
+          entry.commissionPaise,
+        )} · TDS ${formatPaise(entry.tdsPaise)}`,
+      })),
+      summary:
+        type === "commission"
+          ? [
+              ["Gross Commission", formatPaise(gross)],
+              ["TDS", formatPaise(tax)],
+              ["Net Commission", formatPaise(gross - tax)],
+            ]
+          : [
+              [sellerSide ? "TDS Generated" : "TDS Credit", formatPaise(tax)],
+              [sellerSide ? "Deposited" : "Claimed", formatPaise(0)],
+              ["Balance", formatPaise(tax)],
+            ],
+    });
+  });
+}
+
+function buildExpenseLedgerBooks(
+  workspace: LotteryWorkspace,
+  subtype: string,
+  from: string,
+  to: string,
+): LedgerBook[] {
+  const type: LedgerBookType = "expense";
+  return workspace.expenseProfiles
+    .filter((profile) => profile.categoryId === subtype)
+    .map((profile) => {
+      const allBills = workspace.expenseBills.filter(
+        (bill) => bill.profileId === profile.id && throughDate(bill.occurredAt, to),
+      );
+      const allPayments = workspace.expensePayments.filter(
+        (payment) =>
+          payment.profileId === profile.id && throughDate(payment.occurredAt, to),
+      );
+      const events = [
+        ...allBills.map((bill) => ({
+          id: `bill-${bill.id}`,
+          occurredAt: bill.occurredAt,
+          business: BigInt(bill.amountPaise),
+          money: 0n,
+          detail: `Bill ${bill.reference}`,
+        })),
+        ...allPayments.map((payment) => ({
+          id: `pay-${payment.id}`,
+          occurredAt: payment.occurredAt,
+          business: 0n,
+          money: BigInt(payment.totalAmountPaise),
+          detail: `Cash ${formatPaise(payment.cashPaise)} · Bank ${formatPaise(
+            payment.bankPaise,
+          )}`,
+        })),
+      ].sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+      let balance = 0n;
+      const transactions: LedgerTxn[] = [];
+      for (const event of events) {
+        balance += event.business - event.money;
+        if (inDateRange(event.occurredAt, from, to)) {
+          transactions.push({
+            id: event.id,
+            occurredAt: event.occurredAt,
+            business: formatPaise(event.business),
+            money: formatPaise(event.money),
+            balance: formatPaise(balance),
+            detail: event.detail,
+          });
+        }
+      }
+      const periodBills = allBills.filter((bill) =>
+        inDateRange(bill.occurredAt, from, to),
+      );
+      const periodPayments = allPayments.filter((payment) =>
+        inDateRange(payment.occurredAt, from, to),
+      );
+      return {
+        id: profile.id,
+        category: type,
+        subtype,
+        accountId: profile.id,
+        accountKind: "expense",
+        name: expenseProfileLabel(profile, workspace.expenseCategories),
+        typeLabel: "Expense Ledger",
+        summary: [
+          ["Bills", formatPaise(sumBigInt(periodBills.map((bill) => bill.amountPaise)))],
+          ["Paid", formatPaise(sumBigInt(periodPayments.map((p) => p.totalAmountPaise)))],
+          ["Balance", formatPaise(balance)],
+        ],
+        transactions,
+      };
+    });
+}
+
+function buildPaymentLedgerBooks(
+  workspace: LotteryWorkspace,
+  subtype: string,
+  from: string,
+  to: string,
+): LedgerBook[] {
+  const type: LedgerBookType = "payment";
+  if (subtype === "expense") {
+    return workspace.expenseProfiles.map((profile) => {
+      const rows = workspace.expensePayments.filter(
+        (payment) =>
+          payment.profileId === profile.id &&
+          inDateRange(payment.occurredAt, from, to),
+      );
       return simpleDerivedBook({
-        id: `${type}-${subtype}-${party.id}`,
+        id: `expense-payment-${profile.id}`,
+        type,
+        subtype,
+        accountId: profile.id,
+        accountKind: "expense",
+        name: expenseProfileLabel(profile, workspace.expenseCategories),
+        typeLabel: "Expense Payment",
+        rows: rows.map((payment) => ({
+          id: payment.id,
+          occurredAt: payment.occurredAt,
+          business: formatPaise(payment.totalAmountPaise),
+          money: `Cash ${formatPaise(payment.cashPaise)}`,
+          balance: `Bank ${formatPaise(payment.bankPaise)}`,
+          detail: payment.reference,
+        })),
+        summary: [
+          ["Entries", rows.length.toString()],
+          ["Paid", formatPaise(sumBigInt(rows.map((p) => p.totalAmountPaise)))],
+          ["Methods", "Cash + Bank"],
+        ],
+      });
+    });
+  }
+  const partyType =
+    subtype === "seller"
+      ? "SELLER"
+      : subtype === "customer"
+        ? "CUSTOMER"
+        : "STOCKIST";
+  return workspace.parties
+    .filter((party) =>
+      subtype === "stockist"
+        ? party.partyType === "STOCKIST" ||
+          party.partyType === "SERVICE_STOCKIST"
+        : party.partyType === partyType,
+    )
+    .map((party) => {
+      const direction = subtype === "stockist" ? "PAYMENT" : "RECEIPT";
+      const rows = workspace.payments.filter(
+        (payment) =>
+          payment.partyId === party.id &&
+          payment.direction === direction &&
+          inDateRange(payment.occurredAt, from, to),
+      );
+      return simpleDerivedBook({
+        id: `payment-${subtype}-${party.id}`,
         type,
         subtype,
         accountId: party.id,
         accountKind: "party",
         name: party.name,
-        typeLabel:
-          type === "commission"
-            ? sellerSide
-              ? "Seller Commission"
-              : "Stockist Commission"
-            : sellerSide
-              ? "Seller TDS Payable"
-              : "Stockist TDS Credit",
-        rows: entries.map((entry) => ({
-          id: entry.id,
-          occurredAt: entry.occurredAt,
-          business:
-            type === "commission"
-              ? formatPaise(entry.commissionPaise)
-              : formatPaise(entry.tdsPaise),
-          money:
-            type === "commission" ? formatPaise(entry.tdsPaise) : "—",
-          balance:
-            type === "commission"
-              ? formatPaise(
-                  BigInt(entry.commissionPaise) - BigInt(entry.tdsPaise),
-                )
-              : formatPaise(entry.tdsPaise),
-          detail: `Gross commission ${formatPaise(
-            entry.commissionPaise,
-          )} · TDS ${formatPaise(entry.tdsPaise)}`,
-        })),
-        summary:
-          type === "commission"
-            ? [
-                ["Gross Commission", formatPaise(gross)],
-                ["TDS", formatPaise(tax)],
-                ["Net Commission", formatPaise(gross - tax)],
-              ]
-            : [
-                [sellerSide ? "TDS Generated" : "TDS Credit", formatPaise(tax)],
-                [sellerSide ? "Deposited" : "Claimed", formatPaise(0)],
-                ["Balance", formatPaise(tax)],
-              ],
-      });
-    });
-  }
-
-  if (type === "expense") {
-    return workspace.expenseProfiles
-      .filter((profile) => profile.categoryId === subtype)
-      .map((profile) => {
-        const allBills = workspace.expenseBills.filter(
-          (bill) => bill.profileId === profile.id && throughDate(bill.occurredAt, to),
-        );
-        const allPayments = workspace.expensePayments.filter(
-          (payment) =>
-            payment.profileId === profile.id && throughDate(payment.occurredAt, to),
-        );
-        const events = [
-          ...allBills.map((bill) => ({
-            id: `bill-${bill.id}`,
-            occurredAt: bill.occurredAt,
-            business: BigInt(bill.amountPaise),
-            money: 0n,
-            detail: `Bill ${bill.reference}`,
-          })),
-          ...allPayments.map((payment) => ({
-            id: `pay-${payment.id}`,
-            occurredAt: payment.occurredAt,
-            business: 0n,
-            money: BigInt(payment.totalAmountPaise),
-            detail: `Cash ${formatPaise(payment.cashPaise)} · Bank ${formatPaise(
-              payment.bankPaise,
-            )}`,
-          })),
-        ].sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
-        let balance = 0n;
-        const transactions: LedgerTxn[] = [];
-        for (const event of events) {
-          balance += event.business - event.money;
-          if (inDateRange(event.occurredAt, from, to)) {
-            transactions.push({
-              id: event.id,
-              occurredAt: event.occurredAt,
-              business: formatPaise(event.business),
-              money: formatPaise(event.money),
-              balance: formatPaise(balance),
-              detail: event.detail,
-            });
-          }
-        }
-        const periodBills = allBills.filter((bill) =>
-          inDateRange(bill.occurredAt, from, to),
-        );
-        const periodPayments = allPayments.filter((payment) =>
-          inDateRange(payment.occurredAt, from, to),
-        );
-        return {
-          id: profile.id,
-          category: type,
-          subtype,
-          accountId: profile.id,
-          accountKind: "expense",
-          name: expenseProfileLabel(profile, workspace.expenseCategories),
-          typeLabel: "Expense Ledger",
-          summary: [
-            ["Bills", formatPaise(sumBigInt(periodBills.map((bill) => bill.amountPaise)))],
-            ["Paid", formatPaise(sumBigInt(periodPayments.map((p) => p.totalAmountPaise)))],
-            ["Balance", formatPaise(balance)],
-          ],
-          transactions,
-        };
-      });
-  }
-
-  if (type === "payment") {
-    if (subtype === "expense") {
-      return workspace.expenseProfiles.map((profile) => {
-        const rows = workspace.expensePayments.filter(
-          (payment) =>
-            payment.profileId === profile.id &&
-            inDateRange(payment.occurredAt, from, to),
-        );
-        return simpleDerivedBook({
-          id: `expense-payment-${profile.id}`,
-          type,
-          subtype,
-          accountId: profile.id,
-          accountKind: "expense",
-          name: expenseProfileLabel(profile, workspace.expenseCategories),
-          typeLabel: "Expense Payment",
-          rows: rows.map((payment) => ({
-            id: payment.id,
-            occurredAt: payment.occurredAt,
-            business: formatPaise(payment.totalAmountPaise),
-            money: `Cash ${formatPaise(payment.cashPaise)}`,
-            balance: `Bank ${formatPaise(payment.bankPaise)}`,
-            detail: payment.reference,
-          })),
-          summary: [
-            ["Entries", rows.length.toString()],
-            ["Paid", formatPaise(sumBigInt(rows.map((p) => p.totalAmountPaise)))],
-            ["Methods", "Cash + Bank"],
-          ],
-        });
-      });
-    }
-    const partyType =
-      subtype === "seller"
-        ? "SELLER"
-        : subtype === "customer"
-          ? "CUSTOMER"
-          : "STOCKIST";
-    return workspace.parties
-      .filter((party) =>
-        subtype === "stockist"
-          ? party.partyType === "STOCKIST" ||
-            party.partyType === "SERVICE_STOCKIST"
-          : party.partyType === partyType,
-      )
-      .map((party) => {
-        const direction = subtype === "stockist" ? "PAYMENT" : "RECEIPT";
-        const rows = workspace.payments.filter(
-          (payment) =>
-            payment.partyId === party.id &&
-            payment.direction === direction &&
-            inDateRange(payment.occurredAt, from, to),
-        );
-        return simpleDerivedBook({
-          id: `payment-${subtype}-${party.id}`,
-          type,
-          subtype,
-          accountId: party.id,
-          accountKind: "party",
-          name: party.name,
-          typeLabel: subtype === "stockist" ? "Stockist Payment" : "Receipt",
-          rows: rows.map((payment) => ({
-            id: payment.id,
-            occurredAt: payment.occurredAt,
-            business: formatPaise(payment.totalAmountPaise),
-            money: splitText(payment.methodSplit),
-            balance: "—",
-            detail: payment.reference,
-          })),
-          summary: [
-            ["Entries", rows.length.toString()],
-            [
-              direction === "RECEIPT" ? "Received" : "Paid",
-              formatPaise(sumBigInt(rows.map((p) => p.totalAmountPaise))),
-            ],
-            ["Methods", "Cash/Bank/UPI/PWT"],
-          ],
-        });
-      });
-  }
-
-  if (type === "money") {
-    const method = subtype as MoneyMethod;
-    const rows: LedgerTxn[] = [];
-    let moneyIn = 0n;
-    let moneyOut = 0n;
-    for (const payment of workspace.payments) {
-      if (!inDateRange(payment.occurredAt, from, to)) continue;
-      const amount = BigInt(payment.methodSplit[method] || "0");
-      if (amount === 0n) continue;
-      const incoming = payment.direction === "RECEIPT";
-      if (incoming) moneyIn += amount;
-      else moneyOut += amount;
-      rows.push({
-        id: payment.id,
-        occurredAt: payment.occurredAt,
-        business: incoming ? formatPaise(amount) : "—",
-        money: incoming ? "—" : formatPaise(amount),
-        balance: incoming ? "Money In" : "Money Out",
-        detail: `${payment.partyName} · ${payment.reference}`,
-      });
-    }
-    if (method === "cashPaise" || method === "bankPaise") {
-      for (const payment of workspace.expensePayments) {
-        if (!inDateRange(payment.occurredAt, from, to)) continue;
-        const amount =
-          method === "cashPaise"
-            ? BigInt(payment.cashPaise)
-            : BigInt(payment.bankPaise);
-        if (amount === 0n) continue;
-        moneyOut += amount;
-        rows.push({
-          id: `expense-${payment.id}`,
-          occurredAt: payment.occurredAt,
-          business: "—",
-          money: formatPaise(amount),
-          balance: "Money Out",
-          detail: `${payment.profileName} · ${payment.reference}`,
-        });
-      }
-    }
-    return [
-      simpleDerivedBook({
-        id: `money-${method}`,
-        type,
-        subtype,
-        accountId: null,
-        accountKind: null,
-        name:
-          PARTY_PAYMENT_METHODS.find(([key]) => key === method)?.[1] || "Money",
-        typeLabel: "Cash Flow Ledger",
-        rows,
-        summary: [
-          ["Money In", formatPaise(moneyIn)],
-          ["Money Out", formatPaise(moneyOut)],
-          ["Net Flow", formatPaise(moneyIn - moneyOut)],
-        ],
-      }),
-    ];
-  }
-
-  if (type === "pwt") {
-    const incoming = subtype === "received";
-    const rows = workspace.payments.filter(
-      (payment) =>
-        inDateRange(payment.occurredAt, from, to) &&
-        BigInt(payment.methodSplit.pwtPaise || "0") > 0n &&
-        (incoming
-          ? payment.direction === "RECEIPT"
-          : payment.direction !== "RECEIPT"),
-    );
-    const total = sumBigInt(rows.map((p) => p.methodSplit.pwtPaise || "0"));
-    return [
-      simpleDerivedBook({
-        id: `pwt-${subtype}`,
-        type,
-        subtype,
-        accountId: null,
-        accountKind: null,
-        name: incoming ? "PWT Received" : "PWT Redeemed",
-        typeLabel: "PWT / Prize Ledger",
+        typeLabel: subtype === "stockist" ? "Stockist Payment" : "Receipt",
         rows: rows.map((payment) => ({
           id: payment.id,
           occurredAt: payment.occurredAt,
-          business: formatPaise(payment.methodSplit.pwtPaise || "0"),
-          money: "—",
-          balance: incoming ? "Received" : "Redeemed",
-          detail: `${payment.partyName} · ${payment.reference}`,
+          business: formatPaise(payment.totalAmountPaise),
+          money: splitText(payment.methodSplit),
+          balance: "—",
+          detail: payment.reference,
         })),
         summary: [
           ["Entries", rows.length.toString()],
-          [incoming ? "Received" : "Redeemed", formatPaise(total)],
-          ["PWT", formatPaise(total)],
+          [
+            direction === "RECEIPT" ? "Received" : "Paid",
+            formatPaise(sumBigInt(rows.map((p) => p.totalAmountPaise))),
+          ],
+          ["Methods", "Cash/Bank/UPI/PWT"],
         ],
-      }),
-    ];
-  }
+      });
+    });
+}
 
+function partyMoneyLedgerRow(
+  payment: LotteryWorkspace["payments"][number],
+  amount: bigint,
+  incoming: boolean,
+): LedgerTxn {
+  return {
+    id: payment.id,
+    occurredAt: payment.occurredAt,
+    business: incoming ? formatPaise(amount) : "—",
+    money: incoming ? "—" : formatPaise(amount),
+    balance: incoming ? "Money In" : "Money Out",
+    detail: `${payment.partyName} · ${payment.reference}`,
+  };
+}
+
+function appendPartyMoneyLedgerRows(
+  rows: LedgerTxn[],
+  workspace: LotteryWorkspace,
+  method: MoneyMethod,
+  from: string,
+  to: string,
+) {
+  let moneyIn = 0n;
+  let moneyOut = 0n;
+  for (const payment of workspace.payments) {
+    if (!inDateRange(payment.occurredAt, from, to)) continue;
+    const amount = BigInt(payment.methodSplit[method] || "0");
+    if (amount === 0n) continue;
+    const incoming = payment.direction === "RECEIPT";
+    if (incoming) moneyIn += amount;
+    else moneyOut += amount;
+    rows.push(partyMoneyLedgerRow(payment, amount, incoming));
+  }
+  return { moneyIn, moneyOut };
+}
+
+function expensePaymentAmountForMethod(
+  payment: LotteryWorkspace["expensePayments"][number],
+  method: MoneyMethod,
+) {
+  if (method === "cashPaise") return BigInt(payment.cashPaise);
+  if (method === "bankPaise") return BigInt(payment.bankPaise);
+  return 0n;
+}
+
+function appendExpenseMoneyLedgerRows(
+  rows: LedgerTxn[],
+  workspace: LotteryWorkspace,
+  method: MoneyMethod,
+  from: string,
+  to: string,
+) {
+  if (method !== "cashPaise" && method !== "bankPaise") return 0n;
+  let moneyOut = 0n;
+  for (const payment of workspace.expensePayments) {
+    if (!inDateRange(payment.occurredAt, from, to)) continue;
+    const amount = expensePaymentAmountForMethod(payment, method);
+    if (amount === 0n) continue;
+    moneyOut += amount;
+    rows.push({
+      id: `expense-${payment.id}`,
+      occurredAt: payment.occurredAt,
+      business: "—",
+      money: formatPaise(amount),
+      balance: "Money Out",
+      detail: `${payment.profileName} · ${payment.reference}`,
+    });
+  }
+  return moneyOut;
+}
+
+function buildMoneyLedgerBooks(
+  workspace: LotteryWorkspace,
+  subtype: string,
+  from: string,
+  to: string,
+): LedgerBook[] {
+  const type: LedgerBookType = "money";
+  const method = subtype as MoneyMethod;
+  const rows: LedgerTxn[] = [];
+  const partyTotals = appendPartyMoneyLedgerRows(rows, workspace, method, from, to);
+  const expenseMoneyOut = appendExpenseMoneyLedgerRows(
+    rows,
+    workspace,
+    method,
+    from,
+    to,
+  );
+  const moneyOut = partyTotals.moneyOut + expenseMoneyOut;
+  return [
+    simpleDerivedBook({
+      id: `money-${method}`,
+      type,
+      subtype,
+      accountId: null,
+      accountKind: null,
+      name:
+        PARTY_PAYMENT_METHODS.find(([key]) => key === method)?.[1] || "Money",
+      typeLabel: "Cash Flow Ledger",
+      rows,
+      summary: [
+        ["Money In", formatPaise(partyTotals.moneyIn)],
+        ["Money Out", formatPaise(moneyOut)],
+        ["Net Flow", formatPaise(partyTotals.moneyIn - moneyOut)],
+      ],
+    }),
+  ];
+}
+
+function buildPwtLedgerBooks(
+  workspace: LotteryWorkspace,
+  subtype: string,
+  from: string,
+  to: string,
+): LedgerBook[] {
+  const type: LedgerBookType = "pwt";
+  const incoming = subtype === "received";
+  const rows = workspace.payments.filter(
+    (payment) =>
+      inDateRange(payment.occurredAt, from, to) &&
+      BigInt(payment.methodSplit.pwtPaise || "0") > 0n &&
+      (incoming
+        ? payment.direction === "RECEIPT"
+        : payment.direction !== "RECEIPT"),
+  );
+  const total = sumBigInt(rows.map((p) => p.methodSplit.pwtPaise || "0"));
+  return [
+    simpleDerivedBook({
+      id: `pwt-${subtype}`,
+      type,
+      subtype,
+      accountId: null,
+      accountKind: null,
+      name: incoming ? "PWT Received" : "PWT Redeemed",
+      typeLabel: "PWT / Prize Ledger",
+      rows: rows.map((payment) => ({
+        id: payment.id,
+        occurredAt: payment.occurredAt,
+        business: formatPaise(payment.methodSplit.pwtPaise || "0"),
+        money: "—",
+        balance: incoming ? "Received" : "Redeemed",
+        detail: `${payment.partyName} · ${payment.reference}`,
+      })),
+      summary: [
+        ["Entries", rows.length.toString()],
+        [incoming ? "Received" : "Redeemed", formatPaise(total)],
+        ["PWT", formatPaise(total)],
+      ],
+    }),
+  ];
+}
+
+function buildStockLedgerBooks(
+  workspace: LotteryWorkspace,
+  from: string,
+  to: string,
+): LedgerBook[] {
+  const type: LedgerBookType = "stock";
   const days = new Set<string>();
   for (const sale of [...workspace.sales, ...workspace.draftSales])
     if (inDateRange(sale.occurredAt, from, to)) days.add(dateKey(sale.occurredAt));
@@ -2779,6 +3014,40 @@ function buildLedgerBooks(
       ],
     }),
   ];
+}
+
+function buildLedgerBooks(
+  workspace: LotteryWorkspace,
+  type: LedgerBookType,
+  subtype: string,
+  from: string,
+  to: string,
+): LedgerBook[] {
+  switch (type) {
+    case "seller":
+    case "stockist":
+    case "customer":
+      return buildPartyLedgerBooks(workspace, type, from, to);
+    case "sale":
+      return buildSaleLedgerBooks(workspace, subtype, from, to);
+    case "purchase":
+      return buildPurchaseLedgerBooks(workspace, subtype, from, to);
+    case "return":
+      return buildReturnLedgerBooks(workspace, subtype, from, to);
+    case "commission":
+    case "tds":
+      return buildCommissionOrTdsLedgerBooks(workspace, type, subtype, from, to);
+    case "expense":
+      return buildExpenseLedgerBooks(workspace, subtype, from, to);
+    case "payment":
+      return buildPaymentLedgerBooks(workspace, subtype, from, to);
+    case "money":
+      return buildMoneyLedgerBooks(workspace, subtype, from, to);
+    case "pwt":
+      return buildPwtLedgerBooks(workspace, subtype, from, to);
+    default:
+      return buildStockLedgerBooks(workspace, from, to);
+  }
 }
 
 function simpleDerivedBook({
@@ -2975,6 +3244,32 @@ function AiPanel({ workspace }: Readonly<{ workspace: LotteryWorkspace }>) {
   );
 }
 
+function masterParties(
+  workspace: LotteryWorkspace | null,
+  type: PartyMasterType | "EXPENSE",
+) {
+  if (!workspace || type === "EXPENSE") return [];
+  if (type === "STOCKIST") {
+    return workspace.parties.filter(
+      (party) =>
+        party.partyType === "STOCKIST" ||
+        party.partyType === "SERVICE_STOCKIST",
+    );
+  }
+  return workspace.parties.filter((party) => party.partyType === type);
+}
+
+function partyMasterLabel(type: PartyMasterType) {
+  switch (type) {
+    case "SELLER":
+      return "Seller";
+    case "STOCKIST":
+      return "Stockist";
+    default:
+      return "Customer";
+  }
+}
+
 function MastersPanel({
   workspace,
   organizationId,
@@ -3019,17 +3314,12 @@ function MastersPanel({
     ((workspace?.organization.tdsRateBps || 200) / 100).toFixed(2),
   );
 
-  const parties =
-    workspace?.parties.filter((party) =>
-      type === "STOCKIST"
-        ? party.partyType === "STOCKIST" ||
-          party.partyType === "SERVICE_STOCKIST"
-        : party.partyType === type,
-    ) || [];
+  const parties = masterParties(workspace, type);
   const profiles =
     workspace?.expenseProfiles.filter(
       (profile) => profile.categoryId === expenseCategoryId,
     ) || [];
+  const selectedPartyTypeLabel = type === "EXPENSE" ? "" : partyMasterLabel(type);
 
   const populatePartyEditor = useCallback((party: LotteryParty) => {
     setSelectedPartyId(party.id);
@@ -3058,18 +3348,18 @@ function MastersPanel({
 
   useEffect(() => {
     if (!workspace) return;
-    const partyId = sessionStorage.getItem("orbis-accounting-edit-party");
+    const partyId = sessionStorage.getItem(EDIT_PARTY_STORAGE_KEY);
     if (partyId) {
-      sessionStorage.removeItem("orbis-accounting-edit-party");
+      sessionStorage.removeItem(EDIT_PARTY_STORAGE_KEY);
       const party = workspace.parties.find((item) => item.id === partyId);
       if (party && new Set(["SELLER", "STOCKIST", "CUSTOMER"]).has(party.partyType)) {
         setType(party.partyType as PartyMasterType);
         populatePartyEditor(party);
       }
     }
-    const expenseId = sessionStorage.getItem("orbis-accounting-edit-expense");
+    const expenseId = sessionStorage.getItem(EDIT_EXPENSE_STORAGE_KEY);
     if (expenseId) {
-      sessionStorage.removeItem("orbis-accounting-edit-expense");
+      sessionStorage.removeItem(EDIT_EXPENSE_STORAGE_KEY);
       const profile = workspace.expenseProfiles.find((item) => item.id === expenseId);
       if (profile) {
         setType("EXPENSE");
@@ -3244,11 +3534,11 @@ function MastersPanel({
 
       {type !== "EXPENSE" ? (
         <SectionCard
-          title={`${type === "SELLER" ? "Seller" : type === "STOCKIST" ? "Stockist" : "Customer"} Profiles`}
+          title={`${selectedPartyTypeLabel} Profiles`}
         >
           <div className="mb-2 flex justify-end">
             <Button active onClick={openNewParty}>
-              + Add {type === "SELLER" ? "Seller" : type === "STOCKIST" ? "Stockist" : "Customer"}
+              + Add {selectedPartyTypeLabel}
             </Button>
           </div>
           {partyEditorOpen && (
@@ -3312,7 +3602,7 @@ function MastersPanel({
           <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/60 to-orange-50/60 p-3">
             <p className="text-[7px] font-black uppercase text-slate-500">Top Type</p>
             <p className="mt-1 text-sm font-black">Expenses</p>
-            <label className="mt-2 block">
+            <div className="mt-2 block">
               <span className="text-[8px] font-bold text-slate-500">Category</span>
               <ExpenseCategorySelect
                 ariaLabel="Expense master category"
@@ -3323,7 +3613,7 @@ function MastersPanel({
                   setExpenseEditorOpen(false);
                 }}
               />
-            </label>
+            </div>
             <div className="mt-2 flex gap-2">
               <Button
                 active

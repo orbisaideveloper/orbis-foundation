@@ -1,18 +1,26 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-# আপনার প্রোভাইড করা SonarCloud Access Token
-SONAR_TOKEN="Ee7120c9b766c127339152f3c7abbf0177ad63ed"
+: "${SONAR_TOKEN:?SONAR_TOKEN is required in the environment.}"
+
 ORG_KEY="orbis"
 PROJECT_KEY="orbisaideveloper_orbis-foundation"
 
-echo "🔍 সোনারক্লাউড সার্ভার থেকে লাইভ ইস্যুগুলো ফেচ করা হচ্ছে..."
-RESPONSE=$(curl -s -u "${SONAR_TOKEN}:" "https://sonarcloud.io/api/issues/search?componentKeys=${PROJECT_KEY}&ps=5")
+echo "🔍 Fetching live SonarCloud issues for ${PROJECT_KEY}..."
+RESPONSE="$(
+  curl --fail --silent --show-error     -u "${SONAR_TOKEN}:"     "https://sonarcloud.io/api/issues/search?componentKeys=${PROJECT_KEY}&ps=100&statuses=OPEN,REOPENED"
+)"
 
-echo "$RESPONSE" | grep -o '"message":"[^"]*"' | head -n 10
+node -e '
+const input = require("fs").readFileSync(0, "utf8");
+const response = JSON.parse(input);
+const issues = response.issues || [];
+console.log(`Open issues returned: ${issues.length}`);
+for (const [index, issue] of issues.entries()) {
+  const file = String(issue.component || "").replace(/^orbisaideveloper_orbis-foundation:/, "");
+  console.log(`${index + 1}. [${issue.severity || "UNKNOWN"}] ${issue.message}`);
+  console.log(`   ${file}${issue.line ? `:${issue.line}` : ""}`);
+}
+' <<<"$RESPONSE"
 
-if [ $? -ne 0 ]; then
-    echo "⚠️ কোনো ইস্যু পাওয়া যায়নি অথবা কানেকশনে সমস্যা হয়েছে। রেসপন্স:"
-    echo "$RESPONSE" | head -c 200
-fi
-
-echo -e "\n✅ স্ক্যান সম্পন্ন! ওপরে সোনারক্লাউডের সাম্প্রতিক ইস্যুগুলোর মেসেজ দেখানো হলো।"
+echo "✅ SonarCloud live issue fetch completed."

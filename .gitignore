@@ -65,4 +65,8 @@ coverage/
 .parcel-cache
 
 /src/generated/prisma
+
+# ORBIS local recovery / generated quality artifacts — never commit
+.orbis-backup/
 .orbis-backups/
+.stryker-tmp/
