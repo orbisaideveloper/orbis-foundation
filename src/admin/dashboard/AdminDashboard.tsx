@@ -28,6 +28,7 @@ import { FullscreenChatView } from "../../features/orbis-ai-chatbot/components/F
 import { BrainChatTestLog } from "../../features/orbis-ai-chatbot/components/BrainChatTestLog";
 import { LearningReviewPanel } from "./sections/LearningReviewPanel";
 import { ManagedProductModels } from "./sections/ManagedProductModels";
+import { FoundationTableViewerRow } from "./FoundationTableViewer";
 
 type DashboardView =
   | "overview"
@@ -1083,12 +1084,12 @@ export function AdminDashboard({
       <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
         <h3 className="text-sm font-black text-slate-900">Foundation table counts</h3>
         {(diagnosticExport?.database.foundationTableCounts || []).map((table) => (
-          <DetailRow
+          <FoundationTableViewerRow
             key={table.table}
-            label={table.status}
-            value={`${table.table}: ${formatNumber(table.count)}`}
-            source="Admin diagnostic database count"
-            copyable
+            table={table.table}
+            count={table.count}
+            status={table.status}
+            disabled={previewMode}
           />
         ))}
       </section>

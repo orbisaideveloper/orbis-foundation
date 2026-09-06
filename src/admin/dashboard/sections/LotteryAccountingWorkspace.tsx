@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, LoaderCircle, RefreshCw, WalletCards } from "lucide-react";
 import { DailySellerEntry } from "./DailySellerEntry";
 import { DailyStockistEntry } from "./DailyStockistEntry";
@@ -6,6 +6,7 @@ import { WorkspaceSectionTabs } from "./WorkspaceSectionTabs";
 import {
   lotteryAccountingClient,
   type LotteryAccountingClient,
+  type LotteryRecordedPayment,
 } from "../../models/lotteryAccountingClient";
 import {
   formatPaise,
@@ -16,6 +17,7 @@ import type {
   LotteryExpenseProfile,
   LotteryParty,
   LotteryPartyType,
+  LotteryPayment,
   LotteryWorkspace,
 } from "../../models/lotteryAccountingTypes";
 
@@ -66,6 +68,7 @@ const ACTIVE_BUTTON =
   "rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-100 to-orange-100 px-3 py-2 text-[10px] font-black text-emerald-900";
 const EDIT_PARTY_STORAGE_KEY = "orbis-accounting-edit-party";
 const EDIT_EXPENSE_STORAGE_KEY = "orbis-accounting-edit-expense";
+const ALL_ACCOUNTS = "__ALL__";
 
 function emptyPaymentAmounts(): Record<MoneyMethod, string> {
   return { cashPaise: "", bankPaise: "", upiPaise: "", pwtPaise: "" };
@@ -131,6 +134,41 @@ function sumBigInt(values: Iterable<string | number | bigint>) {
   let total = 0n;
   for (const value of values) total += BigInt(value);
   return total;
+}
+
+type SellerQuantityField = "dispatchQuantity" | "returnQuantity";
+
+function sumPartySaleQuantity(
+  sales: ReadonlyArray<{
+    partyId: string;
+    dispatchQuantity: number;
+    returnQuantity: number;
+  }>,
+  partyId: string,
+  field: SellerQuantityField,
+) {
+  return sales
+    .filter((sale) => sale.partyId === partyId)
+    .reduce((total, sale) => total + BigInt(sale[field]), 0n);
+}
+
+function LedgerTransactionHeader({
+  includeAccount = false,
+}: {
+  includeAccount?: boolean;
+}) {
+  return (
+    <thead className="bg-emerald-50/60 text-[7px] uppercase text-slate-500">
+      <tr>
+        {includeAccount && <th className="px-2 py-2">Account</th>}
+        <th className="px-2 py-2">Date</th>
+        <th className="px-2 py-2">Business / Bill</th>
+        <th className="px-2 py-2">Paid / Received / TDS</th>
+        <th className="px-2 py-2">Balance / Net</th>
+        <th className="px-2 py-2">Details</th>
+      </tr>
+    </thead>
+  );
 }
 
 function paiseInput(value: bigint) {
@@ -534,6 +572,8 @@ export function LotteryAccountingWorkspace({
   const [working, setWorking] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const refreshRequestRef = useRef(0);
+  const [ledgerLaunch, setLedgerLaunch] = useState<LedgerLaunch | null>(null);
 
   const loadOrganizations = useCallback(async () => {
     setLoading(true);
@@ -552,17 +592,24 @@ export function LotteryAccountingWorkspace({
 
   const refreshWorkspace = useCallback(
     async (nextId = organizationId) => {
+      const requestId = ++refreshRequestRef.current;
       if (!nextId) {
         setWorkspace(null);
+        setRefreshing(false);
         return;
       }
       setRefreshing(true);
       try {
-        setWorkspace(await api.loadWorkspace(nextId));
+        const nextWorkspace = await api.loadWorkspace(nextId);
+        if (requestId === refreshRequestRef.current) {
+          setWorkspace(nextWorkspace);
+        }
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "Accounting unavailable.");
+        if (requestId === refreshRequestRef.current) {
+          setError(cause instanceof Error ? cause.message : "Accounting unavailable.");
+        }
       } finally {
-        setRefreshing(false);
+        if (requestId === refreshRequestRef.current) setRefreshing(false);
       }
     },
     [api, organizationId],
@@ -577,10 +624,11 @@ export function LotteryAccountingWorkspace({
     else if (!loading) setTab("masters");
   }, [organizationId, loading, refreshWorkspace]);
 
-  const run = async (
-    key: string,
-    action: () => Promise<unknown>,
-    success: string,
+  const run: AccountingRun = async (
+    key,
+    action,
+    success,
+    options = {},
   ) => {
     setWorking(key);
     setError(null);
@@ -588,7 +636,11 @@ export function LotteryAccountingWorkspace({
     try {
       await action();
       setNotice(success);
-      await refreshWorkspace();
+      if (options.refresh === "background") {
+        void refreshWorkspace();
+      } else if (options.refresh !== "none") {
+        await refreshWorkspace();
+      }
       return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Accounting update failed.");
@@ -597,6 +649,36 @@ export function LotteryAccountingWorkspace({
       setWorking(null);
     }
   };
+
+  const applyRecordedPayment = useCallback(
+    (payment: LotteryRecordedPayment) => {
+      setWorkspace((current) => {
+        if (!current) return current;
+        const partyName =
+          current.parties.find((party) => party.id === payment.partyId)?.name ||
+          "Unknown party";
+        const periodLabel = payment.periodId
+          ? current.periods.find((period) => period.id === payment.periodId)?.label ||
+            null
+          : null;
+        const enriched: LotteryPayment = {
+          ...payment,
+          partyName,
+          periodLabel,
+          settledPaise: "0",
+          availablePaise: payment.totalAmountPaise,
+        };
+        return {
+          ...current,
+          payments: [
+            enriched,
+            ...current.payments.filter((item) => item.id !== enriched.id),
+          ].sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)),
+        };
+      });
+    },
+    [],
+  );
 
   const createOrganization = async (name: string) => {
     setWorking("organization");
@@ -694,7 +776,10 @@ export function LotteryAccountingWorkspace({
           {tab === "dashboard" && (
             <DashboardPanel
               workspace={workspace}
-              openLedger={() => setTab("ledger")}
+              openLedger={(launch) => {
+                setLedgerLaunch(launch || null);
+                setTab("ledger");
+              }}
             />
           )}
           {tab === "daily" && (
@@ -715,11 +800,14 @@ export function LotteryAccountingWorkspace({
               api={api}
               working={working}
               run={run}
+              onPaymentRecorded={applyRecordedPayment}
             />
           )}
           {tab === "ledger" && (
             <LedgerPanel
               workspace={workspace}
+              launch={ledgerLaunch}
+              onLaunchApplied={() => setLedgerLaunch(null)}
               editParty={(party) => {
                 setTab("masters");
                 sessionStorage.setItem(EDIT_PARTY_STORAGE_KEY, party.id);
@@ -750,12 +838,20 @@ export function LotteryAccountingWorkspace({
 function DashboardPanel({
   workspace,
   openLedger,
-}: Readonly<{ workspace: LotteryWorkspace; openLedger: () => void }>) {
+}: Readonly<{
+  workspace: LotteryWorkspace;
+  openLedger: (launch?: LedgerLaunch) => void;
+}>) {
   const today = businessDateToday();
   const [period, setPeriod] = useState<"today" | "7d" | "month" | "custom">("today");
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
-  const [expanded, setExpanded] = useState<"receivable" | "payable" | null>(null);
+  const [expanded, setExpanded] = useState<
+    "profit" | "receivable" | "payable" | "commission" | null
+  >(null);
+  const [quantityDetail, setQuantityDetail] = useState<
+    "dispatch" | "return" | null
+  >(null);
 
   const bounds = useMemo(() => {
     if (period === "today") return { from: today, to: today };
@@ -804,6 +900,56 @@ function DashboardPanel({
   const customerSold = workspace.customerBills
     .filter((bill) => inDateRange(bill.occurredAt, bounds.from, bounds.to))
     .reduce((total, bill) => total + BigInt(bill.quantity), 0n);
+  const sellerDispatch = sales.reduce(
+    (total, sale) => total + BigInt(sale.dispatchQuantity),
+    0n,
+  );
+  const sellerReturn = sales.reduce(
+    (total, sale) => total + BigInt(sale.returnQuantity),
+    0n,
+  );
+  const totalDispatch = sellerDispatch + customerSold;
+  const dispatchRows = [
+    ...workspace.parties
+      .filter((party) => party.partyType === "SELLER")
+      .map((party) => ({
+        id: `dispatch-seller-${party.id}`,
+        name: party.name,
+        type: "Seller" as const,
+        quantity: sumPartySaleQuantity(
+          sales,
+          party.id,
+          "dispatchQuantity",
+        ),
+      })),
+    ...workspace.parties
+      .filter((party) => party.partyType === "CUSTOMER")
+      .map((party) => ({
+        id: `dispatch-customer-${party.id}`,
+        name: party.name,
+        type: "Customer" as const,
+        quantity: workspace.customerBills
+          .filter(
+            (bill) =>
+              bill.partyId === party.id &&
+              inDateRange(bill.occurredAt, bounds.from, bounds.to),
+          )
+          .reduce((total, bill) => total + BigInt(bill.quantity), 0n),
+      })),
+  ].filter((row) => row.quantity > 0n);
+  const returnRows = workspace.parties
+    .filter((party) => party.partyType === "SELLER")
+    .map((party) => ({
+      id: `return-seller-${party.id}`,
+      name: party.name,
+      type: "Seller" as const,
+      quantity: sumPartySaleQuantity(
+        sales,
+        party.id,
+        "returnQuantity",
+      ),
+    }))
+    .filter((row) => row.quantity > 0n);
   const stockDifference = purchased - sellerSold - customerSold;
 
   const previousDay = addDays(bounds.to, -1);
@@ -869,22 +1015,46 @@ function DashboardPanel({
           {formatPaise(totalMoney)}
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {PARTY_PAYMENT_METHODS.map(([method, label]) => (
-            <div
-              key={method}
-              className="rounded-xl border border-white bg-white/75 p-2.5"
-            >
-              <p className="text-[7px] font-bold uppercase text-slate-500">
-                {label}
-              </p>
-              <p className="mt-1 text-xs font-black">{formatPaise(balances[method])}</p>
-            </div>
-          ))}
+          {PARTY_PAYMENT_METHODS.map(([method, label], index) => {
+            const styles = [
+              "border-emerald-200 bg-emerald-50/90 text-emerald-950",
+              "border-sky-200 bg-sky-50/90 text-sky-950",
+              "border-violet-200 bg-violet-50/90 text-violet-950",
+              "border-orange-200 bg-orange-50/90 text-orange-950",
+            ];
+            return (
+              <button
+                key={method}
+                type="button"
+                onClick={() =>
+                  openLedger({
+                    bookType: "money",
+                    subtype: method,
+                    from: bounds.from,
+                    to: bounds.to,
+                  })
+                }
+                className={`min-h-[76px] rounded-xl border p-2.5 text-left shadow-sm transition active:scale-[0.985] ${styles[index]}`}
+              >
+                <p className="text-[7px] font-black uppercase tracking-[0.08em] opacity-70">
+                  {label}
+                </p>
+                <p className="mt-1 text-sm font-black">{formatPaise(balances[method])}</p>
+                <p className="mt-1 text-[7px] font-bold opacity-60">Tap for details</p>
+              </button>
+            );
+          })}
         </div>
       </section>
 
       <div className="grid grid-cols-2 gap-2">
-        <Metric label="Net Profit" value={formatPaise(profit)} />
+        <Metric
+          label="Net Profit"
+          value={formatPaise(profit)}
+          onClick={() =>
+            setExpanded((current) => (current === "profit" ? null : "profit"))
+          }
+        />
         <Metric
           label="Receivable"
           value={formatPaise(receivable)}
@@ -911,22 +1081,65 @@ function DashboardPanel({
           label="Commission"
           value={commissionDifference === 0n ? "CLEAR" : "MISMATCH"}
           tone="violet"
+          onClick={() =>
+            setExpanded((current) =>
+              current === "commission" ? null : "commission",
+            )
+          }
         >
           <p className="mt-1 text-[7px] font-bold text-slate-500">
             Difference {formatPaise(commissionDifference < 0n ? -commissionDifference : commissionDifference)}
           </p>
         </Metric>
+        <Metric
+          label="Expenses"
+          value={formatPaise(expenses)}
+          tone="orange"
+          onClick={() =>
+            openLedger({
+              bookType: "payment",
+              subtype: "expense",
+              accountId: ALL_ACCOUNTS,
+              from: bounds.from,
+              to: bounds.to,
+            })
+          }
+        />
       </div>
 
-      {expanded && (
-        <SectionCard
-          title={
-            expanded === "receivable"
-              ? `Receivable priority · ${displayDate(bounds.to)}`
-              : `Payable priority · ${displayDate(bounds.to)}`
-          }
-        >
-          <PriorityList rows={expanded === "receivable" ? receivables : payables} />
+      {expanded === "receivable" && (
+        <SectionCard title={`Receivable priority · ${displayDate(bounds.to)}`}>
+          <PriorityList rows={receivables} />
+        </SectionCard>
+      )}
+      {expanded === "payable" && (
+        <SectionCard title={`Payable priority · ${displayDate(bounds.to)}`}>
+          <PriorityList rows={payables} />
+        </SectionCard>
+      )}
+      {expanded === "profit" && (
+        <SectionCard title="Profit & Loss quick details">
+          <div className="grid grid-cols-2 gap-2">
+            <Metric label="Seller Gross" value={formatPaise(sellerGross)} />
+            <Metric label="Stockist Gross" value={formatPaise(stockistGross)} tone="orange" />
+            <Metric label="Expenses" value={formatPaise(expenses)} tone="violet" />
+            <Metric label="Net Profit" value={formatPaise(profit)} />
+          </div>
+        </SectionCard>
+      )}
+      {expanded === "commission" && (
+        <SectionCard title="Commission quick details">
+          <div className="grid grid-cols-3 gap-2">
+            <Metric label="Stockist" value={formatPaise(stockistCommission)} />
+            <Metric label="Seller" value={formatPaise(sellerCommission)} tone="orange" />
+            <Metric
+              label="Difference"
+              value={formatPaise(
+                commissionDifference < 0n ? -commissionDifference : commissionDifference,
+              )}
+              tone={commissionDifference === 0n ? "green" : "orange"}
+            />
+          </div>
         </SectionCard>
       )}
 
@@ -970,17 +1183,74 @@ function DashboardPanel({
         </p>
       </SectionCard>
 
-      <SectionCard title="Stock truth">
-        <div className="grid grid-cols-3 gap-2">
-          <Metric label="Net Purchase" value={purchased.toString()} />
-          <Metric label="Net Sale" value={(sellerSold + customerSold).toString()} />
+      <SectionCard
+        title="Stock truth"
+        hint="Tap a card for this selected period."
+      >
+        <div className="grid grid-cols-2 gap-2">
+          <Metric
+            label="Net Purchase"
+            value={purchased.toString()}
+            onClick={() =>
+              openLedger({
+                bookType: "purchase",
+                subtype: "stockist",
+                accountId: ALL_ACCOUNTS,
+                from: bounds.from,
+                to: bounds.to,
+              })
+            }
+          />
+          <Metric
+            label="Dispatch"
+            value={totalDispatch.toString()}
+            tone="blue"
+            onClick={() =>
+              setQuantityDetail((current) =>
+                current === "dispatch" ? null : "dispatch",
+              )
+            }
+          />
+          <Metric
+            label="Unsold / Return"
+            value={sellerReturn.toString()}
+            tone="orange"
+            onClick={() =>
+              setQuantityDetail((current) =>
+                current === "return" ? null : "return",
+              )
+            }
+          />
           <Metric
             label="Difference"
             value={stockDifference.toString()}
             tone={stockDifference === 0n ? "green" : "orange"}
+            onClick={() =>
+              openLedger({
+                bookType: "stock",
+                subtype: "stock",
+                from: bounds.from,
+                to: bounds.to,
+              })
+            }
           />
         </div>
       </SectionCard>
+
+      {quantityDetail === "dispatch" && (
+        <DashboardQuantityBreakdown
+          title={`Dispatch details · ${displayDate(bounds.from)} → ${displayDate(bounds.to)}`}
+          rows={dispatchRows}
+          emptyText="No dispatch in this selected period."
+        />
+      )}
+      {quantityDetail === "return" && (
+        <DashboardQuantityBreakdown
+          title={`Unsold / Return totals · ${displayDate(bounds.from)} → ${displayDate(bounds.to)}`}
+          rows={returnRows}
+          emptyText="No seller return in this selected period."
+        />
+      )}
 
       <SectionCard
         title="ORBIS AI business check"
@@ -1008,7 +1278,7 @@ function DashboardPanel({
         </div>
         <button
           type="button"
-          onClick={openLedger}
+          onClick={() => openLedger()}
           className="mt-3 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-[10px] font-black text-emerald-800"
         >
           Open Ledger
@@ -1035,6 +1305,52 @@ function PriorityMini({ rows }: Readonly<{ rows: PriorityRow[] }>) {
         </div>
       ))}
     </div>
+  );
+}
+
+type DashboardQuantityRow = {
+  id: string;
+  name: string;
+  type: "Seller" | "Customer";
+  quantity: bigint;
+};
+
+function DashboardQuantityBreakdown({
+  title,
+  rows,
+  emptyText,
+}: Readonly<{
+  title: string;
+  rows: DashboardQuantityRow[];
+  emptyText: string;
+}>) {
+  return (
+    <SectionCard title={title}>
+      {rows.length ? (
+        <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-emerald-100 bg-white">
+          {rows.map((row) => (
+            <div
+              key={row.id}
+              className="flex min-h-[54px] items-center justify-between gap-3 px-3 py-2.5"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-[10px] font-black text-slate-900">
+                  {row.name}
+                </p>
+                <p className="text-[7px] font-bold uppercase text-slate-400">
+                  {row.type}
+                </p>
+              </div>
+              <p className="shrink-0 text-sm font-black text-emerald-800">
+                {row.quantity.toString()}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <InlineNotice>{emptyText}</InlineNotice>
+      )}
+    </SectionCard>
   );
 }
 
@@ -1387,10 +1703,15 @@ function ExpenseBillEntry({
   );
 }
 
+type AccountingRunOptions = Readonly<{
+  refresh?: "blocking" | "background" | "none";
+}>;
+
 type AccountingRun = (
   key: string,
   action: () => Promise<unknown>,
   success: string,
+  options?: AccountingRunOptions,
 ) => Promise<boolean>;
 
 function paymentAccounts(
@@ -1503,6 +1824,7 @@ async function saveUniversalPayment({
   run,
   setError,
   resetAmounts,
+  onPaymentRecorded,
 }: Readonly<{
   kind: PaymentKind;
   accountId: string;
@@ -1515,12 +1837,18 @@ async function saveUniversalPayment({
   run: AccountingRun;
   setError: (value: string | null) => void;
   resetAmounts: () => void;
+  onPaymentRecorded: (payment: LotteryRecordedPayment) => void;
 }>) {
   if (!accountId || entered <= 0n) {
     setError("Choose an account and enter an amount.");
     return;
   }
-  if (outstanding >= 0n && entered > outstanding) {
+  const direction = paymentDirection(kind);
+  if (
+    direction === "PAYMENT" &&
+    outstanding >= 0n &&
+    entered > outstanding
+  ) {
     setError("Entered amount is greater than the current outstanding.");
     return;
   }
@@ -1542,7 +1870,6 @@ async function saveUniversalPayment({
     if (ok) resetAmounts();
     return;
   }
-  const direction = paymentDirection(kind);
   const methodSplit = {
     cashPaise: parsed.cashPaise.toString(),
     bankPaise: parsed.bankPaise.toString(),
@@ -1552,8 +1879,8 @@ async function saveUniversalPayment({
   };
   const ok = await run(
     "payment",
-    () =>
-      api.recordPayment({
+    async () => {
+      const saved = await api.recordPayment({
         organizationId,
         partyId: accountId,
         periodId: null,
@@ -1561,8 +1888,11 @@ async function saveUniversalPayment({
         occurredAt: date,
         totalAmountPaise: entered.toString(),
         methodSplit,
-      }),
+      });
+      onPaymentRecorded(saved);
+    },
     direction === "RECEIPT" ? "Receipt saved." : "Payment saved.",
+    { refresh: "background" },
   );
   if (ok) resetAmounts();
 }
@@ -1623,12 +1953,14 @@ function PaymentPanel({
   api,
   working,
   run,
+  onPaymentRecorded,
 }: Readonly<{
   workspace: LotteryWorkspace;
   organizationId: string;
   api: LotteryAccountingClient;
   working: string | null;
   run: AccountingRun;
+  onPaymentRecorded: (payment: LotteryRecordedPayment) => void;
 }>) {
   const [kind, setKind] = useState<PaymentKind>("SELLER");
   const [expenseCategoryId, setExpenseCategoryId] = useState(
@@ -1681,6 +2013,7 @@ function PaymentPanel({
       run,
       setError,
       resetAmounts,
+      onPaymentRecorded,
     });
   };
 
@@ -1781,8 +2114,8 @@ function PaymentPanel({
           <Metric label="Before" value={formatPaise(outstanding)} />
           <Metric
             label="After"
-            value={formatPaise(after > 0n ? after : 0n)}
-            tone="orange"
+            value={after < 0n ? `${formatPaise(-after)} credit` : formatPaise(after)}
+            tone={after < 0n ? "blue" : "orange"}
           />
         </div>
         <label>
@@ -1828,12 +2161,342 @@ type LedgerBook = {
   transactions: LedgerTxn[];
 };
 
-function LedgerPanel({
+type LedgerLaunch = {
+  bookType: LedgerBookType;
+  subtype: string;
+  accountId?: string;
+  from: string;
+  to: string;
+};
+
+function LedgerCombinedStatement({
+  books,
+  bounds,
+  onBack,
+}: Readonly<{
+  books: LedgerBook[];
+  bounds: { from: string; to: string };
+  onBack: () => void;
+}>) {
+  const rows = books
+    .flatMap((book) =>
+      book.transactions.map((transaction) => ({ book, transaction })),
+    )
+    .sort((left, right) =>
+      left.transaction.occurredAt.localeCompare(right.transaction.occurredAt),
+    );
+
+  return (
+    <SectionCard
+      title={`All accounts · ${books.length}`}
+      hint={`${displayDate(bounds.from)} → ${displayDate(bounds.to)} · existing per-account ledger rows combined`}
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <Button onClick={onBack}>Back</Button>
+        <span className="text-[8px] font-bold text-slate-500">
+          {rows.length} transactions
+        </span>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-slate-100">
+        <table className="min-w-[760px] border-collapse text-left text-[9px]">
+          <LedgerTransactionHeader includeAccount />
+          <tbody>
+            {rows.length ? (
+              rows.map(({ book, transaction }) => (
+                <tr
+                  key={`${book.id}-${transaction.id}`}
+                  className="border-t border-slate-100"
+                >
+                  <td className="px-2 py-2 font-black">{book.name}</td>
+                  <td className="px-2 py-2">{displayDate(transaction.occurredAt)}</td>
+                  <td className="px-2 py-2">{transaction.business}</td>
+                  <td className="px-2 py-2">{transaction.money}</td>
+                  <td className="px-2 py-2 font-black">{transaction.balance}</td>
+                  <td className="max-w-[240px] whitespace-normal px-2 py-2 text-[8px] text-slate-500">
+                    {transaction.detail}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="px-3 py-4 text-center text-slate-500">
+                  No transaction in this period.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
+  );
+}
+
+
+function resolveLedgerAccountId(current: string, books: LedgerBook[]) {
+  if (current === ALL_ACCOUNTS && books.length > 1) return current;
+  return books.some((book) => book.id === current)
+    ? current
+    : books[0]?.id || "";
+}
+
+function applyLedgerLaunchState({
+  launch,
+  bookType,
+  setBookType,
+  setSubtype,
+  setPeriod,
+  setFrom,
+  setTo,
+  setAccountId,
+  onLaunchApplied,
+}: Readonly<{
+  launch: LedgerLaunch | null;
+  bookType: LedgerBookType;
+  setBookType: (value: LedgerBookType) => void;
+  setSubtype: (value: string) => void;
+  setPeriod: (value: LedgerPeriod) => void;
+  setFrom: (value: string) => void;
+  setTo: (value: string) => void;
+  setAccountId: (value: string) => void;
+  onLaunchApplied: () => void;
+}>) {
+  if (!launch) return;
+  if (bookType !== launch.bookType) {
+    setBookType(launch.bookType);
+    return;
+  }
+  setSubtype(launch.subtype);
+  setPeriod("custom");
+  setFrom(launch.from);
+  setTo(launch.to);
+  setAccountId(launch.accountId || "");
+  onLaunchApplied();
+}
+
+function ledgerAccountPath({
+  needsAccount,
+  allSelected,
+  selected,
+  bookCount,
+}: Readonly<{
+  needsAccount: boolean;
+  allSelected: boolean;
+  selected: LedgerBook | undefined;
+  bookCount: number;
+}>) {
+  if (!needsAccount) return "";
+  if (allSelected) return ` › All accounts (${bookCount})`;
+  return selected ? ` › ${selected.name}` : "";
+}
+
+function editLedgerSelection({
   workspace,
+  selected,
   editParty,
   editExpense,
 }: Readonly<{
   workspace: LotteryWorkspace;
+  selected: LedgerBook;
+  editParty: (party: LotteryParty) => void;
+  editExpense: (profile: LotteryExpenseProfile) => void;
+}>) {
+  if (!selected.accountId) return;
+  if (selected.accountKind === "party") {
+    const party = workspace.parties.find(
+      (item) => item.id === selected.accountId,
+    );
+    if (party) editParty(party);
+    return;
+  }
+  if (selected.accountKind === "expense") {
+    const profile = workspace.expenseProfiles.find(
+      (item) => item.id === selected.accountId,
+    );
+    if (profile) editExpense(profile);
+  }
+}
+
+function LedgerBookPreview({
+  visibleBooks,
+  allSelected,
+  view,
+  setView,
+  onOpen,
+}: Readonly<{
+  visibleBooks: LedgerBook[];
+  allSelected: boolean;
+  view: "list" | "table";
+  setView: (value: "list" | "table") => void;
+  onOpen: () => void;
+}>) {
+  const title = allSelected ? "All selected ledgers" : "Selected ledger";
+
+  if (view === "list") {
+    return (
+      <SectionCard title={title}>
+        <div className="mb-2 flex gap-2">
+          <Button active onClick={() => setView("list")}>
+            Compact List
+          </Button>
+          <Button onClick={() => setView("table")}>Table View</Button>
+        </div>
+        <div className="divide-y divide-slate-100 border-y border-slate-100">
+          {visibleBooks.map((book) => (
+            <button
+              key={book.id}
+              type="button"
+              onClick={onOpen}
+              className="grid w-full grid-cols-[minmax(90px,1.3fr)_repeat(3,minmax(55px,.8fr))] items-center gap-1 bg-white px-1 py-2.5 text-left"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-[9px] font-black">{book.name}</p>
+                <p className="truncate text-[6px] uppercase text-slate-400">
+                  {book.typeLabel}
+                </p>
+              </div>
+              {book.summary.slice(-3).map(([label, value]) => (
+                <div key={label} className="min-w-0">
+                  <p className="truncate text-[5.5px] font-bold uppercase text-slate-400">
+                    {label}
+                  </p>
+                  <p className="truncate text-[7.5px] font-black">{value}</p>
+                </div>
+              ))}
+            </button>
+          ))}
+        </div>
+      </SectionCard>
+    );
+  }
+
+  return (
+    <SectionCard title={title}>
+      <div className="mb-2 flex gap-2">
+        <Button onClick={() => setView("list")}>Compact List</Button>
+        <Button active onClick={() => setView("table")}>
+          Table View
+        </Button>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-slate-100">
+        <table className="min-w-[580px] border-collapse text-left text-[9px]">
+          <thead className="bg-emerald-50/60 text-[7px] uppercase text-slate-500">
+            <tr>
+              <th className="px-2 py-2">Account</th>
+              {(visibleBooks[0]?.summary || []).slice(-3).map(([label]) => (
+                <th key={label} className="px-2 py-2">
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleBooks.map((book) => (
+              <tr
+                key={book.id}
+                role="button"
+                tabIndex={0}
+                onClick={onOpen}
+                className="cursor-pointer border-t border-slate-100"
+              >
+                <td className="px-2 py-2 font-black">{book.name}</td>
+                {book.summary.slice(-3).map(([label, value]) => (
+                  <td key={label} className="px-2 py-2">
+                    {value}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
+  );
+}
+
+function LedgerSelectionContent({
+  workspace,
+  visibleBooks,
+  selected,
+  allSelected,
+  statementOpen,
+  bounds,
+  view,
+  setView,
+  setStatementOpen,
+  editParty,
+  editExpense,
+}: Readonly<{
+  workspace: LotteryWorkspace;
+  visibleBooks: LedgerBook[];
+  selected: LedgerBook | undefined;
+  allSelected: boolean;
+  statementOpen: boolean;
+  bounds: { from: string; to: string };
+  view: "list" | "table";
+  setView: (value: "list" | "table") => void;
+  setStatementOpen: (value: boolean) => void;
+  editParty: (party: LotteryParty) => void;
+  editExpense: (profile: LotteryExpenseProfile) => void;
+}>) {
+  if (!visibleBooks.length) {
+    return (
+      <InlineNotice tone="orange">
+        No account exists for this filter.
+      </InlineNotice>
+    );
+  }
+
+  if (!statementOpen) {
+    return (
+      <LedgerBookPreview
+        visibleBooks={visibleBooks}
+        allSelected={allSelected}
+        view={view}
+        setView={setView}
+        onOpen={() => setStatementOpen(true)}
+      />
+    );
+  }
+
+  if (allSelected) {
+    return (
+      <LedgerCombinedStatement
+        books={visibleBooks}
+        bounds={bounds}
+        onBack={() => setStatementOpen(false)}
+      />
+    );
+  }
+
+  if (!selected) return null;
+
+  return (
+    <LedgerStatement
+      book={selected}
+      bounds={bounds}
+      onBack={() => setStatementOpen(false)}
+      onEdit={() =>
+        editLedgerSelection({
+          workspace,
+          selected,
+          editParty,
+          editExpense,
+        })
+      }
+    />
+  );
+}
+
+function LedgerPanel({
+  workspace,
+  launch,
+  onLaunchApplied,
+  editParty,
+  editExpense,
+}: Readonly<{
+  workspace: LotteryWorkspace;
+  launch: LedgerLaunch | null;
+  onLaunchApplied: () => void;
   editParty: (party: LotteryParty) => void;
   editExpense: (profile: LotteryExpenseProfile) => void;
 }>) {
@@ -1854,13 +2517,18 @@ function LedgerPanel({
   );
 
   useEffect(() => {
-    setSubtype((current) =>
-      subtypeOptions.some(([value]) => value === current)
-        ? current
-        : subtypeOptions[0]?.[0] || "",
-    );
-    setStatementOpen(false);
-  }, [bookType, subtypeOptions]);
+    applyLedgerLaunchState({
+      launch,
+      bookType,
+      setBookType,
+      setSubtype,
+      setPeriod,
+      setFrom,
+      setTo,
+      setAccountId,
+      onLaunchApplied,
+    });
+  }, [bookType, launch, onLaunchApplied]);
 
   const books = useMemo(
     () => buildLedgerBooks(workspace, bookType, subtype, bounds.from, bounds.to),
@@ -1868,17 +2536,20 @@ function LedgerPanel({
   );
 
   useEffect(() => {
-    setAccountId((current) =>
-      books.some((book) => book.id === current) ? current : books[0]?.id || "",
-    );
+    setAccountId((current) => resolveLedgerAccountId(current, books));
     setStatementOpen(false);
   }, [books]);
 
-  const selected = books.find((book) => book.id === accountId) || books[0];
   const needsSubtype = subtypeOptions.length > 1 || bookType === "expense";
   const needsAccount = !new Set<LedgerBookType>(["money", "pwt", "stock"]).has(
     bookType,
   );
+  const allSelected =
+    needsAccount && books.length > 1 && accountId === ALL_ACCOUNTS;
+  const selected = allSelected
+    ? undefined
+    : books.find((book) => book.id === accountId) || books[0];
+  const visibleBooks = allSelected ? books : selected ? [selected] : [];
 
   return (
     <div className="space-y-3">
@@ -1937,6 +2608,9 @@ function LedgerPanel({
                   onChange={(event) => setAccountId(event.target.value)}
                   className={CONTROL}
                 >
+                  {books.length > 1 && (
+                    <option value={ALL_ACCOUNTS}>All accounts ({books.length})</option>
+                  )}
                   {books.map((book) => (
                     <option key={book.id} value={book.id}>
                       {book.name}
@@ -1951,7 +2625,12 @@ function LedgerPanel({
             {needsSubtype && subtypeOptions.find(([value]) => value === subtype)
               ? ` › ${subtypeOptions.find(([value]) => value === subtype)?.[1]}`
               : ""}
-            {needsAccount && selected ? ` › ${selected.name}` : ""}
+            {ledgerAccountPath({
+              needsAccount,
+              allSelected,
+              selected,
+              bookCount: books.length,
+            })}
           </p>
 
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
@@ -1996,94 +2675,19 @@ function LedgerPanel({
         </div>
       </SectionCard>
 
-      {!selected ? (
-        <InlineNotice tone="orange">No account exists for this filter.</InlineNotice>
-      ) : statementOpen ? (
-        <LedgerStatement
-          book={selected}
-          bounds={bounds}
-          onBack={() => setStatementOpen(false)}
-          onEdit={() => {
-            if (selected.accountKind === "party" && selected.accountId) {
-              const party = workspace.parties.find(
-                (item) => item.id === selected.accountId,
-              );
-              if (party) editParty(party);
-            } else if (
-              selected.accountKind === "expense" &&
-              selected.accountId
-            ) {
-              const profile = workspace.expenseProfiles.find(
-                (item) => item.id === selected.accountId,
-              );
-              if (profile) editExpense(profile);
-            }
-          }}
-        />
-      ) : (
-        <SectionCard title="Selected ledger">
-          <div className="mb-2 flex gap-2">
-            <Button active={view === "list"} onClick={() => setView("list")}>
-              Compact List
-            </Button>
-            <Button active={view === "table"} onClick={() => setView("table")}>
-              Table View
-            </Button>
-          </div>
-          {view === "list" ? (
-            <button
-              type="button"
-              onClick={() => setStatementOpen(true)}
-              className="grid w-full grid-cols-[minmax(90px,1.3fr)_repeat(3,minmax(55px,.8fr))] items-center gap-1 border-y border-slate-100 bg-white px-1 py-2.5 text-left"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-[9px] font-black">{selected.name}</p>
-                <p className="truncate text-[6px] uppercase text-slate-400">
-                  {selected.typeLabel}
-                </p>
-              </div>
-              {selected.summary.slice(-3).map(([label, value]) => (
-                <div key={label} className="min-w-0">
-                  <p className="truncate text-[5.5px] font-bold uppercase text-slate-400">
-                    {label}
-                  </p>
-                  <p className="truncate text-[7.5px] font-black">{value}</p>
-                </div>
-              ))}
-            </button>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-100">
-              <table className="min-w-[580px] border-collapse text-left text-[9px]">
-                <thead className="bg-emerald-50/60 text-[7px] uppercase text-slate-500">
-                  <tr>
-                    <th className="px-2 py-2">Account</th>
-                    {selected.summary.slice(-3).map(([label]) => (
-                      <th key={label} className="px-2 py-2">
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setStatementOpen(true)}
-                    className="cursor-pointer"
-                  >
-                    <td className="px-2 py-2 font-black">{selected.name}</td>
-                    {selected.summary.slice(-3).map(([label, value]) => (
-                      <td key={label} className="px-2 py-2">
-                        {value}
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-        </SectionCard>
-      )}
+      <LedgerSelectionContent
+        workspace={workspace}
+        visibleBooks={visibleBooks}
+        selected={selected}
+        allSelected={allSelected}
+        statementOpen={statementOpen}
+        bounds={bounds}
+        view={view}
+        setView={setView}
+        setStatementOpen={setStatementOpen}
+        editParty={editParty}
+        editExpense={editExpense}
+      />
     </div>
   );
 }
@@ -3111,15 +3715,7 @@ function LedgerStatement({
       </div>
       <div className="overflow-x-auto rounded-xl border border-slate-100">
         <table className="min-w-[640px] border-collapse text-left text-[9px]">
-          <thead className="bg-emerald-50/60 text-[7px] uppercase text-slate-500">
-            <tr>
-              <th className="px-2 py-2">Date</th>
-              <th className="px-2 py-2">Business / Bill</th>
-              <th className="px-2 py-2">Paid / Received / TDS</th>
-              <th className="px-2 py-2">Balance / Net</th>
-              <th className="px-2 py-2">Details</th>
-            </tr>
-          </thead>
+          <LedgerTransactionHeader />
           <tbody>
             {book.transactions.length ? (
               book.transactions.map((row) => (

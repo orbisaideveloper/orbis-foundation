@@ -337,4 +337,34 @@ describe("ORBiS Server Bridge API", () => {
       expect(res.json.error).toBe("PATH_NOT_ALLOWED");
     });
   });
+
+  it("protects Foundation table list and detail routes with Admin authentication", async () => {
+    const list = await request(
+      "GET",
+      "/api/admin/foundation-tables/FoundationSystemLog/rows",
+    );
+    const detail = await request(
+      "GET",
+      "/api/admin/foundation-tables/FoundationSystemLog/rows/log-1",
+    );
+
+    expect(list.status).toBe(401);
+    expect(detail.status).toBe(401);
+  });
+
+  it("does not expose Foundation table write or delete routes", async () => {
+    const post = await request(
+      "POST",
+      "/api/admin/foundation-tables/FoundationSystemLog/rows",
+      { id: "forbidden" },
+    );
+    const remove = await request(
+      "DELETE",
+      "/api/admin/foundation-tables/FoundationSystemLog/rows/log-1",
+    );
+
+    expect(post.status).toBe(404);
+    expect(remove.status).toBe(404);
+  });
+
 });

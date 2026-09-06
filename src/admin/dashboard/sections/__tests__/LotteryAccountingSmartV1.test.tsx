@@ -277,7 +277,21 @@ function createApi(): LotteryAccountingClient {
       reference: "SAL-COR",
       status: "DRAFT",
     }),
-    recordPayment: vi.fn().mockResolvedValue(undefined),
+    recordPayment: vi.fn().mockResolvedValue({
+      id: "payment-customer-1",
+      partyId: CASH_CUSTOMER_ID,
+      periodId: null,
+      direction: "RECEIPT",
+      totalAmountPaise: "1000",
+      methodSplit: {
+        cashPaise: "1000",
+        bankPaise: "0",
+        upiPaise: "0",
+        pwtPaise: "0",
+      },
+      reference: "PAY-CUSTOMER-1",
+      occurredAt: RECORDED_AT,
+    }),
     recordSettlement: vi.fn().mockResolvedValue(undefined),
   };
 }

@@ -21,6 +21,12 @@ const SAVE_TABLE_BUTTON = "Save table";
 const STOCKIST_NAME = "Stockist A";
 const ACCOUNTING_ENTRY_DATE = "2026-08-30";
 const DAILY_ENTRY_BUTTON = "Daily entry";
+const DASHBOARD_FROM_DATE_LABEL = "Dashboard from date";
+const DASHBOARD_TO_DATE_LABEL = "Dashboard to date";
+const SECOND_SELLER_CODE = "party-code-2";
+const PAYMENT_CASH_LABEL = "Payment Cash";
+const CURRENT_RECORDED_AT = "2026-09-05T00:00:00.000Z";
+const AMOUNT_TO_RECEIVE_LABEL = "Amount to receive";
 
 const organization = {
   id: "org-1",
@@ -279,7 +285,22 @@ function createApi(): LotteryAccountingClient {
       reference: "SAL-2026-2",
       status: "DRAFT",
     }),
-    recordPayment: vi.fn().mockResolvedValue(undefined),
+    recordPayment: vi.fn().mockResolvedValue({
+      id: "payment-new",
+      partyId: "party-1",
+      periodId: null,
+      direction: "RECEIPT",
+      totalAmountPaise: "10000",
+      methodSplit: {
+        cashPaise: "10000",
+        bankPaise: "0",
+        upiPaise: "0",
+        chequePaise: "0",
+        pwtPaise: "0",
+      },
+      reference: "PAY-NEW",
+      occurredAt: RECORDED_AT,
+    }),
     recordSettlement: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -351,10 +372,10 @@ describe("LotteryAccountingWorkspace", () => {
     await screen.findByText(ORGANIZATION_OVERVIEW);
 
     fireEvent.click(screen.getByRole("button", { name: "Custom" }));
-    fireEvent.change(screen.getByLabelText("Dashboard from date"), {
+    fireEvent.change(screen.getByLabelText(DASHBOARD_FROM_DATE_LABEL), {
       target: { value: ACCOUNTING_ENTRY_DATE },
     });
-    fireEvent.change(screen.getByLabelText("Dashboard to date"), {
+    fireEvent.change(screen.getByLabelText(DASHBOARD_TO_DATE_LABEL), {
       target: { value: ACCOUNTING_ENTRY_DATE },
     });
 
@@ -377,7 +398,7 @@ describe("LotteryAccountingWorkspace", () => {
           partyType: "SELLER",
           name: "Seller B",
           phone: null,
-          uniqueCode: "party-code-2",
+          uniqueCode: SECOND_SELLER_CODE,
           ticketRatePaise: "1000",
           status: "ACTIVE",
         },
@@ -459,7 +480,7 @@ describe("LotteryAccountingWorkspace", () => {
     expect(await screen.findByText("Amount to pay")).toBeInTheDocument();
     expect(screen.getAllByText("₹600.00").length).toBeGreaterThan(0);
 
-    fireEvent.change(screen.getByLabelText("Payment Cash"), {
+    fireEvent.change(screen.getByLabelText(PAYMENT_CASH_LABEL), {
       target: { value: "100" },
     });
     fireEvent.change(screen.getByLabelText("Payment Bank"), {
@@ -564,4 +585,366 @@ describe("LotteryAccountingWorkspace", () => {
       }),
     );
   });
+
+  it("locks seller partial, exact, and over-receipt credit with non-blocking reconciliation", async () => {
+    const cases = [
+      {
+        duePaise: "9500",
+        enteredRupees: "90",
+        enteredPaise: "9000",
+        afterBeforeSave: "₹5.00",
+        afterSaved: "₹5.00",
+      },
+      {
+        duePaise: "9800",
+        enteredRupees: "98",
+        enteredPaise: "9800",
+        afterBeforeSave: "₹0.00",
+        afterSaved: "₹0.00",
+      },
+      {
+        duePaise: "9800",
+        enteredRupees: "100",
+        enteredPaise: "10000",
+        afterBeforeSave: "₹2.00 credit",
+        afterSaved: "-₹2.00",
+      },
+    ];
+
+    for (const [index, item] of cases.entries()) {
+      const paymentWorkspace: LotteryWorkspace = {
+        ...workspace,
+        sales: [
+          {
+            ...workspace.sales[0],
+            id: `receipt-case-${index}`,
+            netPayablePaise: item.duePaise,
+            outstandingPaise: item.duePaise,
+          },
+        ],
+        payments: [],
+      };
+      const api = createApi();
+      vi.mocked(api.loadWorkspace)
+        .mockResolvedValueOnce(paymentWorkspace)
+        .mockImplementation(() => new Promise<LotteryWorkspace>(() => {}));
+      vi.mocked(api.recordPayment).mockResolvedValue({
+        id: `payment-case-${index}`,
+        partyId: "party-1",
+        periodId: null,
+        direction: "RECEIPT",
+        totalAmountPaise: item.enteredPaise,
+        methodSplit: {
+          cashPaise: item.enteredPaise,
+          bankPaise: "0",
+          upiPaise: "0",
+          chequePaise: "0",
+          pwtPaise: "0",
+        },
+        reference: `PAY-CASE-${index}`,
+        occurredAt: CURRENT_RECORDED_AT,
+      });
+
+      const view = render(<LotteryAccountingWorkspace api={api} />);
+      await screen.findByText(ORGANIZATION_OVERVIEW);
+      fireEvent.click(screen.getByRole("button", { name: "Payment" }));
+      await screen.findByText(AMOUNT_TO_RECEIVE_LABEL);
+
+      fireEvent.change(screen.getByLabelText(PAYMENT_CASH_LABEL), {
+        target: { value: item.enteredRupees },
+      });
+
+      const afterCard = screen.getByText("After").parentElement;
+      expect(afterCard).toHaveTextContent(item.afterBeforeSave);
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: `Receive ₹${Number(item.enteredRupees).toFixed(2)}`,
+        }),
+      );
+
+      await waitFor(() => expect(api.recordPayment).toHaveBeenCalledOnce());
+      expect(api.recordPayment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          partyId: "party-1",
+          direction: "RECEIPT",
+          totalAmountPaise: item.enteredPaise,
+        }),
+      );
+      expect(await screen.findByText("Receipt saved.")).toBeInTheDocument();
+
+      const outstandingCard = screen.getByText(AMOUNT_TO_RECEIVE_LABEL).parentElement;
+      await waitFor(() =>
+        expect(outstandingCard).toHaveTextContent(item.afterSaved),
+      );
+      expect(vi.mocked(api.loadWorkspace).mock.calls.length).toBeGreaterThanOrEqual(2);
+
+      view.unmount();
+    }
+  });
+
+  it("carries a prior seller credit into the next bill instead of losing or discounting it", async () => {
+    const creditWorkspace: LotteryWorkspace = {
+      ...workspace,
+      sales: [
+        {
+          ...workspace.sales[0],
+          id: "old-sale",
+          netPayablePaise: "9800",
+          outstandingPaise: "9800",
+          occurredAt: RECORDED_AT,
+        },
+        {
+          ...workspace.sales[0],
+          id: "next-sale",
+          reference: "SALE-NEXT",
+          netPayablePaise: "10000",
+          outstandingPaise: "10000",
+          occurredAt: CURRENT_RECORDED_AT,
+        },
+      ],
+      payments: [
+        {
+          ...workspace.payments[0],
+          id: "credit-payment",
+          totalAmountPaise: "10000",
+          methodSplit: { cashPaise: "10000" },
+          settledPaise: "0",
+          availablePaise: "10000",
+          occurredAt: RECORDED_AT,
+        },
+      ],
+    };
+    const api = createApi();
+    vi.mocked(api.loadWorkspace).mockResolvedValue(creditWorkspace);
+
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+    fireEvent.click(screen.getByRole("button", { name: "Payment" }));
+
+    const receiveCard = (await screen.findByText(AMOUNT_TO_RECEIVE_LABEL)).parentElement;
+    expect(receiveCard).toHaveTextContent("₹98.00");
+  });
+
+  it("keeps outgoing Stockist overpayment blocked", async () => {
+    const outgoingWorkspace: LotteryWorkspace = {
+      ...workspace,
+      stockistEntries: [
+        {
+          id: "stockist-due-98",
+          partyId: STOCKIST_ID,
+          partyName: STOCKIST_NAME,
+          reference: "PUR-98",
+          purchaseQuantity: "98",
+          morningReturnQuantity: "0",
+          dayReturnQuantity: "0",
+          eveningReturnQuantity: "0",
+          totalReturnQuantity: "0",
+          netPurchaseQuantity: "98",
+          unitRatePaise: "100",
+          grossPurchasePaise: "9800",
+          commissionPaise: "0",
+          tdsRateBps: 0,
+          tdsPaise: "0",
+          netPayablePaise: "9800",
+          occurredAt: CURRENT_RECORDED_AT,
+          source: "DAILY",
+        },
+      ],
+      payments: [],
+    };
+    const api = createApi();
+    vi.mocked(api.loadWorkspace).mockResolvedValue(outgoingWorkspace);
+
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+    fireEvent.click(screen.getByRole("button", { name: "Payment" }));
+    fireEvent.change(screen.getByLabelText("Payment account type"), {
+      target: { value: "STOCKIST" },
+    });
+    fireEvent.change(screen.getByLabelText(PAYMENT_CASH_LABEL), {
+      target: { value: "100" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Pay ₹100.00" }));
+
+    expect(
+      await screen.findByText(
+        "Entered amount is greater than the current outstanding.",
+      ),
+    ).toBeInTheDocument();
+    expect(api.recordPayment).not.toHaveBeenCalled();
+  });
+
+  it("shows All accounts only for multiple ledger accounts and combines their statement rows", async () => {
+    const sellerB = {
+      ...workspace.parties[0],
+      id: "party-2",
+      name: "Seller B",
+      uniqueCode: SECOND_SELLER_CODE,
+    };
+    const multiSellerWorkspace: LotteryWorkspace = {
+      ...workspace,
+      parties: [...workspace.parties, sellerB],
+      sales: [
+        ...workspace.sales,
+        {
+          ...workspace.sales[0],
+          id: "sale-2",
+          partyId: "party-2",
+          partyName: "Seller B",
+          reference: "SALE-2",
+          dispatchQuantity: 40,
+          returnQuantity: 3,
+          morningReturnQuantity: 1,
+          dayReturnQuantity: 1,
+          eveningReturnQuantity: 1,
+          netTickets: 37,
+          grossSalesPaise: "37000",
+          commissionPaise: "0",
+          tdsPaise: "0",
+          netPayablePaise: "37000",
+          settledPaise: "0",
+          outstandingPaise: "37000",
+        },
+      ],
+    };
+    const api = createApi();
+    vi.mocked(api.loadWorkspace).mockResolvedValue(multiSellerWorkspace);
+
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+    fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
+
+    const partySelect = await screen.findByLabelText("Ledger Party");
+    expect(
+      within(partySelect).getByRole("option", { name: "All accounts (2)" }),
+    ).toBeInTheDocument();
+
+    fireEvent.change(partySelect, { target: { value: "__ALL__" } });
+    expect(partySelect).toHaveValue("__ALL__");
+    expect(await screen.findByText("All selected ledgers")).toBeInTheDocument();
+
+    const sellerRow = screen
+      .getAllByRole("button")
+      .find(
+        (button) =>
+          button.textContent?.includes("Seller A") &&
+          button.textContent?.includes("Seller Ledger"),
+      );
+    expect(sellerRow).toBeDefined();
+    fireEvent.click(sellerRow!);
+
+    expect(await screen.findByText("All accounts · 2")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Account" })).toBeInTheDocument();
+    expect(screen.getAllByText("Seller A").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Seller B").length).toBeGreaterThan(0);
+  });
+
+  it("keeps Dashboard dispatch and unsold details party-wise without Morning/Day/Evening split", async () => {
+    const sellerB = {
+      ...workspace.parties[0],
+      id: "party-2",
+      name: "Seller B",
+      uniqueCode: SECOND_SELLER_CODE,
+    };
+    const drilldownWorkspace: LotteryWorkspace = {
+      ...workspace,
+      parties: [...workspace.parties, sellerB],
+      sales: [
+        ...workspace.sales,
+        {
+          ...workspace.sales[0],
+          id: "sale-drilldown-2",
+          partyId: "party-2",
+          partyName: "Seller B",
+          reference: "SALE-DRILLDOWN-2",
+          dispatchQuantity: 37,
+          morningReturnQuantity: 1,
+          dayReturnQuantity: 1,
+          eveningReturnQuantity: 1,
+          returnQuantity: 3,
+          netTickets: 34,
+          grossSalesPaise: "34000",
+          commissionPaise: "0",
+          tdsPaise: "0",
+          netPayablePaise: "34000",
+          settledPaise: "0",
+          outstandingPaise: "34000",
+        },
+      ],
+    };
+    const api = createApi();
+    vi.mocked(api.loadWorkspace).mockResolvedValue(drilldownWorkspace);
+
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+
+    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+    fireEvent.change(screen.getByLabelText(DASHBOARD_FROM_DATE_LABEL), {
+      target: { value: ACCOUNTING_ENTRY_DATE },
+    });
+    fireEvent.change(screen.getByLabelText(DASHBOARD_TO_DATE_LABEL), {
+      target: { value: ACCOUNTING_ENTRY_DATE },
+    });
+
+    const dispatchButton = screen.getByText("Dispatch").closest("button");
+    expect(dispatchButton).not.toBeNull();
+    fireEvent.click(dispatchButton!);
+
+    const dispatchSection = (await screen.findByText(/Dispatch details/)).closest(
+      "section",
+    );
+    expect(dispatchSection).not.toBeNull();
+    expect(within(dispatchSection!).getByText("Seller A")).toBeInTheDocument();
+    expect(within(dispatchSection!).getByText("Seller B")).toBeInTheDocument();
+    expect(within(dispatchSection!).getByText("100")).toBeInTheDocument();
+    expect(within(dispatchSection!).getByText("37")).toBeInTheDocument();
+
+    const returnButton = screen.getByText("Unsold / Return").closest("button");
+    expect(returnButton).not.toBeNull();
+    fireEvent.click(returnButton!);
+
+    const returnSection = (
+      await screen.findByText(/Unsold \/ Return totals/)
+    ).closest("section");
+    expect(returnSection).not.toBeNull();
+    expect(within(returnSection!).getByText("Seller A")).toBeInTheDocument();
+    expect(within(returnSection!).getByText("Seller B")).toBeInTheDocument();
+    expect(within(returnSection!).getByText("20")).toBeInTheDocument();
+    expect(within(returnSection!).getByText("3")).toBeInTheDocument();
+    expect(within(returnSection!).queryByText(/Morning/i)).not.toBeInTheDocument();
+    expect(within(returnSection!).queryByText(/Day/i)).not.toBeInTheDocument();
+    expect(within(returnSection!).queryByText(/Evening/i)).not.toBeInTheDocument();
+  });
+
+  it("opens the Cash ledger shortcut with the Dashboard custom date bounds", async () => {
+    const api = createApi();
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+
+    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+    fireEvent.change(screen.getByLabelText(DASHBOARD_FROM_DATE_LABEL), {
+      target: { value: ACCOUNTING_ENTRY_DATE },
+    });
+    fireEvent.change(screen.getByLabelText(DASHBOARD_TO_DATE_LABEL), {
+      target: { value: ACCOUNTING_ENTRY_DATE },
+    });
+
+    const cashButton = screen.getByText("Cash").closest("button");
+    expect(cashButton).not.toBeNull();
+    fireEvent.click(cashButton!);
+
+    expect(await screen.findByText("Universal Ledger Hub")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Ledger Book")).toHaveValue("money");
+      expect(screen.getByLabelText("Ledger type")).toHaveValue("cashPaise");
+      expect(screen.getByLabelText("Ledger from date")).toHaveValue(
+        ACCOUNTING_ENTRY_DATE,
+      );
+      expect(screen.getByLabelText("Ledger to date")).toHaveValue(
+        ACCOUNTING_ENTRY_DATE,
+      );
+    });
+  });
+
 });

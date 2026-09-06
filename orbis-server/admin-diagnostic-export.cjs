@@ -23,6 +23,190 @@ const FOUNDATION_COUNT_QUERIES = Object.freeze([
   ["FoundationLearningEvent", "foundationLearningEvent"],
 ]);
 
+const FOUNDATION_TABLE_PAGE_LIMIT = 50;
+const FOUNDATION_TABLE_READERS = Object.freeze({
+  FoundationAdminMetric: {
+    clientName: "foundationAdminMetric",
+    orderBy: { recordedAt: "desc" },
+    listSelect: {
+      id: true,
+      ramUsageMb: true,
+      cpuLoad: true,
+      status: true,
+      recordedAt: true,
+    },
+  },
+  FoundationSystemLog: {
+    clientName: "foundationSystemLog",
+    orderBy: { lastSeen: "desc" },
+    listSelect: {
+      id: true,
+      level: true,
+      source: true,
+      category: true,
+      severity: true,
+      count: true,
+      lastSeen: true,
+      createdAt: true,
+    },
+  },
+  FoundationSourceCodeHistory: {
+    clientName: "foundationSourceCodeHistory",
+    orderBy: { updatedAt: "desc" },
+    listSelect: {
+      id: true,
+      filePath: true,
+      versionHash: true,
+      updatedAt: true,
+    },
+  },
+  FoundationBrainKnowledge: {
+    clientName: "foundationBrainKnowledge",
+    orderBy: { updatedAt: "desc" },
+    listSelect: {
+      id: true,
+      category: true,
+      tags: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
+  FoundationLearnedKnowledge: {
+    clientName: "foundationLearnedKnowledge",
+    orderBy: { updatedAt: "desc" },
+    listSelect: {
+      id: true,
+      category: true,
+      tags: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
+  FoundationLearningEvent: {
+    clientName: "foundationLearningEvent",
+    orderBy: { receivedAt: "desc" },
+    listSelect: {
+      id: true,
+      eventType: true,
+      decisionRoute: true,
+      decisionIntent: true,
+      decisionConfidence: true,
+      outcome: true,
+      feedbackCode: true,
+      occurredAt: true,
+      receivedAt: true,
+    },
+  },
+  FoundationTimeMachine: { raw: true },
+});
+
+function foundationTableError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+function boundedInteger(value, fallback, minimum, maximum) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isSafeInteger(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, parsed));
+}
+
+function foundationTableConfig(table) {
+  if (
+    typeof table !== "string" ||
+    !Object.hasOwn(FOUNDATION_TABLE_READERS, table)
+  ) {
+    throw foundationTableError("FOUNDATION_TABLE_NOT_ALLOWED");
+  }
+  return FOUNDATION_TABLE_READERS[table];
+}
+
+async function listFoundationTableRows(
+  prisma,
+  table,
+  { offset = 0, limit = FOUNDATION_TABLE_PAGE_LIMIT } = {},
+) {
+  const config = foundationTableConfig(table);
+  const safeOffset = boundedInteger(offset, 0, 0, 100_000);
+  const safeLimit = boundedInteger(
+    limit,
+    FOUNDATION_TABLE_PAGE_LIMIT,
+    1,
+    FOUNDATION_TABLE_PAGE_LIMIT,
+  );
+
+  let rows;
+  if (config.raw) {
+    if (typeof prisma?.$queryRaw !== "function") {
+      throw foundationTableError("FOUNDATION_TABLE_UNAVAILABLE");
+    }
+    rows = await prisma.$queryRaw`
+      SELECT id, "commitId", "filePath", status, "errorMessage", "createdAt"
+      FROM public."FoundationTimeMachine"
+      ORDER BY "createdAt" DESC
+      OFFSET ${safeOffset}
+      LIMIT ${safeLimit}
+    `;
+  } else {
+    const client = prisma?.[config.clientName];
+    if (typeof client?.findMany !== "function") {
+      throw foundationTableError("FOUNDATION_TABLE_UNAVAILABLE");
+    }
+    rows = await client.findMany({
+      skip: safeOffset,
+      take: safeLimit,
+      orderBy: config.orderBy,
+      select: config.listSelect,
+    });
+  }
+
+  return {
+    table,
+    offset: safeOffset,
+    limit: safeLimit,
+    hasMore: rows.length === safeLimit,
+    rows,
+  };
+}
+
+async function getFoundationTableRow(prisma, table, id) {
+  const config = foundationTableConfig(table);
+  if (
+    typeof id !== "string" ||
+    id.length === 0 ||
+    id.length > 200 ||
+    id.includes("\\0")
+  ) {
+    throw foundationTableError("FOUNDATION_TABLE_ROW_NOT_FOUND");
+  }
+
+  let row;
+  if (config.raw) {
+    if (typeof prisma?.$queryRaw !== "function") {
+      throw foundationTableError("FOUNDATION_TABLE_UNAVAILABLE");
+    }
+    const rows = await prisma.$queryRaw`
+      SELECT id, "commitId", "filePath", content, status, "errorMessage", "createdAt"
+      FROM public."FoundationTimeMachine"
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+    row = rows[0] || null;
+  } else {
+    const client = prisma?.[config.clientName];
+    if (typeof client?.findUnique !== "function") {
+      throw foundationTableError("FOUNDATION_TABLE_UNAVAILABLE");
+    }
+    row = await client.findUnique({ where: { id } });
+  }
+
+  if (!row) throw foundationTableError("FOUNDATION_TABLE_ROW_NOT_FOUND");
+  return { table, row };
+}
+
 function safeIdentifier(value, fallback = "unknown") {
   if (typeof value !== "string") return fallback;
   const normalized = value.trim();
@@ -278,7 +462,10 @@ async function buildAdminDiagnosticExport(dependencies) {
 
 module.exports = {
   FOUNDATION_COUNT_QUERIES,
+  FOUNDATION_TABLE_PAGE_LIMIT,
   MAX_EXPORT_BYTES,
   MAX_RECENT_EVENTS,
   buildAdminDiagnosticExport,
+  getFoundationTableRow,
+  listFoundationTableRows,
 };

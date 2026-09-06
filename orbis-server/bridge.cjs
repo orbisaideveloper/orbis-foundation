@@ -33,7 +33,11 @@ const {
 } = require("./ai/learning/FoundationLearningPolicyEngine.cjs");
 const sourceApi = require("./source-api.cjs");
 const { getSystemStats } = require("./system-stats.cjs");
-const { buildAdminDiagnosticExport } = require("./admin-diagnostic-export.cjs");
+const {
+  buildAdminDiagnosticExport,
+  getFoundationTableRow,
+  listFoundationTableRows,
+} = require("./admin-diagnostic-export.cjs");
 const { chatCapabilityRegistry } = require("./ai/ChatCapabilityRegistry.cjs");
 const {
   FoundationDataCapabilityOrchestrator,
@@ -491,6 +495,58 @@ app.get(
       res.status(503).json({
         success: false,
         message: "Diagnostic export unavailable",
+      });
+    }
+  },
+);
+
+app.get(
+  "/api/admin/foundation-tables/:table/rows",
+  requireAuthenticatedAdmin,
+  async (req, res) => {
+    try {
+      const result = await listFoundationTableRows(prisma, req.params.table, {
+        offset: req.query.offset,
+        limit: req.query.limit,
+      });
+      res.setHeader("Cache-Control", "no-store");
+      return res.json({ success: true, ...result });
+    } catch (error) {
+      const code =
+        error?.code === "FOUNDATION_TABLE_NOT_ALLOWED"
+          ? "FOUNDATION_TABLE_NOT_ALLOWED"
+          : "FOUNDATION_TABLE_UNAVAILABLE";
+      return res.status(code === "FOUNDATION_TABLE_NOT_ALLOWED" ? 404 : 503).json({
+        success: false,
+        error: { category: "admin_diagnostics", code },
+      });
+    }
+  },
+);
+
+app.get(
+  "/api/admin/foundation-tables/:table/rows/:id",
+  requireAuthenticatedAdmin,
+  async (req, res) => {
+    try {
+      const result = await getFoundationTableRow(
+        prisma,
+        req.params.table,
+        req.params.id,
+      );
+      res.setHeader("Cache-Control", "no-store");
+      return res.json({ success: true, ...result });
+    } catch (error) {
+      const notFound = new Set([
+        "FOUNDATION_TABLE_NOT_ALLOWED",
+        "FOUNDATION_TABLE_ROW_NOT_FOUND",
+      ]).has(error?.code);
+      return res.status(notFound ? 404 : 503).json({
+        success: false,
+        error: {
+          category: "admin_diagnostics",
+          code: notFound ? error.code : "FOUNDATION_TABLE_UNAVAILABLE",
+        },
       });
     }
   },

@@ -3,12 +3,18 @@ import type {
   LotteryDailySellerDraftIdentity,
   LotteryDailyStockistEntryIdentity,
   LotteryOrganization,
+  LotteryPayment,
   LotterySalePreview,
   LotteryWorkspace,
 } from "./lotteryAccountingTypes";
 
 const LOTTERY_ADMIN_BASE =
   "/api/admin/models/orbis-accounting-ai/modules/lottery";
+
+export type LotteryRecordedPayment = Omit<
+  LotteryPayment,
+  "partyName" | "periodLabel" | "settledPaise" | "availablePaise"
+>;
 
 async function readLotteryResponse<T>(
   path: string,
@@ -115,7 +121,9 @@ export interface LotteryAccountingClient {
     saleId: string,
     payload: Record<string, unknown>,
   ) => Promise<LotteryDailySellerDraftIdentity>;
-  recordPayment: (payload: Record<string, unknown>) => Promise<void>;
+  recordPayment: (
+    payload: Record<string, unknown>,
+  ) => Promise<LotteryRecordedPayment>;
 
   createExpenseCategory: (payload: Record<string, unknown>) => Promise<void>;
   updateExpenseCategory: (
@@ -227,7 +235,11 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
     return body.draft;
   },
   async recordPayment(payload) {
-    await postLottery("/payments", payload);
+    const body = await postLottery<{ payment: LotteryRecordedPayment }>(
+      "/payments",
+      payload,
+    );
+    return body.payment;
   },
 
   async createExpenseCategory(payload) {

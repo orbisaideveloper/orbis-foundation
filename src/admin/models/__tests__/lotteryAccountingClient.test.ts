@@ -142,4 +142,44 @@ describe("lotteryAccountingClient", () => {
       }),
     );
   });
+
+  it("returns the authoritative saved payment from the private Admin payment route", async () => {
+    const saved = {
+      id: "payment-new",
+      partyId: "party-1",
+      periodId: null,
+      direction: "RECEIPT",
+      totalAmountPaise: "10000",
+      methodSplit: {
+        cashPaise: "10000",
+        bankPaise: "0",
+        upiPaise: "0",
+        chequePaise: "0",
+        pwtPaise: "0",
+      },
+      reference: "PAY-NEW",
+      occurredAt: "2026-09-05T00:00:00.000Z",
+    };
+    authenticatedAdminFetch.mockResolvedValue(
+      new Response(JSON.stringify({ payment: saved, verifiedPayment: saved })),
+    );
+
+    await expect(
+      lotteryAccountingClient.recordPayment({
+        organizationId: "org-1",
+        partyId: "party-1",
+        direction: "RECEIPT",
+        totalAmountPaise: "10000",
+      }),
+    ).resolves.toEqual(saved);
+
+    expect(authenticatedAdminFetch).toHaveBeenCalledWith(
+      "/api/admin/models/orbis-accounting-ai/modules/lottery/payments",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"totalAmountPaise":"10000"'),
+      }),
+    );
+  });
+
 });
