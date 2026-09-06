@@ -58,8 +58,6 @@ echo "HEAD: $(git rev-parse HEAD)"
 echo "Mode: $MODE"
 echo
 
-# Fresh certification never trusts an older checkpoint/certificate.
-# Resume keeps the exact fingerprint-bound checkpoint.
 if [[ "$MODE" == "full" ]]; then
   rm -f "$FULL_PASS" "$FAIL_STATE"
 elif [[ ! -f "$FAIL_STATE" ]]; then
@@ -80,40 +78,84 @@ pass_matches_start() {
   local version saved_fp
   version="$(orbis_state_get "$file" STATE_VERSION || true)"
   saved_fp="$(orbis_state_get "$file" FINGERPRINT || true)"
-  [[ "$version" == "1" && "$saved_fp" == "$START_FP" ]]
+  [[ ( "$version" == "1" || "$version" == "2" ) && "$saved_fp" == "$START_FP" ]]
 }
 
 PIPELINE=""
 STAGE=""
+STATE_VERSION=""
+UBUNTU_START=""
+TERMUX_START=""
+REUSE_UBUNTU=0
 
-if [[ "$MODE" == "resume" && -f "$FAIL_STATE" ]]; then
-  state="$(orbis_state_read_failure "$FAIL_STATE" "$START_FP")" || {
+if [[ "$MODE" == "resume" ]]; then
+  STATE_VERSION="$(orbis_state_get "$FAIL_STATE" STATE_VERSION || true)"
+  state="$(orbis_state_read_failure "$FAIL_STATE")" || {
     echo "ORBIS: resume state is invalid; refusing to guess or execute it."
     exit 22
   }
   PIPELINE="${state%%$'\t'*}"
   STAGE="${state#*$'\t'}"
-  echo "Resume checkpoint: $PIPELINE / $STAGE"
+  echo "Saved failure checkpoint: $PIPELINE / $STAGE"
+  echo "Saved state version: $STATE_VERSION"
+
+  if [[ "$STATE_VERSION" == "1" ]]; then
+    saved_fp="$(orbis_state_get "$FAIL_STATE" FINGERPRINT || true)"
+    [[ -n "$saved_fp" && "$saved_fp" == "$START_FP" ]] || {
+      echo "ORBIS: legacy resume checkpoint is stale; run a fresh verify."
+      exit 22
+    }
+    if [[ "$PIPELINE" == "UBUNTU" ]]; then
+      UBUNTU_START="$STAGE"
+    else
+      pass_matches_start "$STATE_DIR/ubuntu.pass" || {
+        echo "ORBIS: legacy Ubuntu PASS marker is missing/stale."
+        exit 24
+      }
+      REUSE_UBUNTU=1
+      TERMUX_START="$STAGE"
+    fi
+  elif [[ "$STATE_VERSION" == "2" ]]; then
+    if [[ "$PIPELINE" == "UBUNTU" ]]; then
+      UBUNTU_START="$(orbis_state_resume_stage "$FAIL_STATE" UBUNTU "$STAGE")" || {
+        echo "ORBIS: unable to compute safe Ubuntu resume stage."
+        exit 22
+      }
+      echo "Resume V2 plan: UBUNTU from $UBUNTU_START"
+    else
+      if changed_ubuntu="$(orbis_state_first_changed_stage "$FAIL_STATE" UBUNTU)"; then
+        UBUNTU_START="$changed_ubuntu"
+        echo "Resume V2 plan: UBUNTU from $UBUNTU_START (repair affected Ubuntu scope)"
+      else
+        REUSE_UBUNTU=1
+        echo "Resume V2 plan: reuse prior Ubuntu PASS (all Ubuntu stage scopes unchanged)"
+      fi
+
+      TERMUX_START="$(orbis_state_resume_stage "$FAIL_STATE" TERMUX "$STAGE")" || {
+        echo "ORBIS: unable to compute safe Termux resume stage."
+        exit 22
+      }
+      echo "Resume V2 plan: TERMUX from $TERMUX_START"
+    fi
+  else
+    echo "ORBIS: unsupported resume state version."
+    exit 22
+  fi
+
   echo
 fi
 
-# Permanent full-run order:
-# Ubuntu preflight -> Knip -> JSCPD -> Playwright -> Termux -> Coverage last.
-if [[ "$MODE" == "resume" && "$PIPELINE" == "UBUNTU" && -n "$STAGE" ]]; then
-  bash scripts/orbis-quality-ubuntu.sh --from "$STAGE"
-elif [[ "$MODE" == "resume" && "$PIPELINE" == "TERMUX" && -n "$STAGE" ]]; then
-  if pass_matches_start "$STATE_DIR/ubuntu.pass"; then
-    echo "===== UBUNTU PIPELINE — REUSED PRIOR PASS FOR CURRENT FINGERPRINT ====="
-  else
-    echo "ORBIS: Ubuntu PASS marker is missing/stale; refusing unsafe TERMUX resume."
-    exit 24
-  fi
+if [[ "$MODE" == "resume" && "$REUSE_UBUNTU" -eq 1 ]]; then
+  echo "===== UBUNTU PIPELINE — REUSED PRIOR PASS AFTER STAGE-SCOPE REVALIDATION ====="
+  orbis_state_write_pass "$STATE_DIR/ubuntu.pass" UBUNTU "$START_FP"
+elif [[ "$MODE" == "resume" && -n "$UBUNTU_START" ]]; then
+  bash scripts/orbis-quality-ubuntu.sh --from "$UBUNTU_START"
 else
   bash scripts/orbis-quality-ubuntu.sh
 fi
 
-if [[ "$MODE" == "resume" && "$PIPELINE" == "TERMUX" && -n "$STAGE" ]]; then
-  bash scripts/orbis-quality-termux.sh --from "$STAGE"
+if [[ "$MODE" == "resume" && "$PIPELINE" == "TERMUX" && -n "$TERMUX_START" ]]; then
+  bash scripts/orbis-quality-termux.sh --from "$TERMUX_START"
 else
   bash scripts/orbis-quality-termux.sh
 fi

@@ -336,8 +336,16 @@ describe("LotteryAccountingWorkspace smart V1", () => {
       "commission-seller-seller-a",
     );
     expect(screen.getByRole("button", { name: "7 Days" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Compact List" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Table View" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Compact List" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Table View" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Seller A" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("table")).toBeInTheDocument();
   });
 
   it("keeps Expenses as top type with editable Category and Profile lists", async () => {

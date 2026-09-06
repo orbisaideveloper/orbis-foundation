@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -104,7 +104,18 @@ export function FoundationTableViewerRow({
   const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"record" | "content" | null>(null);
+  const copyResetTimer = useRef<number | null>(null);
   const available = status === "available" && !disabled;
+
+  useEffect(
+    () => () => {
+      if (copyResetTimer.current !== null) {
+        window.clearTimeout(copyResetTimer.current);
+        copyResetTimer.current = null;
+      }
+    },
+    [],
+  );
 
   const loadPage = useCallback(async (nextOffset: number) => {
     setLoading(true);
@@ -158,7 +169,13 @@ export function FoundationTableViewerRow({
     try {
       await navigator.clipboard.writeText(payload);
       setCopied(kind);
-      window.setTimeout(() => setCopied(null), 1200);
+      if (copyResetTimer.current !== null) {
+        window.clearTimeout(copyResetTimer.current);
+      }
+      copyResetTimer.current = window.setTimeout(() => {
+        setCopied(null);
+        copyResetTimer.current = null;
+      }, 1200);
     } catch {
       setCopied(null);
     }

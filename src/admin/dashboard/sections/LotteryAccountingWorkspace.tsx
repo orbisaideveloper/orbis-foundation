@@ -21,7 +21,20 @@ import type {
   LotteryWorkspace,
 } from "../../models/lotteryAccountingTypes";
 
-type WorkspaceTab = "dashboard" | "daily" | "payment" | "ledger" | "ai" | "masters";
+export type LotteryAccountingWorkspaceTab =
+  | "dashboard"
+  | "daily"
+  | "payment"
+  | "ledger"
+  | "ai"
+  | "masters";
+type WorkspaceTab = LotteryAccountingWorkspaceTab;
+
+export type LotteryAccountingWorkspaceNavigationRequest = Readonly<{
+  id: number;
+  tab: LotteryAccountingWorkspaceTab;
+  ledgerView?: "party";
+}>;
 type DailyMode = "SELLER" | "STOCKIST" | "CASH_CUSTOMER" | "EXPENSE";
 type PartyMasterType = Extract<LotteryPartyType, "SELLER" | "STOCKIST" | "CUSTOMER">;
 type PaymentKind = "SELLER" | "STOCKIST" | "CUSTOMER" | "EXPENSE";
@@ -555,10 +568,14 @@ function ExpenseCategorySelect({
 
 interface LotteryAccountingWorkspaceProps {
   api?: LotteryAccountingClient;
+  dashboardGreeting?: React.ReactNode;
+  navigationRequest?: LotteryAccountingWorkspaceNavigationRequest | null;
 }
 
 export function LotteryAccountingWorkspace({
   api = lotteryAccountingClient,
+  dashboardGreeting,
+  navigationRequest = null,
 }: Readonly<LotteryAccountingWorkspaceProps>) {
   const [organizations, setOrganizations] = useState<
     LotteryWorkspace["organization"][]
@@ -574,6 +591,11 @@ export function LotteryAccountingWorkspace({
   const [error, setError] = useState<string | null>(null);
   const refreshRequestRef = useRef(0);
   const [ledgerLaunch, setLedgerLaunch] = useState<LedgerLaunch | null>(null);
+
+  useEffect(() => {
+    if (!navigationRequest) return;
+    setTab(navigationRequest.tab);
+  }, [navigationRequest]);
 
   const loadOrganizations = useCallback(async () => {
     setLoading(true);
@@ -774,13 +796,16 @@ export function LotteryAccountingWorkspace({
       ) : (
         <>
           {tab === "dashboard" && (
-            <DashboardPanel
-              workspace={workspace}
-              openLedger={(launch) => {
-                setLedgerLaunch(launch || null);
-                setTab("ledger");
-              }}
-            />
+            <>
+              {dashboardGreeting}
+              <DashboardPanel
+                workspace={workspace}
+                openLedger={(launch) => {
+                  setLedgerLaunch(launch || null);
+                  setTab("ledger");
+                }}
+              />
+            </>
           )}
           {tab === "daily" && (
             <DailyPanel
@@ -807,6 +832,9 @@ export function LotteryAccountingWorkspace({
             <LedgerPanel
               workspace={workspace}
               launch={ledgerLaunch}
+              navigationRequest={
+                navigationRequest?.tab === "ledger" ? navigationRequest : null
+              }
               onLaunchApplied={() => setLedgerLaunch(null)}
               editParty={(party) => {
                 setTab("masters");
@@ -1007,7 +1035,7 @@ function DashboardPanel({
         )}
       </SectionCard>
 
-      <section className="rounded-[22px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-orange-50 p-4 shadow-[0_12px_30px_rgba(20,85,61,.065)]">
+      <section className="orbis-public-money-panel rounded-[22px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-orange-50 p-4 shadow-[0_12px_30px_rgba(20,85,61,.065)]">
         <p className="text-[8px] font-black uppercase tracking-[0.1em] text-slate-500">
           Current money
         </p>
@@ -1034,7 +1062,8 @@ function DashboardPanel({
                     to: bounds.to,
                   })
                 }
-                className={`min-h-[76px] rounded-xl border p-2.5 text-left shadow-sm transition active:scale-[0.985] ${styles[index]}`}
+                data-money-method={method}
+                className={`orbis-public-money-card min-h-[76px] rounded-xl border p-2.5 text-left shadow-sm transition active:scale-[0.985] ${styles[index]}`}
               >
                 <p className="text-[7px] font-black uppercase tracking-[0.08em] opacity-70">
                   {label}
@@ -2169,6 +2198,92 @@ type LedgerLaunch = {
   to: string;
 };
 
+type LedgerDateGroup<T> = {
+  date: string;
+  rows: T[];
+};
+
+function groupLedgerRowsByDate<T>(
+  rows: ReadonlyArray<T>,
+  occurredAt: (row: T) => string,
+): LedgerDateGroup<T>[] {
+  const sorted = [...rows].sort((left, right) =>
+    occurredAt(left).localeCompare(occurredAt(right)),
+  );
+  const groups: LedgerDateGroup<T>[] = [];
+  for (const row of sorted) {
+    const date = dateKey(occurredAt(row)) || occurredAt(row);
+    const current = groups[groups.length - 1];
+    if (current?.date === date) {
+      current.rows.push(row);
+    } else {
+      groups.push({ date, rows: [row] });
+    }
+  }
+  return groups;
+}
+
+function LedgerDateGroupHeaderRow({
+  date,
+  rowCount,
+  colSpan,
+}: Readonly<{
+  date: string;
+  rowCount: number;
+  colSpan: number;
+}>) {
+  return (
+    <tr
+      data-testid="ledger-date-group"
+      className="border-t border-emerald-100 bg-emerald-50/75"
+    >
+      <td
+        colSpan={colSpan}
+        className="px-2 py-2 text-[8px] font-black uppercase tracking-[0.08em] text-emerald-800"
+      >
+        {displayDate(date)} · {rowCount} entries
+      </td>
+    </tr>
+  );
+}
+
+
+function LedgerDateGroupedBody<T>({
+  groups,
+  colSpan,
+  renderRows,
+}: Readonly<{
+  groups: LedgerDateGroup<T>[];
+  colSpan: number;
+  renderRows: (group: LedgerDateGroup<T>) => React.ReactNode;
+}>) {
+  return (
+    <tbody>
+      {groups.length ? (
+        groups.map((group) => (
+          <React.Fragment key={group.date}>
+            <LedgerDateGroupHeaderRow
+              date={group.date}
+              rowCount={group.rows.length}
+              colSpan={colSpan}
+            />
+            {renderRows(group)}
+          </React.Fragment>
+        ))
+      ) : (
+        <tr>
+          <td
+            colSpan={colSpan}
+            className="px-3 py-4 text-center text-slate-500"
+          >
+            No transaction in this period.
+          </td>
+        </tr>
+      )}
+    </tbody>
+  );
+}
+
 function LedgerCombinedStatement({
   books,
   bounds,
@@ -2178,13 +2293,13 @@ function LedgerCombinedStatement({
   bounds: { from: string; to: string };
   onBack: () => void;
 }>) {
-  const rows = books
-    .flatMap((book) =>
-      book.transactions.map((transaction) => ({ book, transaction })),
-    )
-    .sort((left, right) =>
-      left.transaction.occurredAt.localeCompare(right.transaction.occurredAt),
-    );
+  const rows = books.flatMap((book) =>
+    book.transactions.map((transaction) => ({ book, transaction })),
+  );
+  const dateGroups = groupLedgerRowsByDate(
+    rows,
+    (row) => row.transaction.occurredAt,
+  );
 
   return (
     <SectionCard
@@ -2200,31 +2315,31 @@ function LedgerCombinedStatement({
       <div className="overflow-x-auto rounded-xl border border-slate-100">
         <table className="min-w-[760px] border-collapse text-left text-[9px]">
           <LedgerTransactionHeader includeAccount />
-          <tbody>
-            {rows.length ? (
-              rows.map(({ book, transaction }) => (
+          <LedgerDateGroupedBody
+            groups={dateGroups}
+            colSpan={6}
+            renderRows={(group) =>
+              group.rows.map(({ book, transaction }) => (
                 <tr
                   key={`${book.id}-${transaction.id}`}
                   className="border-t border-slate-100"
                 >
                   <td className="px-2 py-2 font-black">{book.name}</td>
-                  <td className="px-2 py-2">{displayDate(transaction.occurredAt)}</td>
+                  <td className="px-2 py-2">
+                    {displayDate(transaction.occurredAt)}
+                  </td>
                   <td className="px-2 py-2">{transaction.business}</td>
                   <td className="px-2 py-2">{transaction.money}</td>
-                  <td className="px-2 py-2 font-black">{transaction.balance}</td>
+                  <td className="px-2 py-2 font-black">
+                    {transaction.balance}
+                  </td>
                   <td className="max-w-[240px] whitespace-normal px-2 py-2 text-[8px] text-slate-500">
                     {transaction.detail}
                   </td>
                 </tr>
               ))
-            ) : (
-              <tr>
-                <td colSpan={6} className="px-3 py-4 text-center text-slate-500">
-                  No transaction in this period.
-                </td>
-              </tr>
-            )}
-          </tbody>
+            }
+          />
         </table>
       </div>
     </SectionCard>
@@ -2446,6 +2561,23 @@ function LedgerSelectionContent({
     );
   }
 
+  if (!allSelected && selected) {
+    return (
+      <LedgerStatement
+        book={selected}
+        bounds={bounds}
+        onEdit={() =>
+          editLedgerSelection({
+            workspace,
+            selected,
+            editParty,
+            editExpense,
+          })
+        }
+      />
+    );
+  }
+
   if (!statementOpen) {
     return (
       <LedgerBookPreview
@@ -2458,31 +2590,11 @@ function LedgerSelectionContent({
     );
   }
 
-  if (allSelected) {
-    return (
-      <LedgerCombinedStatement
-        books={visibleBooks}
-        bounds={bounds}
-        onBack={() => setStatementOpen(false)}
-      />
-    );
-  }
-
-  if (!selected) return null;
-
   return (
-    <LedgerStatement
-      book={selected}
+    <LedgerCombinedStatement
+      books={visibleBooks}
       bounds={bounds}
       onBack={() => setStatementOpen(false)}
-      onEdit={() =>
-        editLedgerSelection({
-          workspace,
-          selected,
-          editParty,
-          editExpense,
-        })
-      }
     />
   );
 }
@@ -2490,12 +2602,14 @@ function LedgerSelectionContent({
 function LedgerPanel({
   workspace,
   launch,
+  navigationRequest,
   onLaunchApplied,
   editParty,
   editExpense,
 }: Readonly<{
   workspace: LotteryWorkspace;
   launch: LedgerLaunch | null;
+  navigationRequest: LotteryAccountingWorkspaceNavigationRequest | null;
   onLaunchApplied: () => void;
   editParty: (party: LotteryParty) => void;
   editExpense: (profile: LotteryExpenseProfile) => void;
@@ -2509,6 +2623,17 @@ function LedgerPanel({
   const [to, setTo] = useState(today);
   const [view, setView] = useState<"list" | "table">("list");
   const [statementOpen, setStatementOpen] = useState(false);
+
+  useEffect(() => {
+    if (navigationRequest?.ledgerView !== "party") return;
+    setBookType("seller");
+    setSubtype("seller");
+    setAccountId("");
+    setPeriod("today");
+    setFrom(today);
+    setTo(today);
+    setStatementOpen(false);
+  }, [navigationRequest, today]);
 
   const bounds = periodBounds(period, from, to);
   const subtypeOptions = useMemo(
@@ -3696,31 +3821,55 @@ function LedgerStatement({
 }: Readonly<{
   book: LedgerBook;
   bounds: { from: string; to: string };
-  onBack: () => void;
+  onBack?: () => void;
   onEdit: () => void;
 }>) {
   const editable = Boolean(book.accountKind);
+  const dateGroups = groupLedgerRowsByDate(
+    book.transactions,
+    (row) => row.occurredAt,
+  );
   return (
     <SectionCard
       title={book.name}
       hint={`${displayDate(bounds.from)} → ${displayDate(bounds.to)} · ${book.typeLabel}`}
     >
       <div className="mb-2 flex flex-wrap justify-between gap-2">
-        <Button onClick={onBack}>Back</Button>
+        {onBack ? <Button onClick={onBack}>Back</Button> : <span />}
         {editable && (
           <Button onClick={onEdit}>
             Edit {book.accountKind === "expense" ? "Expense Profile" : "Profile"}
           </Button>
         )}
       </div>
+      <section
+        aria-label="Ledger period summary"
+        className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3"
+      >
+        {book.summary.slice(-3).map(([label, value]) => (
+          <div
+            key={label}
+            className="rounded-xl border border-emerald-100 bg-gradient-to-br from-white via-emerald-50/45 to-orange-50/45 p-3 shadow-sm"
+          >
+            <p className="text-[7px] font-black uppercase tracking-[0.08em] text-slate-400">
+              {label}
+            </p>
+            <p className="mt-1 text-[11px] font-black text-slate-900">{value}</p>
+          </div>
+        ))}
+      </section>
       <div className="overflow-x-auto rounded-xl border border-slate-100">
         <table className="min-w-[640px] border-collapse text-left text-[9px]">
           <LedgerTransactionHeader />
-          <tbody>
-            {book.transactions.length ? (
-              book.transactions.map((row) => (
+          <LedgerDateGroupedBody
+            groups={dateGroups}
+            colSpan={5}
+            renderRows={(group) =>
+              group.rows.map((row) => (
                 <tr key={row.id} className="border-t border-slate-100">
-                  <td className="px-2 py-2">{displayDate(row.occurredAt)}</td>
+                  <td className="px-2 py-2">
+                    {displayDate(row.occurredAt)}
+                  </td>
                   <td className="px-2 py-2">{row.business}</td>
                   <td className="px-2 py-2">{row.money}</td>
                   <td className="px-2 py-2 font-black">{row.balance}</td>
@@ -3729,14 +3878,8 @@ function LedgerStatement({
                   </td>
                 </tr>
               ))
-            ) : (
-              <tr>
-                <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
-                  No transaction in this period.
-                </td>
-              </tr>
-            )}
-          </tbody>
+            }
+          />
         </table>
       </div>
     </SectionCard>

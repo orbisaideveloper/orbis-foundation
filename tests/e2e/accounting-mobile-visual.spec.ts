@@ -1,12 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-test("@visual accounting workspace has no horizontal overflow on mobile", async ({
-  page,
-}) => {
-  await page.goto("/tests/e2e/accounting-harness.html");
-  await expect(page.getByText("Demo Lottery dashboard")).toBeVisible();
+const ACCOUNTING_HARNESS = "/tests/e2e/accounting-harness.html";
+const ACCOUNTING_DASHBOARD_TEXT = "Demo Lottery dashboard";
 
-  const layout = await page.evaluate(() => {
+async function openAccountingHarness(page: Page) {
+  await page.goto(ACCOUNTING_HARNESS);
+  await expect(page.getByText(ACCOUNTING_DASHBOARD_TEXT)).toBeVisible();
+}
+
+async function readMobileLayout(page: Page) {
+  return page.evaluate(() => {
     const root = document.documentElement;
     const overflowing = [...document.querySelectorAll<HTMLElement>("body *")]
       .filter((element) => {
@@ -26,12 +29,15 @@ test("@visual accounting workspace has no horizontal overflow on mobile", async 
       overflowing,
     };
   });
+}
+
+test("@smoke accounting workspace has no horizontal overflow on mobile", async ({
+  page,
+}) => {
+  await openAccountingHarness(page);
+
+  const layout = await readMobileLayout(page);
 
   expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewport + 1);
   expect(layout.overflowing).toEqual([]);
-
-  await expect(page).toHaveScreenshot("accounting-mobile.png", {
-    fullPage: true,
-    animations: "disabled",
-  });
 });

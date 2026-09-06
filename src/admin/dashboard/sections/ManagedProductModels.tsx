@@ -5,8 +5,9 @@ import {
   CheckCircle2,
   ChevronRight,
   Database,
+  Eye,
   GitBranch,
-  ListChecks,
+  Radio,
   Sparkles,
 } from "lucide-react";
 import {
@@ -22,8 +23,10 @@ import type {
 import { LotteryAccountingWorkspace } from "./LotteryAccountingWorkspace";
 import { WorkspaceSectionTabs } from "./WorkspaceSectionTabs";
 import type { LotteryAccountingClient } from "../../models/lotteryAccountingClient";
+import { AccountingPublicView } from "./AccountingPublicView";
 
 type WorkspaceScreen = "catalog" | "model" | "module";
+type AccountingViewMode = "CURRENT" | "PREVIEW" | "LIVE";
 type ModuleTab =
   | "accounting"
   | "overview"
@@ -84,17 +87,20 @@ function NavigationCard({
   subtitle,
   icon,
   onClick,
+  disabled = false,
 }: Readonly<{
   title: string;
   subtitle: string;
   icon: React.ReactNode;
   onClick: () => void;
+  disabled?: boolean;
 }>) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-[92px] items-center gap-3 rounded-2xl border border-emerald-100 bg-white/90 p-3 text-left shadow-sm transition active:scale-[0.985]"
+      disabled={disabled}
+      className="flex min-h-[92px] items-center gap-3 rounded-2xl border border-emerald-100 bg-white/90 p-3 text-left shadow-sm transition active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-50"
     >
       <span className="rounded-xl bg-emerald-50 p-2.5 text-emerald-700">
         {icon}
@@ -142,6 +148,7 @@ export function ManagedProductModels({
   const [models, setModels] = useState<ManagedProductModel[]>([]);
   const [screen, setScreen] = useState<WorkspaceScreen>(initialScreen);
   const [tab, setTab] = useState<ModuleTab>("overview");
+  const [viewMode, setViewMode] = useState<AccountingViewMode>("CURRENT");
   const [isLoading, setIsLoading] = useState(!previewMode);
   const [workingAction, setWorkingAction] = useState<
     "review" | "publish" | null
@@ -203,8 +210,9 @@ export function ManagedProductModels({
       workingAction
     )
       return;
+    const updatingLive = Boolean(model.publishedVersion);
     const approved = window.confirm(
-      `Publish ${model.displayName} ${versionLabel(currentVersion.sequence)}? The reviewed draft becomes the read-only public snapshot and its copy opens as the next draft.`,
+      `${updatingLive ? "Update Live to" : "Publish"} ${model.displayName} ${versionLabel(currentVersion.sequence)}? The reviewed draft becomes the public snapshot, the previous live snapshot is archived, and an identical next draft opens for upgrades.`,
     );
     if (!approved) return;
     setWorkingAction("publish");
@@ -249,6 +257,28 @@ export function ManagedProductModels({
       {error}
     </p>
   ) : null;
+
+  if (viewMode === "PREVIEW") {
+    return (
+      <AccountingPublicView
+        mode="PREVIEW"
+        version={model.currentVersion}
+        api={lotteryAccountingApi}
+        onBack={() => setViewMode("CURRENT")}
+      />
+    );
+  }
+
+  if (viewMode === "LIVE") {
+    return (
+      <AccountingPublicView
+        mode="LIVE"
+        version={model.publishedVersion}
+        api={lotteryAccountingApi}
+        onBack={() => setViewMode("CURRENT")}
+      />
+    );
+  }
 
   if (screen === "catalog") {
     return (
@@ -307,8 +337,8 @@ export function ManagedProductModels({
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <NavigationCard
-            title={lottery?.name || "Lottery Accounting"}
-            subtitle="Open the real private data-entry workspace before deciding to publish."
+            title={`Current Mode · ${lottery?.name || "Lottery Accounting"} · ${versionLabel(model.currentVersion?.sequence)}`}
+            subtitle="Full Admin working mode. Existing Accounting behavior stays here."
             icon={<Sparkles className="h-5 w-5" />}
             onClick={() => {
               setTab("accounting");
@@ -316,26 +346,25 @@ export function ManagedProductModels({
             }}
           />
           <NavigationCard
-            title={`Draft ${versionLabel(model.currentVersion?.sequence)}`}
-            subtitle={`Review ${model.currentVersion?.reviewStatus || "NOT_RUN"} · Editable`}
-            icon={<ListChecks className="h-5 w-5" />}
-            onClick={() => {
-              setTab("versions");
-              setScreen("module");
-            }}
+            title={`Publish Preview · ${versionLabel(model.currentVersion?.sequence)}`}
+            subtitle="See the latest Current Draft through Classic, Signature Emerald or Signature Dark."
+            icon={<Eye className="h-5 w-5" />}
+            onClick={() => setViewMode("PREVIEW")}
           />
           <NavigationCard
-            title={`Published ${versionLabel(model.publishedVersion?.sequence)}`}
-            subtitle="Read-only public snapshot"
-            icon={<CheckCircle2 className="h-5 w-5" />}
-            onClick={() => {
-              setTab("versions");
-              setScreen("module");
-            }}
+            title={`Live User · ${versionLabel(model.publishedVersion?.sequence)}`}
+            subtitle={
+              model.publishedVersion
+                ? "Inspect the currently published user snapshot."
+                : "No live version yet. Publish the reviewed first draft to create it."
+            }
+            icon={<Radio className="h-5 w-5" />}
+            onClick={() => setViewMode("LIVE")}
+            disabled={!model.publishedVersion}
           />
           <NavigationCard
             title="Release history"
-            subtitle="Review gate, publish state and next copied draft."
+            subtitle={`Draft ${versionLabel(model.currentVersion?.sequence)} · Review ${model.currentVersion?.reviewStatus || "NOT_RUN"} · Publish history`}
             icon={<GitBranch className="h-5 w-5" />}
             onClick={() => {
               setTab("versions");
@@ -563,6 +592,7 @@ function VersionsPanel({
   onPublish: () => void;
 }>) {
   const canPublish = model.currentVersion?.reviewStatus === "PASSED";
+  const updatingLive = Boolean(model.publishedVersion);
   return (
     <WorkspacePanel title="Draft, published and upgrade versions">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -600,7 +630,9 @@ function VersionsPanel({
       >
         {isPublishing
           ? "Publishing…"
-          : `Publish ${versionLabel(model.currentVersion?.sequence)}`}
+          : updatingLive
+            ? `Update Live to ${versionLabel(model.currentVersion?.sequence)}`
+            : `Publish ${versionLabel(model.currentVersion?.sequence)}`}
       </button>
       {!canPublish && (
         <p className="mt-2 text-[9px] text-orange-700">

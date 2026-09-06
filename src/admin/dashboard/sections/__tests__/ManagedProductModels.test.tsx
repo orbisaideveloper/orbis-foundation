@@ -2,6 +2,7 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ManagedProductModels } from "../ManagedProductModels";
+import type { LotteryAccountingClient } from "../../../models/lotteryAccountingClient";
 import type { ManagedProductModel } from "../../../models/types";
 
 const TEST_TIMESTAMP = "2026-08-30T00:00:00.000Z";
@@ -225,4 +226,72 @@ describe("ManagedProductModels", () => {
     expect(screen.getByText(/Admin-only/i)).toBeInTheDocument();
     expect(loadModels).not.toHaveBeenCalled();
   });
+
+  it("shows Current, Publish Preview and Live User with all three public appearances", async () => {
+    const lotteryAccountingApi = {
+      listOrganizations: vi.fn().mockResolvedValue([]),
+      loadWorkspace: vi.fn(),
+    } as unknown as LotteryAccountingClient;
+
+    render(
+      <ManagedProductModels
+        initialScreen="model"
+        loadModels={vi.fn().mockResolvedValue([
+          accountingModel(2, "NOT_RUN", true),
+        ])}
+        lotteryAccountingApi={lotteryAccountingApi}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("button", {
+        name: /Current Mode · Lottery Accounting · v2/i,
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Publish Preview · v2/i }),
+    );
+
+    expect(
+      await screen.findByRole("region", { name: "Publish Preview" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open public menu" }),
+    );
+
+    expect(
+      screen.getByRole("button", { name: /Classic \/ Existing/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Signature EmeraldPremium emerald, teal, white and soft-gold public design\.$/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Signature Emerald Dark/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Signature Emerald Dark/i }),
+    );
+    expect(screen.getByTestId("accounting-public-shell")).toHaveAttribute(
+      "data-accounting-appearance",
+      "SIGNATURE_DARK",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close public menu" }),
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Versions" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Current Mode" }));
+    expect(
+      await screen.findByRole("region", {
+        name: "ORBiS Accounting AI model home",
+      }),
+    ).toBeInTheDocument();
+  });
+
 });

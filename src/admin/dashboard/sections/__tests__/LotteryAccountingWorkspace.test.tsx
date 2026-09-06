@@ -27,6 +27,7 @@ const SECOND_SELLER_CODE = "party-code-2";
 const PAYMENT_CASH_LABEL = "Payment Cash";
 const CURRENT_RECORDED_AT = "2026-09-05T00:00:00.000Z";
 const AMOUNT_TO_RECEIVE_LABEL = "Amount to receive";
+const UNIVERSAL_LEDGER_HUB = "Universal Ledger Hub";
 
 const organization = {
   id: "org-1",
@@ -315,11 +316,70 @@ describe("LotteryAccountingWorkspace", () => {
     expect(screen.getByText("Payable")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
-    expect(await screen.findByText("Universal Ledger Hub")).toBeInTheDocument();
+    expect(await screen.findByText(UNIVERSAL_LEDGER_HUB)).toBeInTheDocument();
     expect(screen.getByLabelText("Ledger Book")).toHaveValue("seller");
     expect(screen.getByLabelText("Ledger Party")).toHaveValue("party-1");
-    expect(screen.getByRole("button", { name: "Compact List" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Table View" })).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Ledger period summary"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows selected ledger transactions as chronological date groups with totals separate", async () => {
+    const dateWiseWorkspace: LotteryWorkspace = {
+      ...workspace,
+      sales: [
+        ...workspace.sales,
+        {
+          ...workspace.sales[0],
+          id: "sale-next-date",
+          reference: "SALE-NEXT-DATE",
+          occurredAt: CURRENT_RECORDED_AT,
+        },
+      ],
+    };
+    const api = createApi();
+    vi.mocked(api.loadWorkspace).mockResolvedValue(dateWiseWorkspace);
+
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+    fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
+    await screen.findByText(UNIVERSAL_LEDGER_HUB);
+
+    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+    fireEvent.change(screen.getByLabelText("Ledger from date"), {
+      target: { value: ACCOUNTING_ENTRY_DATE },
+    });
+    fireEvent.change(screen.getByLabelText("Ledger to date"), {
+      target: { value: "2026-09-05" },
+    });
+
+    const groups = await screen.findAllByTestId("ledger-date-group");
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toHaveTextContent("30 Aug 2026");
+    expect(groups[1]).toHaveTextContent("05 Sept 2026");
+
+    const summary = screen.getByLabelText("Ledger period summary");
+    expect(summary).toHaveTextContent("Net Business");
+    expect(summary).toHaveTextContent("Received");
+    expect(summary).toHaveTextContent("Balance");
+  });
+
+  it("shows an optional public greeting only on the dashboard", async () => {
+    render(
+      <LotteryAccountingWorkspace
+        api={createApi()}
+        dashboardGreeting={<div>Welcome, Ajay · ORBiS is with you</div>}
+      />,
+    );
+
+    expect(
+      await screen.findByText("Welcome, Ajay · ORBiS is with you"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
+    expect(
+      screen.queryByText("Welcome, Ajay · ORBiS is with you"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows business commission reconciliation and profit or loss for the selected dates", async () => {
@@ -934,7 +994,7 @@ describe("LotteryAccountingWorkspace", () => {
     expect(cashButton).not.toBeNull();
     fireEvent.click(cashButton!);
 
-    expect(await screen.findByText("Universal Ledger Hub")).toBeInTheDocument();
+    expect(await screen.findByText(UNIVERSAL_LEDGER_HUB)).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByLabelText("Ledger Book")).toHaveValue("money");
       expect(screen.getByLabelText("Ledger type")).toHaveValue("cashPaise");

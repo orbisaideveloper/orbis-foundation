@@ -34,6 +34,89 @@ orbis_state_safe_pipeline() {
   esac
 }
 
+orbis_state_pipeline_stages() {
+  case "$1" in
+    UBUNTU)
+      printf '%s\n' preflight knip jscpd playwright-smoke playwright-visual
+      ;;
+    TERMUX)
+      printf '%s\n' preflight secrets architecture accounting circular lint type audit build mutation db-drift coverage
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+orbis_state_stage_key() {
+  local pipeline="$1"
+  local stage="$2"
+  printf 'STAGE_FP_%s_%s' "$pipeline" "$stage"
+}
+
+orbis_state_stage_fingerprint() {
+  local pipeline="$1"
+  local stage="$2"
+  orbis_state_safe_pipeline "$pipeline" || return 2
+  orbis_state_safe_stage "$stage" || return 2
+  node scripts/orbis-quality-fingerprint.cjs --stage "$pipeline" "$stage"
+}
+
+orbis_state_append_stage_snapshots() {
+  local file="$1"
+  local pipeline stage key fp
+  for pipeline in UBUNTU TERMUX; do
+    while IFS= read -r stage; do
+      key="$(orbis_state_stage_key "$pipeline" "$stage")"
+      fp="$(orbis_state_stage_fingerprint "$pipeline" "$stage")" || return 2
+      printf '%s=%s\n' "$key" "$fp" >> "$file"
+    done < <(orbis_state_pipeline_stages "$pipeline")
+  done
+}
+
+orbis_state_stage_matches() {
+  local file="$1"
+  local pipeline="$2"
+  local stage="$3"
+  local key saved current
+  key="$(orbis_state_stage_key "$pipeline" "$stage")"
+  saved="$(orbis_state_get "$file" "$key" || true)"
+  [[ -n "$saved" ]] || return 1
+  current="$(orbis_state_stage_fingerprint "$pipeline" "$stage")" || return 1
+  [[ "$saved" == "$current" ]]
+}
+
+orbis_state_resume_stage() {
+  local file="$1"
+  local pipeline="$2"
+  local failed_stage="$3"
+  local stage
+  while IFS= read -r stage; do
+    if ! orbis_state_stage_matches "$file" "$pipeline" "$stage"; then
+      printf '%s\n' "$stage"
+      return 0
+    fi
+    [[ "$stage" == "$failed_stage" ]] && {
+      printf '%s\n' "$failed_stage"
+      return 0
+    }
+  done < <(orbis_state_pipeline_stages "$pipeline")
+  return 1
+}
+
+orbis_state_first_changed_stage() {
+  local file="$1"
+  local pipeline="$2"
+  local stage
+  while IFS= read -r stage; do
+    if ! orbis_state_stage_matches "$file" "$pipeline" "$stage"; then
+      printf '%s\n' "$stage"
+      return 0
+    fi
+  done < <(orbis_state_pipeline_stages "$pipeline")
+  return 1
+}
+
 orbis_state_write_failure() {
   local file="$1"
   local pipeline="$2"
@@ -58,13 +141,19 @@ orbis_state_write_failure() {
   local tmp="${file}.tmp.$$"
 
   {
-    echo "STATE_VERSION=1"
+    echo "STATE_VERSION=2"
     printf 'PIPELINE=%s\n' "$pipeline"
     printf 'STAGE=%s\n' "$stage"
     printf 'TIMESTAMP=%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')"
     printf 'FINGERPRINT=%s\n' "$fingerprint"
     printf 'HEAD=%s\n' "$(git rev-parse HEAD)"
   } > "$tmp"
+
+  orbis_state_append_stage_snapshots "$tmp" || {
+    rm -f "$tmp"
+    echo "ORBIS STATE ERROR: unable to write stage fingerprints." >&2
+    return 2
+  }
 
   mv "$tmp" "$file"
 }
@@ -80,7 +169,7 @@ orbis_state_read_failure() {
   saved_fp="$(orbis_state_get "$file" FINGERPRINT || true)"
   expected_fp="${2:-}"
 
-  [[ "$version" == "1" ]] || {
+  [[ "$version" == "1" || "$version" == "2" ]] || {
     echo "ORBIS STATE ERROR: unsupported or missing state version." >&2
     return 3
   }
@@ -95,6 +184,7 @@ orbis_state_read_failure() {
       return 4
     }
   fi
+
   orbis_state_safe_pipeline "$pipeline" || {
     echo "ORBIS STATE ERROR: invalid pipeline value." >&2
     return 3
@@ -117,13 +207,25 @@ orbis_state_write_pass() {
   local tmp="${file}.tmp.$$"
 
   {
-    echo "STATE_VERSION=1"
+    echo "STATE_VERSION=2"
     printf 'PIPELINE=%s\n' "$pipeline"
     printf 'TIMESTAMP=%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')"
     printf 'FINGERPRINT=%s\n' "$fingerprint"
     printf 'HEAD=%s\n' "$(git rev-parse HEAD)"
     [[ -n "$report" ]] && printf 'REPORT=%s\n' "$report"
   } > "$tmp"
+
+  if [[ "$pipeline" == "UBUNTU" || "$pipeline" == "TERMUX" ]]; then
+    local stage key fp
+    while IFS= read -r stage; do
+      key="$(orbis_state_stage_key "$pipeline" "$stage")"
+      fp="$(orbis_state_stage_fingerprint "$pipeline" "$stage")" || {
+        rm -f "$tmp"
+        return 2
+      }
+      printf '%s=%s\n' "$key" "$fp" >> "$tmp"
+    done < <(orbis_state_pipeline_stages "$pipeline")
+  fi
 
   mv "$tmp" "$file"
 }

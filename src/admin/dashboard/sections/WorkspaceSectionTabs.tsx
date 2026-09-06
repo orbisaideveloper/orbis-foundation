@@ -13,7 +13,7 @@ export function WorkspaceSectionTabs<T extends string>({
 }>) {
   return (
     <div
-      className="flex gap-2 overflow-x-auto pb-1"
+      className="flex flex-wrap gap-2 pb-1"
       aria-label={ariaLabel}
     >
       {tabs.map(([value, label]) => (

@@ -1,0 +1,789 @@
+.orbis-accounting-public-shell {
+  overflow: clip;
+  border: 1px solid rgba(16, 185, 129, 0.16);
+  border-radius: 30px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.13);
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_LIGHT"] {
+  background:
+    radial-gradient(circle at 86% 4%, rgba(245, 183, 74, 0.23), transparent 25%),
+    radial-gradient(circle at 15% 12%, rgba(16, 185, 129, 0.2), transparent 28%),
+    linear-gradient(145deg, #064e3b 0%, #0f766e 54%, #155e75 100%);
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] {
+  background:
+    radial-gradient(circle at 86% 4%, rgba(245, 183, 74, 0.16), transparent 24%),
+    radial-gradient(circle at 15% 12%, rgba(16, 185, 129, 0.14), transparent 28%),
+    linear-gradient(145deg, #021c19 0%, #07352f 48%, #0b2634 100%);
+}
+
+.orbis-public-app-header {
+  position: relative;
+  overflow: hidden;
+  padding: 18px 16px 24px;
+  color: white;
+}
+
+.orbis-public-app-header::after {
+  position: absolute;
+  right: -40px;
+  bottom: -58px;
+  width: 210px;
+  height: 120px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 50%;
+  content: "";
+  transform: rotate(-12deg);
+}
+
+.orbis-public-logo {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.96), rgba(15, 118, 110, 0.95));
+  box-shadow: 0 12px 30px rgba(3, 28, 24, 0.24);
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.orbis-public-icon-button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.orbis-signature-workspace {
+  border-radius: 28px 28px 0 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.985), rgba(247, 252, 251, 0.995));
+  padding: 14px;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace {
+  background: linear-gradient(180deg, rgba(9, 22, 25, 0.985), rgba(7, 18, 22, 0.995));
+}
+
+.orbis-signature-workspace
+  section[aria-label="Lottery Accounting data workspace"]
+  > header:first-child {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.orbis-signature-workspace
+  section[aria-label="Lottery Accounting data workspace"]
+  > header:first-child
+  > div:first-child {
+  display: none;
+}
+
+.orbis-signature-workspace
+  section[aria-label="Lottery Accounting data workspace"]
+  > header:first-child
+  > div:nth-child(2) {
+  margin-top: 0;
+  border: 1px solid rgba(16, 185, 129, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.055);
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  section[aria-label="Lottery Accounting data workspace"]
+  > header:first-child
+  > div:nth-child(2) {
+  border-color: rgba(52, 211, 153, 0.18);
+  background: rgba(15, 35, 38, 0.9);
+}
+
+.orbis-signature-workspace [aria-label="Accounting workspace sections"] {
+  gap: 7px;
+  padding: 4px 1px 6px;
+}
+
+.orbis-signature-workspace [aria-label="Accounting workspace sections"] button {
+  min-height: 54px;
+  border: 1px solid rgba(15, 118, 110, 0.12) !important;
+  border-radius: 16px !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #48606d !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.045);
+}
+
+.orbis-signature-workspace
+  [aria-label="Accounting workspace sections"]
+  button[class*="bg-emerald-600"] {
+  border-color: transparent !important;
+  background: linear-gradient(135deg, #0f8a67, #0f6e78) !important;
+  color: white !important;
+  box-shadow: 0 10px 22px rgba(15, 118, 110, 0.2);
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [aria-label="Accounting workspace sections"]
+  button {
+  border-color: rgba(52, 211, 153, 0.14) !important;
+  background: rgba(15, 35, 38, 0.94) !important;
+  color: #b7cacd !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [aria-label="Accounting workspace sections"]
+  button[class*="bg-emerald-600"] {
+  background: linear-gradient(135deg, #0d7d61, #116a75) !important;
+  color: white !important;
+}
+
+.orbis-signature-workspace [class*="rounded-[22px]"],
+.orbis-signature-workspace [class*="rounded-2xl"] {
+  border-color: rgba(16, 185, 129, 0.13);
+}
+
+.orbis-signature-workspace
+  [class*="rounded-[22px]"][class*="bg-white"],
+.orbis-signature-workspace
+  [class*="rounded-2xl"][class*="bg-white"] {
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.orbis-signature-workspace input,
+.orbis-signature-workspace select,
+.orbis-signature-workspace textarea {
+  border-color: rgba(15, 118, 110, 0.16) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.035);
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [class*="bg-white"],
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [class*="bg-emerald-50"],
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [class*="bg-orange-50"] {
+  border-color: rgba(52, 211, 153, 0.13) !important;
+  background: rgba(13, 30, 33, 0.94) !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  :is(h1, h2, h3, h4, h5, h6, p, label, th, td, span) {
+  color: #e7f2f1;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [class*="text-slate-500"],
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [class*="text-slate-600"] {
+  color: #9eb4b7 !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  input,
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  select,
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  textarea {
+  border-color: rgba(52, 211, 153, 0.16) !important;
+  background: rgba(8, 24, 27, 0.96) !important;
+  color: #e7f2f1 !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  option {
+  background: #0b1e21;
+  color: #e7f2f1;
+}
+
+@media (max-width: 640px) {
+  .orbis-accounting-public-shell {
+    border-radius: 24px;
+  }
+
+  .orbis-public-app-header {
+    padding: 16px 13px 22px;
+  }
+
+  .orbis-signature-workspace {
+    padding: 11px;
+  }
+}
+
+
+/* Premium public dashboard greeting — public Accounting only. */
+.orbis-public-greeting {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(244, 253, 249, 0.96)),
+    radial-gradient(circle at 90% 10%, rgba(245, 183, 74, 0.2), transparent 32%);
+  padding: 16px;
+  box-shadow:
+    0 16px 38px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.orbis-public-greeting-glow {
+  position: absolute;
+  right: -32px;
+  top: -38px;
+  width: 132px;
+  height: 132px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(245, 183, 74, 0.2), transparent 68%);
+}
+
+.orbis-public-greeting-mark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(16, 185, 129, 0.16);
+  border-radius: 15px;
+  background: linear-gradient(135deg, #ecfdf5, #fff7e8);
+  color: #08745d;
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.12);
+}
+
+.orbis-public-greeting-kicker {
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: #0f766e;
+}
+
+.orbis-public-greeting-title {
+  margin-top: 4px;
+  font-size: clamp(17px, 4.5vw, 23px);
+  font-weight: 950;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  color: #0f172a;
+}
+
+.orbis-public-greeting-copy {
+  margin-top: 6px;
+  max-width: 48rem;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.55;
+  color: #64748b;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-public-greeting {
+  border-color: rgba(52, 211, 153, 0.18);
+  background:
+    linear-gradient(135deg, rgba(13, 30, 33, 0.98), rgba(9, 24, 29, 0.98)),
+    radial-gradient(circle at 90% 10%, rgba(245, 183, 74, 0.11), transparent 32%);
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-public-greeting-title {
+  color: #f0fdfa !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-public-greeting-kicker {
+  color: #6ee7b7 !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-public-greeting-copy {
+  color: #a8c2c4 !important;
+}
+
+@media (max-width: 640px) {
+  .orbis-public-greeting {
+    border-radius: 20px;
+    padding: 14px;
+  }
+}
+
+/* Mobile-first public app chrome: fixed top actions, compact welcome, drawer, and fixed six-tab nav. */
+.orbis-accounting-public-shell .orbis-public-app-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding: 10px 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_LIGHT"]
+  .orbis-public-app-header {
+  background: linear-gradient(135deg, rgba(5, 93, 70, 0.98), rgba(15, 118, 110, 0.97));
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-public-app-header {
+  background: linear-gradient(135deg, rgba(2, 28, 25, 0.99), rgba(7, 53, 47, 0.99));
+}
+
+.orbis-accounting-public-shell .orbis-public-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  font-size: 15px;
+}
+
+.orbis-accounting-public-shell .orbis-public-icon-button {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  color: white;
+}
+
+.orbis-public-greeting-slot {
+  padding: 8px 10px 0;
+}
+
+.orbis-public-greeting-slot .orbis-public-greeting {
+  border-radius: 16px;
+  padding: 9px 10px;
+  box-shadow:
+    0 8px 22px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.orbis-public-greeting-slot .orbis-public-greeting-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
+}
+
+.orbis-public-greeting-slot .orbis-public-greeting-kicker {
+  font-size: 6.5px;
+  letter-spacing: 0.11em;
+}
+
+.orbis-public-greeting-slot .orbis-public-greeting-title {
+  margin-top: 2px;
+  font-size: clamp(14px, 3.7vw, 18px);
+  line-height: 1.1;
+}
+
+.orbis-public-greeting-slot .orbis-public-greeting-copy {
+  margin-top: 3px;
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+/* Restore visual separation between dark-theme cards instead of flattening every surface. */
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [class*="from-white"] {
+  border-color: rgba(110, 231, 183, 0.18) !important;
+  background: linear-gradient(145deg, #122c2c, #102527 58%, #17272a) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [class*="from-emerald-50"] {
+  border-color: rgba(52, 211, 153, 0.24) !important;
+  background: linear-gradient(145deg, #123a32, #17342f) !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [class*="from-blue-50"] {
+  border-color: rgba(125, 211, 252, 0.25) !important;
+  background: linear-gradient(145deg, #17313d, #1b3540) !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [class*="from-orange-50"] {
+  border-color: rgba(251, 191, 36, 0.24) !important;
+  background: linear-gradient(145deg, #3a3122, #302b24) !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [class*="from-violet-50"] {
+  border-color: rgba(196, 181, 253, 0.24) !important;
+  background: linear-gradient(145deg, #2d2940, #29273a) !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-signature-workspace
+  [class*="via-white"] {
+  border-color: rgba(110, 231, 183, 0.2) !important;
+  background: linear-gradient(145deg, #12332e, #172f30 55%, #302d25) !important;
+}
+
+/* Public side drawer. */
+.orbis-public-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(2, 12, 14, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.orbis-public-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(88vw, 360px);
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: #f8fffc;
+  padding: 14px;
+  box-shadow: -18px 0 44px rgba(2, 12, 14, 0.22);
+}
+
+.orbis-public-drawer-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -14px -14px 12px;
+  padding: 14px;
+  border-bottom: 1px solid rgba(16, 185, 129, 0.12);
+  background: rgba(248, 255, 252, 0.96);
+  backdrop-filter: blur(16px);
+}
+
+.orbis-public-drawer-close {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 12px;
+  background: white;
+  color: #0f766e;
+}
+
+.orbis-public-drawer-note,
+.orbis-public-profile-card,
+.orbis-public-drawer-section,
+.orbis-public-version-card {
+  border: 1px solid rgba(16, 185, 129, 0.14);
+  border-radius: 17px;
+  background: white;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.045);
+}
+
+.orbis-public-drawer-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  font-size: 9px;
+  color: #0f766e;
+}
+
+.orbis-public-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 11px;
+}
+
+.orbis-public-profile-avatar {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #d1fae5, #fff7e8);
+  color: #08745d;
+}
+
+.orbis-public-drawer-section {
+  margin-top: 10px;
+  padding: 11px;
+}
+
+.orbis-public-menu-item,
+.orbis-public-party-ledger {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(15, 118, 110, 0.13);
+  border-radius: 13px;
+  background: #f7fcfa;
+  padding: 8px 9px;
+  color: #315a55;
+  font-size: 9px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.orbis-public-party-ledger {
+  width: 100%;
+  margin-top: 8px;
+  background: linear-gradient(135deg, #ecfdf5, #fff7e8);
+  color: #0f6f5e;
+}
+
+.orbis-public-version-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 11px;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-public-drawer {
+  background: #08181b;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-public-drawer-header {
+  border-bottom-color: rgba(52, 211, 153, 0.14);
+  background: rgba(8, 24, 27, 0.97);
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  :is(
+    .orbis-public-drawer-note,
+    .orbis-public-profile-card,
+    .orbis-public-drawer-section,
+    .orbis-public-version-card
+  ) {
+  border-color: rgba(52, 211, 153, 0.16);
+  background: #102629;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  :is(.orbis-public-menu-item, .orbis-public-party-ledger, .orbis-public-drawer-close) {
+  border-color: rgba(52, 211, 153, 0.16);
+  background: #0d2023;
+  color: #d6eeea;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-public-drawer
+  :is(h3, h4, p, span) {
+  color: #e7f2f1;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-public-settings-controls
+  > section {
+  border-color: rgba(52, 211, 153, 0.16) !important;
+  background: #0d2023 !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+  .orbis-public-settings-controls
+  button {
+  border-color: rgba(52, 211, 153, 0.16) !important;
+  background: #102629 !important;
+  color: #d6eeea !important;
+}
+
+@media (max-width: 640px) {
+  .orbis-accounting-public-shell .orbis-public-app-header {
+    padding: 9px 10px;
+  }
+
+  .orbis-signature-workspace {
+    padding: 9px 9px 92px;
+  }
+
+  .orbis-accounting-public-shell
+    .orbis-signature-workspace
+    [aria-label="Accounting workspace sections"] {
+    position: fixed;
+    left: 50%;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    z-index: 70;
+    display: grid;
+    width: min(calc(100vw - 16px), 480px);
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 4px;
+    transform: translateX(-50%);
+    border: 1px solid rgba(15, 118, 110, 0.16);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.96);
+    padding: 6px;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.2);
+    backdrop-filter: blur(18px);
+  }
+
+  .orbis-accounting-public-shell
+    .orbis-signature-workspace
+    [aria-label="Accounting workspace sections"]
+    button {
+    width: 100%;
+    min-height: 48px;
+    padding: 5px 2px !important;
+    border-radius: 12px !important;
+    font-size: 8px !important;
+    line-height: 1.05;
+    white-space: normal;
+  }
+
+  .orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"]
+    .orbis-signature-workspace
+    [aria-label="Accounting workspace sections"] {
+    border-color: rgba(52, 211, 153, 0.18);
+    background: rgba(7, 24, 27, 0.97);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.36);
+  }
+
+  .orbis-public-greeting-slot {
+    padding: 7px 9px 0;
+  }
+}
+
+/* ORBIS Public Accounting — Dark HD money surfaces (mobile-first, visual only). */
+.orbis-accounting-public-shell {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.orbis-public-money-panel {
+  position: relative;
+  isolation: isolate;
+}
+
+.orbis-public-money-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow:
+    0 9px 22px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.orbis-public-money-card::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255,255,255,.13), transparent 38%, rgba(255,255,255,.035));
+  content: "";
+  pointer-events: none;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-public-money-panel {
+  border-color: rgba(110, 231, 183, 0.23) !important;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(245,183,74,.10), transparent 28%),
+    linear-gradient(145deg, #102a29 0%, #112e2d 58%, #25271f 100%) !important;
+  box-shadow:
+    0 16px 34px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(255,255,255,.045) !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-public-money-card {
+  color: #f8fffd !important;
+  box-shadow:
+    0 10px 24px rgba(0,0,0,.27),
+    inset 0 1px 0 rgba(255,255,255,.075) !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-public-money-card[data-money-method="cashPaise"] {
+  border-color: rgba(52,211,153,.48) !important;
+  background: linear-gradient(145deg, #0d332b 0%, #123f35 100%) !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-public-money-card[data-money-method="bankPaise"] {
+  border-color: rgba(125,211,252,.52) !important;
+  background: linear-gradient(145deg, #102f42 0%, #17445a 100%) !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-public-money-card[data-money-method="upiPaise"] {
+  border-color: rgba(196,181,253,.52) !important;
+  background: linear-gradient(145deg, #2b2644 0%, #3b2f5f 100%) !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-public-money-card[data-money-method="pwtPaise"] {
+  border-color: rgba(251,191,36,.48) !important;
+  background: linear-gradient(145deg, #3b2d1b 0%, #4a381f 100%) !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-public-money-card > p {
+  color: #f5fffd !important;
+  text-shadow: 0 1px 1px rgba(0,0,0,.18);
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-public-money-card > p:first-child {
+  color: #c5e8e2 !important;
+  opacity: .9 !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-public-money-card > p:nth-child(2) {
+  opacity: 1 !important;
+  letter-spacing: -.01em;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-public-money-card > p:last-child {
+  color: #c9d8d6 !important;
+  opacity: .78 !important;
+}
+
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-signature-workspace [class*="from-blue-50"],
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-signature-workspace [class*="from-violet-50"],
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-signature-workspace [class*="from-orange-50"],
+.orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-signature-workspace [class*="from-emerald-50"] {
+  box-shadow:
+    0 10px 24px rgba(0,0,0,.20),
+    inset 0 1px 0 rgba(255,255,255,.045);
+}
+
+@media (max-width: 640px) {
+  .orbis-public-money-panel {
+    padding: 14px !important;
+  }
+
+  .orbis-public-money-card {
+    min-height: 74px;
+    border-radius: 14px !important;
+    padding: 10px !important;
+  }
+
+  .orbis-accounting-public-shell[data-accounting-appearance="SIGNATURE_DARK"] .orbis-public-money-card > p:nth-child(2) {
+    font-size: 14px;
+    line-height: 1.05;
+  }
+}

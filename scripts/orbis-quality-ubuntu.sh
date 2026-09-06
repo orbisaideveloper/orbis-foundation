@@ -138,7 +138,7 @@ set +e
 proot-distro login ubuntu \
   --bind "$ROOT:/orbis-source" \
   --bind "$STATE_DIR:/orbis-state" \
-  -- bash -s <<'UBUNTU'
+  -- env ORBIS_UBUNTU_START_INDEX="$START_INDEX" bash -s <<'UBUNTU'
 set -Eeuo pipefail
 
 TOOLS="/root/.orbis-quality-tools"
