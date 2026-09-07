@@ -17,10 +17,19 @@ sql() {
 required_tables=(
   FoundationAccountingOrganization
   FoundationAccountingParty
+  FoundationAccountingOrganizationMembership
+  FoundationAccountingUserIdentity
+  FoundationAccountingPartyClaim
+  FoundationLotteryAccountingPeriod
+  FoundationLotteryDocumentSequence
+  FoundationLotteryStockMovement
+  FoundationLotteryStockistEntry
   FoundationLotterySale
   FoundationLotteryPayment
+  FoundationLotterySettlement
   FoundationLotteryLedgerEntry
   FoundationLotteryAuditEvent
+  FoundationLotteryEntryClearance
   FoundationAccountingExpenseCategory
   FoundationAccountingExpenseProfile
   FoundationAccountingExpenseBill
@@ -39,7 +48,7 @@ for table in "${required_tables[@]}"; do
   fi
 done
 
-for item in   "FoundationAccountingExpenseProfile:scheduleType"   "FoundationAccountingExpenseProfile:recurringStartsAt"   "FoundationAccountingExpenseBill:billingMonth"
+for item in   "FoundationAccountingOrganization:userLedgerStorage"   "FoundationAccountingParty:uniqueCode"   "FoundationAccountingParty:email"   "FoundationAccountingParty:emailNormalized"   "FoundationAccountingParty:phoneNormalized"   "FoundationAccountingOrganizationMembership:userId"   "FoundationAccountingOrganizationMembership:role"   "FoundationAccountingOrganizationMembership:status"   "FoundationAccountingUserIdentity:orbisId"   "FoundationAccountingPartyClaim:partyId"   "FoundationAccountingPartyClaim:userId"   "FoundationAccountingPartyClaim:claimMethod"   "FoundationAccountingPartyClaim:status"   "FoundationAccountingExpenseProfile:scheduleType"   "FoundationAccountingExpenseProfile:recurringStartsAt"   "FoundationAccountingExpenseBill:billingMonth"
 do
   table="${item%%:*}"
   column="${item#*:}"
@@ -52,7 +61,7 @@ do
   fi
 done
 
-for constraint in   FoundationAccountingExpenseProfile_schedule_type_check   FoundationAccountingExpenseBill_billing_month_check
+for constraint in   FoundationAccountingOrganization_user_ledger_storage_check   FoundationAccountingOrganizationMembership_pkey   FoundationAccountingOrganizationMembership_role_check   FoundationAccountingOrganizationMembership_status_check   FoundationAccountingOrganizationMembership_organizationId_fkey   FoundationAccountingUserIdentity_pkey   FoundationAccountingPartyClaim_pkey   FoundationAccountingPartyClaim_claim_method_check   FoundationAccountingPartyClaim_status_check   FoundationAccountingPartyClaim_partyId_fkey   FoundationAccountingExpenseProfile_schedule_type_check   FoundationAccountingExpenseBill_billing_month_check
 do
   count="$(sql "SELECT count(*) FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname='public' AND c.conname='${constraint}'")"
   if [[ "$count" == "1" ]]; then
@@ -63,9 +72,9 @@ do
   fi
 done
 
-for index in   FoundationAccountingExpenseBill_org_profile_month_key   FoundationAccountingExpenseProfile_org_schedule_idx
+for index in   FoundationAccountingParty_uniqueCode_key   FoundationAccountingOrganizationMembership_organizationId_userId_key   FoundationAccountingOrganizationMembership_userId_status_idx   FoundationAccountingOrganizationMembership_organizationId_status_idx   FoundationAccountingParty_emailNormalized_status_idx   FoundationAccountingParty_phoneNormalized_status_idx   FoundationAccountingUserIdentity_orbisId_key   FoundationAccountingPartyClaim_partyId_key   FoundationAccountingPartyClaim_userId_status_idx   FoundationAccountingExpenseBill_org_profile_month_key   FoundationAccountingExpenseProfile_org_schedule_idx
 do
-  count="$(sql "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname='${index}'")"
+  count="$(sql "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname=left('${index}',63)")"
   if [[ "$count" == "1" ]]; then
     echo "PASS index: $index"
   else
@@ -75,12 +84,49 @@ do
 done
 
 echo
-echo "Security visibility (diagnostic):"
-for table in   FoundationAccountingExpenseCategory   FoundationAccountingExpenseProfile   FoundationAccountingExpenseBill   FoundationAccountingExpensePayment   FoundationAccountingCustomerBill
+echo "Security migration state:"
+for table in   FoundationAccountingOrganizationMembership   FoundationAccountingUserIdentity   FoundationAccountingPartyClaim   FoundationAccountingExpenseCategory   FoundationAccountingExpenseProfile   FoundationAccountingExpenseBill   FoundationAccountingExpensePayment   FoundationAccountingCustomerBill
 do
   rls="$(sql "SELECT CASE WHEN relrowsecurity THEN 'ON' ELSE 'OFF' END FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='${table}'")"
-  echo "RLS $table: ${rls:-MISSING}"
+  if [[ "$rls" == "ON" ]]; then
+    echo "PASS RLS: $table"
+  else
+    echo "FAIL RLS: $table (${rls:-MISSING})"
+    fail=1
+  fi
 done
+
+for item in \
+  "FoundationAccountingExpenseBill:FoundationAccountingExpenseBill_immutable" \
+  "FoundationAccountingExpensePayment:FoundationAccountingExpensePayment_immutable" \
+  "FoundationAccountingCustomerBill:FoundationAccountingCustomerBill_immutable"
+do
+  table="${item%%:*}"
+  trigger="${item#*:}"
+  count="$(sql "SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='${table}' AND t.tgname='${trigger}' AND NOT t.tgisinternal")"
+  if [[ "$count" == "1" ]]; then
+    echo "PASS trigger: $trigger"
+  else
+    echo "FAIL trigger missing: $trigger"
+    fail=1
+  fi
+done
+
+grant_count="$(sql "SELECT count(*) FROM information_schema.table_privileges WHERE table_schema='public' AND grantee IN ('PUBLIC','anon','authenticated') AND table_name IN ('FoundationAccountingOrganizationMembership','FoundationAccountingUserIdentity','FoundationAccountingPartyClaim','FoundationAccountingExpenseCategory','FoundationAccountingExpenseProfile','FoundationAccountingExpenseBill','FoundationAccountingExpensePayment','FoundationAccountingCustomerBill')")"
+if [[ "$grant_count" == "0" ]]; then
+  echo "PASS direct app grants: none"
+else
+  echo "FAIL direct app grants remain on hardened Accounting tables: $grant_count"
+  fail=1
+fi
+
+blank_party_codes="$(sql "SELECT count(*) FROM \"FoundationAccountingParty\" WHERE \"uniqueCode\" IS NULL OR btrim(\"uniqueCode\")=''")"
+if [[ "$blank_party_codes" == "0" ]]; then
+  echo "PASS party unique codes: complete"
+else
+  echo "FAIL party unique codes missing/blank: $blank_party_codes"
+  fail=1
+fi
 
 if [[ "$fail" -ne 0 ]]; then
   echo "DATABASE DRIFT CHECK: FAIL"

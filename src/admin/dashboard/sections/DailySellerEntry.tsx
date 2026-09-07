@@ -392,6 +392,9 @@ export interface DailySellerEntryProps {
     saleId: string,
   ) => Promise<LotteryDailySellerDraftIdentity | null>;
   onUpdateTdsRate: (tdsRateBps: number) => Promise<boolean>;
+  onRegisterFlush?: (
+    flush: (() => Promise<boolean>) | null,
+  ) => void;
   editRequest?: { partyId: string; occurredAt: string; token: number } | null;
 }
 
@@ -403,6 +406,7 @@ export function DailySellerEntry({
   onDeleteDraft,
   onCorrectPosted,
   onUpdateTdsRate,
+  onRegisterFlush,
   editRequest,
 }: Readonly<DailySellerEntryProps>) {
   const [viewMode, setViewMode] = useState<DailyViewMode>("grid");
@@ -700,6 +704,19 @@ export function DailySellerEntry({
 
   const persistRowRef = useRef(persistRow);
   persistRowRef.current = persistRow;
+
+  useEffect(() => {
+    if (!onRegisterFlush) return undefined;
+    const flushDirtyRows = async () => {
+      const dirtyPartyIds = [...dirtyPartyIdsRef.current];
+      for (const partyId of dirtyPartyIds) {
+        await persistRowRef.current(partyId, true);
+      }
+      return dirtyPartyIdsRef.current.size === 0;
+    };
+    onRegisterFlush(flushDirtyRows);
+    return () => onRegisterFlush(null);
+  }, [onRegisterFlush]);
 
   const saveRow = async (party: LotteryParty) => {
     setLocalError(null);

@@ -20,6 +20,7 @@ export interface LotteryParty {
   organizationId: string;
   partyType: LotteryPartyType;
   name: string;
+  email: string | null;
   phone: string | null;
   uniqueCode: string;
   ticketRatePaise: string;

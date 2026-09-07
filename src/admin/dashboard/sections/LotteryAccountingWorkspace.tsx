@@ -40,6 +40,8 @@ type PartyMasterType = Extract<LotteryPartyType, "SELLER" | "STOCKIST" | "CUSTOM
 type PaymentKind = "SELLER" | "STOCKIST" | "CUSTOMER" | "EXPENSE";
 type MoneyMethod = "cashPaise" | "bankPaise" | "upiPaise" | "pwtPaise";
 type LedgerPeriod = "today" | "7d" | "10d" | "month" | "year" | "custom";
+type SellerFlush = () => Promise<boolean>;
+type SellerPersistenceTracker = <T,>(action: () => Promise<T>) => Promise<T>;
 type LedgerBookType =
   | "seller"
   | "customer"
@@ -590,6 +592,9 @@ export function LotteryAccountingWorkspace({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const refreshRequestRef = useRef(0);
+  const dailySellerFlushRef = useRef<SellerFlush | null>(null);
+  const sellerWorkspaceStaleRef = useRef(false);
+  const sellerPersistenceTailRef = useRef<Promise<void>>(Promise.resolve());
   const [ledgerLaunch, setLedgerLaunch] = useState<LedgerLaunch | null>(null);
 
   useEffect(() => {
@@ -618,7 +623,7 @@ export function LotteryAccountingWorkspace({
       if (!nextId) {
         setWorkspace(null);
         setRefreshing(false);
-        return;
+        return true;
       }
       setRefreshing(true);
       try {
@@ -626,15 +631,61 @@ export function LotteryAccountingWorkspace({
         if (requestId === refreshRequestRef.current) {
           setWorkspace(nextWorkspace);
         }
+        return requestId === refreshRequestRef.current;
       } catch (cause) {
         if (requestId === refreshRequestRef.current) {
           setError(cause instanceof Error ? cause.message : "Accounting unavailable.");
         }
+        return false;
       } finally {
         if (requestId === refreshRequestRef.current) setRefreshing(false);
       }
     },
     [api, organizationId],
+  );
+
+  const trackSellerPersistence = useCallback<SellerPersistenceTracker>(
+    (action) => {
+      const result = action().then((value) => {
+        sellerWorkspaceStaleRef.current = true;
+        return value;
+      });
+      const settled = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      sellerPersistenceTailRef.current = Promise.all([
+        sellerPersistenceTailRef.current,
+        settled,
+      ]).then(() => undefined);
+      return result;
+    },
+    [],
+  );
+
+  const registerDailySellerFlush = useCallback((flush: SellerFlush | null) => {
+    dailySellerFlushRef.current = flush;
+  }, []);
+
+  const selectWorkspaceTab = useCallback(
+    async (nextTab: WorkspaceTab) => {
+      if (nextTab === tab) return;
+      if (tab === "daily" && nextTab !== "daily") {
+        await sellerPersistenceTailRef.current;
+        const flushed = dailySellerFlushRef.current
+          ? await dailySellerFlushRef.current()
+          : true;
+        await sellerPersistenceTailRef.current;
+        if (!flushed) return;
+        if (sellerWorkspaceStaleRef.current) {
+          const refreshed = await refreshWorkspace();
+          if (!refreshed) return;
+          sellerWorkspaceStaleRef.current = false;
+        }
+      }
+      setTab(nextTab);
+    },
+    [refreshWorkspace, tab],
   );
 
   useEffect(() => {
@@ -781,7 +832,7 @@ export function LotteryAccountingWorkspace({
         ariaLabel="Accounting workspace sections"
         tabs={WORKSPACE_TABS}
         activeTab={tab}
-        onSelect={setTab}
+        onSelect={(nextTab) => void selectWorkspaceTab(nextTab)}
       />
 
       {!workspace ? (
@@ -816,6 +867,8 @@ export function LotteryAccountingWorkspace({
               setMode={setDailyMode}
               run={run}
               refreshWorkspace={refreshWorkspace}
+              trackSellerPersistence={trackSellerPersistence}
+              registerSellerFlush={registerDailySellerFlush}
             />
           )}
           {tab === "payment" && (
@@ -1420,6 +1473,8 @@ function DailyPanel({
   setMode,
   run,
   refreshWorkspace,
+  trackSellerPersistence,
+  registerSellerFlush,
 }: Readonly<{
   workspace: LotteryWorkspace;
   organizationId: string;
@@ -1431,7 +1486,9 @@ function DailyPanel({
     action: () => Promise<unknown>,
     success: string,
   ) => Promise<boolean>;
-  refreshWorkspace: () => Promise<void>;
+  refreshWorkspace: () => Promise<boolean>;
+  trackSellerPersistence: SellerPersistenceTracker;
+  registerSellerFlush: (flush: SellerFlush | null) => void;
 }>) {
   return (
     <div className="space-y-3">
@@ -1460,9 +1517,13 @@ function DailyPanel({
           organizationId={organizationId}
           workspace={workspace}
           editRequest={null}
-          onSaveDraft={(payload) => api.saveDailySellerDraft(payload)}
+          onSaveDraft={(payload) =>
+            trackSellerPersistence(() => api.saveDailySellerDraft(payload))
+          }
           onUpdateDraft={(saleId, payload) =>
-            api.updateDailySellerDraft(saleId, payload)
+            trackSellerPersistence(() =>
+              api.updateDailySellerDraft(saleId, payload),
+            )
           }
           onDeleteDraft={async (saleId) => {
             await api.deleteDailySellerDraft(saleId, { organizationId });
@@ -1470,13 +1531,16 @@ function DailyPanel({
             return true;
           }}
           onCorrectPosted={(saleId) =>
-            api.correctPostedSale(saleId, { organizationId })
+            trackSellerPersistence(() =>
+              api.correctPostedSale(saleId, { organizationId }),
+            )
           }
           onUpdateTdsRate={async (tdsRateBps) => {
             await api.updateOrganizationTdsRate({ organizationId, tdsRateBps });
             await refreshWorkspace();
             return true;
           }}
+          onRegisterFlush={registerSellerFlush}
         />
       )}
       {mode === "STOCKIST" && (
@@ -4033,6 +4097,7 @@ function MastersPanel({
   const [selectedPartyId, setSelectedPartyId] = useState("");
   const [partyEditorOpen, setPartyEditorOpen] = useState(false);
   const [partyName, setPartyName] = useState("");
+  const [partyEmail, setPartyEmail] = useState("");
   const [partyPhone, setPartyPhone] = useState("");
   const [partyRate, setPartyRate] = useState("");
   const [expenseCategoryId, setExpenseCategoryId] = useState(
@@ -4063,6 +4128,7 @@ function MastersPanel({
   const populatePartyEditor = useCallback((party: LotteryParty) => {
     setSelectedPartyId(party.id);
     setPartyName(party.name);
+    setPartyEmail(party.email || "");
     setPartyPhone(party.phone || "");
     setPartyRate(
       BigInt(party.ticketRatePaise) > 0n
@@ -4137,6 +4203,7 @@ function MastersPanel({
   const openNewParty = () => {
     setSelectedPartyId("");
     setPartyName("");
+    setPartyEmail("");
     setPartyPhone("");
     setPartyRate("");
     setPartyEditorOpen(true);
@@ -4155,6 +4222,7 @@ function MastersPanel({
             organizationId,
             partyId: selectedPartyId,
             name: partyName.trim(),
+            email: partyEmail.trim() || undefined,
             phone: partyPhone.trim() || undefined,
             ticketRatePaise: ticketRatePaise || "0",
           }),
@@ -4169,6 +4237,7 @@ function MastersPanel({
             organizationId,
             partyType: type,
             name: partyName.trim(),
+            email: partyEmail.trim() || undefined,
             phone: partyPhone.trim() || undefined,
             ticketRatePaise: ticketRatePaise || "0",
           }),
@@ -4304,10 +4373,21 @@ function MastersPanel({
                   />
                 )}
                 <input
+                  aria-label="Party email"
+                  type="email"
+                  autoComplete="email"
+                  value={partyEmail}
+                  onChange={(event) => setPartyEmail(event.target.value)}
+                  className={CONTROL}
+                  placeholder="Email optional"
+                />
+                <input
                   aria-label="Party phone"
+                  type="tel"
+                  autoComplete="tel"
                   value={partyPhone}
                   onChange={(event) => setPartyPhone(event.target.value)}
-                  className={type === "CUSTOMER" ? `${CONTROL} col-span-2` : CONTROL}
+                  className={CONTROL}
                   placeholder="Phone optional"
                 />
               </div>

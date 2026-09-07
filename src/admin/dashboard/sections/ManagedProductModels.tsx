@@ -188,6 +188,33 @@ export function ManagedProductModels({
     );
   };
 
+  const openPublicView = (
+    mode: Exclude<AccountingViewMode, "CURRENT">,
+  ) => {
+    window.history.pushState(
+      {
+        ...window.history.state,
+        orbisAccountingPublicView: mode,
+      },
+      "",
+    );
+    setViewMode(mode);
+  };
+
+  useEffect(() => {
+    if (viewMode === "CURRENT") return undefined;
+    const closePublicView = () => setViewMode("CURRENT");
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") window.history.back();
+    };
+    window.addEventListener("popstate", closePublicView);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("popstate", closePublicView);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [viewMode]);
+
   const runReview = async () => {
     if (!model || workingAction) return;
     setWorkingAction("review");
@@ -264,7 +291,7 @@ export function ManagedProductModels({
         mode="PREVIEW"
         version={model.currentVersion}
         api={lotteryAccountingApi}
-        onBack={() => setViewMode("CURRENT")}
+        onBack={() => window.history.back()}
       />
     );
   }
@@ -275,7 +302,7 @@ export function ManagedProductModels({
         mode="LIVE"
         version={model.publishedVersion}
         api={lotteryAccountingApi}
-        onBack={() => setViewMode("CURRENT")}
+        onBack={() => window.history.back()}
       />
     );
   }
@@ -349,7 +376,7 @@ export function ManagedProductModels({
             title={`Publish Preview · ${versionLabel(model.currentVersion?.sequence)}`}
             subtitle="See the latest Current Draft through Classic, Signature Emerald or Signature Dark."
             icon={<Eye className="h-5 w-5" />}
-            onClick={() => setViewMode("PREVIEW")}
+            onClick={() => openPublicView("PREVIEW")}
           />
           <NavigationCard
             title={`Live User · ${versionLabel(model.publishedVersion?.sequence)}`}
@@ -359,7 +386,7 @@ export function ManagedProductModels({
                 : "No live version yet. Publish the reviewed first draft to create it."
             }
             icon={<Radio className="h-5 w-5" />}
-            onClick={() => setViewMode("LIVE")}
+            onClick={() => openPublicView("LIVE")}
             disabled={!model.publishedVersion}
           />
           <NavigationCard

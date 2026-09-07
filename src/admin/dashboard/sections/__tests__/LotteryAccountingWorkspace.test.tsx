@@ -28,6 +28,9 @@ const PAYMENT_CASH_LABEL = "Payment Cash";
 const CURRENT_RECORDED_AT = "2026-09-05T00:00:00.000Z";
 const AMOUNT_TO_RECEIVE_LABEL = "Amount to receive";
 const UNIVERSAL_LEDGER_HUB = "Universal Ledger Hub";
+const CORRECTED_DRAFT_ID = "draft-corrected-1";
+const CORRECTED_DRAFT_REFERENCE = "SAL-2026-2";
+const ENTRY_DATE_FOR_ALL_SELLERS = "Entry date for all sellers";
 
 const organization = {
   id: "org-1",
@@ -282,8 +285,8 @@ function createApi(): LotteryAccountingClient {
     deleteDailySellerDraft: vi.fn().mockResolvedValue(undefined),
     postDailySellerDraft: vi.fn().mockResolvedValue(undefined),
     correctPostedSale: vi.fn().mockResolvedValue({
-      id: "draft-corrected-1",
-      reference: "SAL-2026-2",
+      id: CORRECTED_DRAFT_ID,
+      reference: CORRECTED_DRAFT_REFERENCE,
       status: "DRAFT",
     }),
     recordPayment: vi.fn().mockResolvedValue({
@@ -611,7 +614,7 @@ describe("LotteryAccountingWorkspace", () => {
 
     expect(await screen.findByText(DAILY_SELLER_ENTRY)).toBeInTheDocument();
     expect(screen.getByText(/Daily saved total/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Entry date for all sellers"), {
+    fireEvent.change(screen.getByLabelText(ENTRY_DATE_FOR_ALL_SELLERS), {
       target: { value: BACKDATED_ENTRY_DATE },
     });
     fireEvent.change(screen.getByLabelText(SELLER_DISPATCH_LABEL), {
@@ -643,6 +646,93 @@ describe("LotteryAccountingWorkspace", () => {
         eveningReturnQuantity: "5",
         commissionPaise: "10000",
       }),
+    );
+  });
+
+  it("refreshes derived views once after a persisted seller correction without slowing the save", async () => {
+    const postedCommissionWorkspace: LotteryWorkspace = {
+      ...workspace,
+      sales: [
+        {
+          ...workspace.sales[0],
+          commissionPaise: "5000",
+          tdsPaise: "500",
+          netPayablePaise: "75500",
+        },
+      ],
+      draftSales: [],
+    };
+    const correctedWorkspace: LotteryWorkspace = {
+      ...workspace,
+      sales: [],
+      draftSales: [
+        {
+          ...postedCommissionWorkspace.sales[0],
+          id: CORRECTED_DRAFT_ID,
+          reference: CORRECTED_DRAFT_REFERENCE,
+          commissionPaise: "0",
+          tdsPaise: "0",
+          netPayablePaise: "80000",
+          status: "DRAFT",
+          correctionOfSaleId: "sale-1",
+        },
+      ],
+    };
+    const api = createApi();
+    vi.mocked(api.loadWorkspace)
+      .mockResolvedValueOnce(postedCommissionWorkspace)
+      .mockResolvedValue(correctedWorkspace);
+    vi.mocked(api.correctPostedSale).mockResolvedValue({
+      id: CORRECTED_DRAFT_ID,
+      reference: CORRECTED_DRAFT_REFERENCE,
+      status: "DRAFT",
+    });
+    vi.mocked(api.updateDailySellerDraft).mockResolvedValue({
+      id: CORRECTED_DRAFT_ID,
+      reference: CORRECTED_DRAFT_REFERENCE,
+      status: "DRAFT",
+    });
+
+    render(<LotteryAccountingWorkspace api={api} />);
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+    expect(api.loadWorkspace).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: DAILY_ENTRY_BUTTON }));
+    await screen.findByText(DAILY_SELLER_ENTRY);
+    fireEvent.change(screen.getByLabelText(ENTRY_DATE_FOR_ALL_SELLERS), {
+      target: { value: ACCOUNTING_ENTRY_DATE },
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText(COMMISSION_LABEL)).toHaveValue("50.00"),
+    );
+
+    fireEvent.change(screen.getByLabelText(COMMISSION_LABEL), {
+      target: { value: "0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: SAVE_TABLE_BUTTON }));
+
+    await waitFor(() =>
+      expect(api.updateDailySellerDraft).toHaveBeenCalledWith(
+        CORRECTED_DRAFT_ID,
+        expect.objectContaining({ commissionPaise: "0" }),
+      ),
+    );
+    expect(api.correctPostedSale).toHaveBeenCalledWith("sale-1", {
+      organizationId: "org-1",
+    });
+    expect(api.loadWorkspace).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
+    await waitFor(() => expect(api.loadWorkspace).toHaveBeenCalledTimes(2));
+    await screen.findByText(ORGANIZATION_OVERVIEW);
+
+    fireEvent.click(screen.getByRole("button", { name: DAILY_ENTRY_BUTTON }));
+    await screen.findByText(DAILY_SELLER_ENTRY);
+    fireEvent.change(screen.getByLabelText(ENTRY_DATE_FOR_ALL_SELLERS), {
+      target: { value: ACCOUNTING_ENTRY_DATE },
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText(COMMISSION_LABEL)).toHaveValue("0.00"),
     );
   });
 

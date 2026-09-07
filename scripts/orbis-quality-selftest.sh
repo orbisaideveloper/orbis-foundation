@@ -22,6 +22,7 @@ bash -n \
   scripts/orbis-quality-ubuntu.sh \
   scripts/orbis-quality-all.sh \
   scripts/orbis-quality-status.sh \
+  scripts/orbis-db-drift-check.sh \
   scripts/orbis-report-run.sh
 echo "   PASS"
 
@@ -114,6 +115,18 @@ read -r pipeline stage < <(
   orbis_state_read_failure "$TMP/resume-v2.state" | tr '\t' ' '
 )
 [[ "$pipeline" == "UBUNTU" && "$stage" == "jscpd" ]]
+echo "   PASS"
+
+echo "11. DB drift uses the existing secure ORBIS env only at the DB stage"
+grep -Fq 'local envfile="$HOME/.config/orbis/db.env"' scripts/orbis-quality-termux.sh
+grep -Fq 'ORBIS_PSQL_URL' scripts/orbis-quality-termux.sh
+grep -Fq 'FoundationAccountingParty_uniqueCode_key' scripts/orbis-db-drift-check.sh
+grep -Fq 'FoundationAccountingOrganizationMembership' scripts/orbis-db-drift-check.sh
+grep -Fq 'FoundationAccountingUserIdentity' scripts/orbis-db-drift-check.sh
+grep -Fq 'FoundationAccountingPartyClaim' scripts/orbis-db-drift-check.sh
+grep -Fq 'FoundationAccountingParty:emailNormalized' scripts/orbis-db-drift-check.sh
+grep -Fq "indexname=left" scripts/orbis-db-drift-check.sh
+grep -Fq 'FoundationAccountingExpenseBill_immutable' scripts/orbis-db-drift-check.sh
 echo "   PASS"
 
 echo

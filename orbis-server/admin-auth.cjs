@@ -2,6 +2,9 @@ const { createClient } = require("@supabase/supabase-js");
 
 const REQUIRED_ADMIN_EMAIL = "orbisaideveloper@gmail.com";
 const ADMIN_IDENTITY_TIMEOUT_MS = 8_000;
+const AUTHENTICATION_REQUIRED_MESSAGE = "Authentication required";
+const ADMIN_AUTHENTICATION_UNAVAILABLE_MESSAGE =
+  "Admin authentication unavailable";
 
 function createIdentityTimeoutError() {
   const error = new Error("ADMIN_IDENTITY_TIMEOUT");
@@ -86,29 +89,18 @@ function hasServerControlledAdminMembership(user) {
   );
 }
 
-function createAdminAuthMiddleware(dependencies = {}) {
+function createIdentityLookup(dependencies = {}) {
   const makeClient = dependencies.createClient || createClient;
   const identityTimeoutMs =
     dependencies.identityTimeoutMs || ADMIN_IDENTITY_TIMEOUT_MS;
   let cachedClient = null;
   let cachedConfiguration = null;
 
-  return async function requireAuthenticatedAdmin(req, res, next) {
-    const token = getBearerToken(req.get("Authorization"));
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required",
-      });
-    }
-
+  return async function lookupIdentity(token) {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
     if (!supabaseUrl || !supabaseAnonKey) {
-      return res.status(503).json({
-        success: false,
-        message: "Admin authentication unavailable",
-      });
+      return { state: "UNAVAILABLE" };
     }
 
     try {
@@ -125,62 +117,154 @@ function createAdminAuthMiddleware(dependencies = {}) {
         identityTimeoutMs,
       );
       if (error || !data?.user) {
-        return res.status(401).json({
-          success: false,
-          message: "Authentication required",
-        });
+        return { state: "UNAUTHENTICATED" };
       }
+      return { state: "AUTHENTICATED", user: data.user };
+    } catch (error) {
+      return {
+        state: "ERROR",
+        timedOut: error?.code === "ADMIN_IDENTITY_TIMEOUT",
+      };
+    }
+  };
+}
 
-      if (!hasVerifiedEmail(data.user)) {
-        return res.status(403).json({
-          success: false,
-          code: "EMAIL_UNVERIFIED",
-          message: "Admin email verification required",
-        });
-      }
+async function resolveAuthenticatedIdentity(
+  req,
+  res,
+  lookupIdentity,
+  {
+    logPrefix,
+    timeoutCode,
+    timeoutMessage,
+    unavailableMessage,
+  },
+) {
+  const token = getBearerToken(req.get("Authorization"));
+  if (!token) {
+    res.status(401).json({
+      success: false,
+      message: AUTHENTICATION_REQUIRED_MESSAGE,
+    });
+    return null;
+  }
 
-      if (hasServerControlledAdminMembership(data.user)) {
-        req.adminUser = { id: data.user.id };
-        return next();
-      }
+  const identity = await lookupIdentity(token);
+  if (identity.state === "UNAVAILABLE") {
+    res.status(503).json({
+      success: false,
+      message: unavailableMessage,
+    });
+    return null;
+  }
+  if (identity.state === "UNAUTHENTICATED") {
+    res.status(401).json({
+      success: false,
+      message: AUTHENTICATION_REQUIRED_MESSAGE,
+    });
+    return null;
+  }
+  if (identity.state === "ERROR") {
+    console.error(
+      identity.timedOut
+        ? `[${logPrefix}] Identity verification timed out`
+        : `[${logPrefix}] Identity verification unavailable`,
+    );
+    res.status(503).json({
+      success: false,
+      ...(identity.timedOut ? { code: timeoutCode } : {}),
+      message: identity.timedOut ? timeoutMessage : unavailableMessage,
+    });
+    return null;
+  }
 
-      if (hasConfiguredAdminEmailMembership(data.user)) {
-        req.adminUser = { id: data.user.id };
-        return next();
-      }
+  return identity.user;
+}
 
-      if (data.user.email === REQUIRED_ADMIN_EMAIL) {
-        return res.status(503).json({
-          success: false,
-          code: "ADMIN_AUTH_CONFIGURATION_MISSING",
-          message: "Admin authentication unavailable",
-        });
-      }
+function createAdminAuthMiddleware(dependencies = {}) {
+  const lookupIdentity = createIdentityLookup(dependencies);
 
+  return async function requireAuthenticatedAdmin(req, res, next) {
+    const user = await resolveAuthenticatedIdentity(
+      req,
+      res,
+      lookupIdentity,
+      {
+        logPrefix: "AdminAuth",
+        timeoutCode: "ADMIN_IDENTITY_TIMEOUT",
+        timeoutMessage: "Admin authentication verification timed out",
+        unavailableMessage: ADMIN_AUTHENTICATION_UNAVAILABLE_MESSAGE,
+      },
+    );
+    if (!user) return;
+
+    if (!hasVerifiedEmail(user)) {
       return res.status(403).json({
         success: false,
-        message: "Admin access required",
-      });
-    } catch (error) {
-      const timedOut = error?.code === "ADMIN_IDENTITY_TIMEOUT";
-      console.error(
-        timedOut
-          ? "[AdminAuth] Identity verification timed out"
-          : "[AdminAuth] Identity verification unavailable",
-      );
-      return res.status(503).json({
-        success: false,
-        ...(timedOut ? { code: "ADMIN_IDENTITY_TIMEOUT" } : {}),
-        message: timedOut
-          ? "Admin authentication verification timed out"
-          : "Admin authentication unavailable",
+        code: "EMAIL_UNVERIFIED",
+        message: "Admin email verification required",
       });
     }
+
+    if (hasServerControlledAdminMembership(user)) {
+      req.adminUser = { id: user.id };
+      return next();
+    }
+
+    if (hasConfiguredAdminEmailMembership(user)) {
+      req.adminUser = { id: user.id };
+      return next();
+    }
+
+    if (user.email === REQUIRED_ADMIN_EMAIL) {
+      return res.status(503).json({
+        success: false,
+        code: "ADMIN_AUTH_CONFIGURATION_MISSING",
+        message: ADMIN_AUTHENTICATION_UNAVAILABLE_MESSAGE,
+      });
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: "Admin access required",
+    });
+  };
+}
+
+function createAuthenticatedUserMiddleware(dependencies = {}) {
+  const lookupIdentity = createIdentityLookup(dependencies);
+
+  return async function requireAuthenticatedUser(req, res, next) {
+    const user = await resolveAuthenticatedIdentity(
+      req,
+      res,
+      lookupIdentity,
+      {
+        logPrefix: "UserAuth",
+        timeoutCode: "IDENTITY_TIMEOUT",
+        timeoutMessage: "Authentication verification timed out",
+        unavailableMessage: "Authentication unavailable",
+      },
+    );
+    if (!user) return;
+
+    req.publicUser = {
+      id: user.id,
+      email: typeof user.email === "string" ? user.email : null,
+    };
+    req.publicVerifiedContact = {
+      email: typeof user.email === "string" ? user.email : null,
+      emailVerified: Boolean(user.email_confirmed_at),
+      phone: typeof user.phone === "string" ? user.phone : null,
+      phoneVerified: Boolean(user.phone_confirmed_at),
+    };
+    return next();
   };
 }
 
 module.exports = {
   createAdminAuthMiddleware,
+  createAuthenticatedUserMiddleware,
   ADMIN_IDENTITY_TIMEOUT_MS,
   getBearerToken,
   hasConfiguredAdminEmailMembership,
@@ -188,4 +272,5 @@ module.exports = {
   hasVerifiedEmail,
   REQUIRED_ADMIN_EMAIL,
   requireAuthenticatedAdmin: createAdminAuthMiddleware(),
+  requireAuthenticatedUser: createAuthenticatedUserMiddleware(),
 };

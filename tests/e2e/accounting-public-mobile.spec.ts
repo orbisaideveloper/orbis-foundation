@@ -169,10 +169,10 @@ test("@smoke accounting public language switch keeps greeting and layout", async
   await expectNoHorizontalOverflow(page);
 });
 
-test("@visual accounting public Signature Emerald shell", async ({ page }) => {
+test("@visual accounting public Signature Emerald viewport", async ({ page }) => {
   await openPublicHarness(page);
 
-  await expect(page.getByTestId(PUBLIC_SHELL_TEST_ID)).toHaveScreenshot(
+  await expect(page).toHaveScreenshot(
     "accounting-public-signature-emerald.png",
     {
       animations: "disabled",
@@ -181,7 +181,7 @@ test("@visual accounting public Signature Emerald shell", async ({ page }) => {
   );
 });
 
-test("@visual accounting public Signature Emerald Dark shell", async ({ page }) => {
+test("@visual accounting public Signature Emerald Dark viewport", async ({ page }) => {
   await openPublicHarness(page);
   await openPublicMenu(page);
 
@@ -190,7 +190,7 @@ test("@visual accounting public Signature Emerald Dark shell", async ({ page }) 
     .click();
   await page.getByRole("button", { name: "Close public menu" }).click();
 
-  await expect(page.getByTestId(PUBLIC_SHELL_TEST_ID)).toHaveScreenshot(
+  await expect(page).toHaveScreenshot(
     "accounting-public-signature-emerald-dark.png",
     {
       animations: "disabled",

@@ -163,6 +163,7 @@ model FoundationAccountingOrganization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  memberships       FoundationAccountingOrganizationMembership[]
   parties           FoundationAccountingParty[]
   periods           FoundationLotteryAccountingPeriod[]
   documentSequences FoundationLotteryDocumentSequence[]
@@ -181,12 +182,31 @@ model FoundationAccountingOrganization {
   customerBills     FoundationAccountingCustomerBill[]
 }
 
+model FoundationAccountingOrganizationMembership {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  role           String   @default("MEMBER")
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, userId])
+  @@index([userId, status])
+  @@index([organizationId, status])
+}
+
 model FoundationAccountingParty {
   id                String   @id @default(uuid())
   organizationId    String
   partyType         String
   name              String
+  email             String?
   phone             String?
+  emailNormalized   String?
+  phoneNormalized   String?
   uniqueCode        String   @unique
   ticketRatePaise   BigInt   @default(0)
   commissionRateBps Int      @default(0)
@@ -201,9 +221,33 @@ model FoundationAccountingParty {
   stockMovements FoundationLotteryStockMovement[]
   stockistEntries FoundationLotteryStockistEntry[]
   customerBills   FoundationAccountingCustomerBill[]
+  identityClaim  FoundationAccountingPartyClaim?
 
   @@unique([organizationId, name])
   @@index([organizationId, status])
+  @@index([emailNormalized, status])
+  @@index([phoneNormalized, status])
+}
+
+
+model FoundationAccountingUserIdentity {
+  userId    String   @id
+  orbisId   String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FoundationAccountingPartyClaim {
+  id          String   @id @default(uuid())
+  partyId     String   @unique
+  userId      String
+  claimMethod String
+  status      String   @default("VERIFIED")
+  createdAt   DateTime @default(now())
+
+  party FoundationAccountingParty @relation(fields: [partyId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
 }
 
 model FoundationLotteryAccountingPeriod {

@@ -1030,4 +1030,25 @@ describe("Lottery Accounting Service", () => {
     expect(prisma.state.sales).toHaveLength(1);
     expect(second.sale.dispatchQuantity).toBe(110);
   });
+
+
+  it("can load a workspace without materializing recurring expenses", async () => {
+    const prisma = createPrismaMock();
+    let transactionCount = 0;
+    const runTransaction = prisma.$transaction;
+    prisma.$transaction = async (operation) => {
+      transactionCount += 1;
+      return runTransaction(operation);
+    };
+    const service = createLotteryAccountingService({ prisma });
+
+    await service.getWorkspace(
+      { organizationId: "org-1" },
+      { materializeRecurringExpenses: false },
+    );
+    expect(transactionCount).toBe(0);
+
+    await service.getWorkspace({ organizationId: "org-1" });
+    expect(transactionCount).toBe(1);
+  });
 });

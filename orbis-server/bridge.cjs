@@ -10,7 +10,10 @@ const { PrismaClient } = require("@prisma/client");
 
 const aiChatService = require("./ai/AIChatService.cjs");
 const providerManager = require("./ai/AIProviderManager.cjs");
-const { requireAuthenticatedAdmin } = require("./admin-auth.cjs");
+const {
+  requireAuthenticatedAdmin,
+  requireAuthenticatedUser,
+} = require("./admin-auth.cjs");
 const {
   createChatRateLimiter,
   validateChatPayload,
@@ -51,6 +54,9 @@ const {
 const {
   createLotteryAccountingRouter,
 } = require("./lottery-accounting-api.cjs");
+const {
+  createPublicLotteryAccountingRouter,
+} = require("./public-lottery-accounting-api.cjs");
 const {
   getDiagnostics,
   addSystemLog,
@@ -131,6 +137,10 @@ const adminModelRegistryRouter = createAdminModelRegistryRouter({
 const lotteryAccountingRouter = createLotteryAccountingRouter({
   prisma,
   authMiddleware: requireAuthenticatedAdmin,
+});
+const publicLotteryAccountingRouter = createPublicLotteryAccountingRouter({
+  prisma,
+  authMiddleware: requireAuthenticatedUser,
 });
 
 prisma
@@ -559,6 +569,8 @@ app.use(
   "/api/admin/models/orbis-accounting-ai/modules/lottery",
   lotteryAccountingRouter,
 );
+// Public Accounting is separate, authenticated, tenant-scoped and read-only.
+app.use("/api/accounting/lottery", publicLotteryAccountingRouter);
 
 function getDirectoryTree(dirPath, indent = "", changedFiles = []) {
   let result = "";

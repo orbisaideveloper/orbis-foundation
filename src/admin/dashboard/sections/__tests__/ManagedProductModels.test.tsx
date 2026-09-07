@@ -255,6 +255,17 @@ describe("ManagedProductModels", () => {
     expect(
       await screen.findByRole("region", { name: "Publish Preview" }),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("accounting-public-viewport")).toHaveClass(
+      "fixed",
+      "inset-0",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Current Mode" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("CURRENT DRAFT")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Admin inspection is read-only/i),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open public menu" }),
@@ -286,7 +297,7 @@ describe("ManagedProductModels", () => {
       screen.queryByRole("button", { name: "Versions" }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Current Mode" }));
+    window.dispatchEvent(new PopStateEvent("popstate"));
     expect(
       await screen.findByRole("region", {
         name: "ORBiS Accounting AI model home",

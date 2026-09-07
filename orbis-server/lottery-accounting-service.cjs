@@ -8,6 +8,10 @@ const {
   validatePayment,
 } = require("./lottery-accounting-core.cjs");
 const { randomUUID } = require("node:crypto");
+const {
+  normalizePartyEmail,
+  normalizePartyPhone,
+} = require("./accounting-party-contact.cjs");
 
 const DEFAULT_TDS_RATE_BPS = 200;
 const UNKNOWN_PARTY_NAME = "Unknown party";
@@ -446,13 +450,18 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       throw accountingError("INVALID_PARTY_TYPE", "partyType");
     }
     const profile = partyProfileFromInput(input);
+    const email = input.email?.trim() || null;
+    const phone = input.phone?.trim() || null;
     return prisma.$transaction(async (client) => {
       const party = await client.foundationAccountingParty.create({
         data: {
           organizationId,
           name,
           partyType,
-          phone: input.phone?.trim() || null,
+          email,
+          emailNormalized: normalizePartyEmail(email),
+          phone,
+          phoneNormalized: normalizePartyPhone(phone),
           uniqueCode: randomUUID(),
           ticketRatePaise: profile.ticketRatePaise,
           commissionRateBps: 0,
@@ -484,6 +493,8 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     );
     const partyId = requiredText(input?.partyId, "partyId");
     const profile = partyProfileFromInput(input);
+    const email = input.email?.trim() || null;
+    const phone = input.phone?.trim() || null;
     return prisma.$transaction(async (client) => {
       const party = await ensureParty(client, organizationId, partyId);
       const name = input?.name === undefined ? party.name : requiredText(input.name, "name");
@@ -491,7 +502,10 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         where: { id: party.id },
         data: {
           name,
-          phone: input.phone?.trim() || null,
+          email,
+          emailNormalized: normalizePartyEmail(email),
+          phone,
+          phoneNormalized: normalizePartyPhone(phone),
           ticketRatePaise: profile.ticketRatePaise,
         },
       });
@@ -504,7 +518,8 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           actorAdminId,
           metadata: {
             name,
-            phone: input.phone?.trim() || null,
+            email,
+            phone,
             ticketRatePaise: profile.ticketRatePaise.toString(),
           },
         },
@@ -2251,7 +2266,8 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     };
   }
 
-  async function getWorkspace({ organizationId }) {
+  async function getWorkspace({ organizationId }, options = {}) {
+    const { materializeRecurringExpenses = true } = options;
     const scopedOrganizationId = requiredText(organizationId, "organizationId");
     const organization =
       await prisma.foundationAccountingOrganization.findFirst({
@@ -2261,13 +2277,15 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       throw accountingError("ORGANIZATION_NOT_FOUND", "organizationId");
     }
 
-    await prisma.$transaction((client) =>
-      ensureRecurringExpenseBillsThrough(
-        client,
-        scopedOrganizationId,
-        now(),
-      ),
-    );
+    if (materializeRecurringExpenses) {
+      await prisma.$transaction((client) =>
+        ensureRecurringExpenseBillsThrough(
+          client,
+          scopedOrganizationId,
+          now(),
+        ),
+      );
+    }
 
     const [
       parties,

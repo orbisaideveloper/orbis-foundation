@@ -4,7 +4,6 @@ import {
   Bell,
   BookOpen,
   CircleUserRound,
-  Eye,
   Info,
   MoreVertical,
   Radio,
@@ -41,6 +40,8 @@ import {
 import "./accountingPublicTheme.css";
 
 export type AccountingPublicViewMode = "PREVIEW" | "LIVE";
+
+const PUBLIC_LIVE_USER_MODE_KEY = "public.liveUserMode";
 
 interface AccountingPublicViewProps {
   mode: AccountingPublicViewMode;
@@ -221,61 +222,41 @@ export function AccountingPublicView({
 
   return (
     <section
-      className="space-y-3"
+      className="fixed inset-0 z-[100] overflow-y-auto bg-[#F8FAFC]"
+      data-testid="accounting-public-viewport"
       aria-label={
         isPreview
           ? accountingText(language, "public.publishPreview")
-          : accountingText(language, "public.liveUserMode")
+          : accountingText(language, PUBLIC_LIVE_USER_MODE_KEY)
       }
       lang={accountingHtmlLang(language)}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-[10px] font-bold text-slate-600"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />{" "}
-          {accountingText(language, "public.currentMode")}
-        </button>
-        <span className="rounded-full border border-emerald-100 bg-white px-3 py-2 text-[9px] font-black text-emerald-700">
-          {isPreview
-            ? `${accountingText(language, "public.currentDraft")} ${versionLabel(version, language)}`
-            : `${accountingText(language, "public.livePublished")} ${versionLabel(version, language)}`}
-        </span>
-      </div>
-
-      {isClassic && (
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <AccountingLanguageSelector
-            value={language}
-            onChange={selectLanguage}
-          />
-          <AccountingAppearanceSelector
-            value={appearance}
-            onChange={selectAppearance}
-            language={language}
-          />
-        </div>
-      )}
-
-      <div className="rounded-xl border border-orange-100 bg-orange-50/70 p-3 text-[9px] leading-relaxed text-orange-800">
-        {accountingText(language, "public.readOnlyNotice")}
-      </div>
-
       {isClassic ? (
-        <div
-          data-testid="accounting-public-shell"
-          data-accounting-appearance={appearance}
-        >
-          <LotteryAccountingWorkspace
-            api={readOnlyApi}
-            dashboardGreeting={dashboardGreeting}
-          />
+        <div className="min-h-dvh space-y-3 p-3">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <AccountingLanguageSelector
+              value={language}
+              onChange={selectLanguage}
+            />
+            <AccountingAppearanceSelector
+              value={appearance}
+              onChange={selectAppearance}
+              language={language}
+            />
+          </div>
+          <div
+            data-testid="accounting-public-shell"
+            data-accounting-appearance={appearance}
+          >
+            <LotteryAccountingWorkspace
+              api={readOnlyApi}
+              dashboardGreeting={dashboardGreeting}
+            />
+          </div>
         </div>
       ) : (
         <div
-          className="orbis-accounting-public-shell"
+          className="orbis-accounting-public-shell orbis-public-viewport-shell"
           data-accounting-appearance={appearance}
           data-testid="accounting-public-shell"
         >
@@ -291,16 +272,10 @@ export function AccountingPublicView({
                     {accountingText(language, "public.title")}
                   </h2>
                   <div className="mt-0.5 flex items-center gap-1 text-[8px] font-semibold text-emerald-50/85">
-                    {isPreview ? (
-                      <Eye className="h-3 w-3" />
-                    ) : (
-                      <Radio className="h-3 w-3" />
-                    )}
+                    <Radio className="h-3 w-3" />
                     <span>
-                      {isPreview
-                        ? accountingText(language, "public.publicUserPreview")
-                        : accountingText(language, "public.liveUserMode")}{" "}
-                      · {versionLabel(version, language)}
+                      {accountingText(language, PUBLIC_LIVE_USER_MODE_KEY)} ·{" "}
+                      {versionLabel(version, language)}
                     </span>
                   </div>
                 </div>
@@ -382,7 +357,7 @@ export function AccountingPublicView({
                 {drawerContext === "notifications" && (
                   <div className="orbis-public-drawer-note">
                     <Bell className="h-4 w-4" />
-                    <span>No new notifications in this preview.</span>
+                    <span>No new notifications.</span>
                   </div>
                 )}
 
@@ -469,8 +444,7 @@ export function AccountingPublicView({
                     </p>
                     <p className="mt-1 text-[8px] leading-relaxed text-slate-500">
                       {versionLabel(version, language)} ·{" "}
-                      {isPreview ? "Public Preview" : "Live User Mode"} ·{" "}
-                      {version.lifecycle}
+                      {accountingText(language, PUBLIC_LIVE_USER_MODE_KEY)}
                     </p>
                   </div>
                 </section>

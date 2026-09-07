@@ -186,8 +186,26 @@ run_stage build "Production build" npm run build
 run_stage mutation "Targeted Accounting mutation test" npm run test:mutation:accounting
 
 db_drift_stage() {
+  local envfile="$HOME/.config/orbis/db.env"
+
+  if [[ -z "${DATABASE_URL:-}" && -f "$envfile" ]]; then
+    # Load the production DB URL only for the explicit read-only drift stage.
+    # shellcheck disable=SC1090
+    set -a
+    . "$envfile"
+    set +a
+
+    if [[ -z "${ORBIS_PSQL_URL:-}" ]]; then
+      echo "FAIL: secure DB env exists but ORBIS_PSQL_URL is missing."
+      return 25
+    fi
+
+    export DATABASE_URL="$ORBIS_PSQL_URL"
+    echo "DB drift: secure ORBIS PostgreSQL connection loaded."
+  fi
+
   if [[ -z "${DATABASE_URL:-}" ]]; then
-    echo "SKIP: DATABASE_URL is not present in this shell."
+    echo "SKIP: no DATABASE_URL and no secure ORBIS DB env is available."
     return 0
   fi
   npm run check:db-drift
