@@ -7,11 +7,15 @@ const {
   summarizeLotteryAccounting,
   validatePayment,
 } = require("./lottery-accounting-core.cjs");
-const { randomUUID } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
 const {
   normalizePartyEmail,
   normalizePartyPhone,
 } = require("./accounting-party-contact.cjs");
+const {
+  createAccountingCorrectionService,
+  projectAccountingRows,
+} = require("./lottery-accounting-corrections.cjs");
 
 const DEFAULT_TDS_RATE_BPS = 200;
 const UNKNOWN_PARTY_NAME = "Unknown party";
@@ -193,6 +197,100 @@ function serialize(value) {
   );
 }
 
+function optionalSyncVersion(value, field = "expectedVersion") {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = inputBigInt(value, field);
+  if (parsed < 0n || parsed > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw accountingError("INVALID_INTEGER", field);
+  }
+  return Number(parsed);
+}
+
+function sellerSyncMetadata(input) {
+  const operationId =
+    input?.operationId === undefined ||
+    input?.operationId === null ||
+    input?.operationId === ""
+      ? null
+      : requiredText(input.operationId, "operationId");
+  if (operationId && operationId.length > 512) {
+    throw accountingError("INVALID_SELLER_SYNC_OPERATION", "operationId");
+  }
+  const expectedVersion = optionalSyncVersion(input?.expectedVersion);
+  if (operationId && expectedVersion === null) {
+    throw accountingError("REQUIRED_FIELD", "expectedVersion");
+  }
+  return { operationId, expectedVersion };
+}
+
+function sellerSyncRequestHash(input, saleId = null) {
+  const stable = {
+    saleId,
+    organizationId: input?.organizationId ?? null,
+    partyId: input?.partyId ?? null,
+    periodId: input?.periodId ?? null,
+    occurredAt: input?.occurredAt ?? null,
+    dispatchQuantity: input?.dispatchQuantity ?? null,
+    morningReturnQuantity: input?.morningReturnQuantity ?? null,
+    dayReturnQuantity: input?.dayReturnQuantity ?? null,
+    eveningReturnQuantity: input?.eveningReturnQuantity ?? null,
+    commissionPaise: input?.commissionPaise ?? null,
+    expectedVersion: input?.expectedVersion ?? null,
+  };
+  return createHash("sha256").update(JSON.stringify(stable)).digest("hex");
+}
+
+function sellerDraftConflict(currentVersion) {
+  const error = accountingError("SELLER_DRAFT_CONFLICT", "expectedVersion");
+  error.currentVersion = Number(currentVersion || 0);
+  return error;
+}
+
+async function replaySellerSyncOperation(
+  client,
+  { organizationId, operationId, requestHash },
+) {
+  if (!operationId) return null;
+  const operation = await client.foundationLotterySellerSyncOperation.findFirst({
+    where: { organizationId, operationId },
+  });
+  if (!operation) return null;
+  if (operation.requestHash !== requestHash) {
+    throw accountingError(
+      "SELLER_SYNC_OPERATION_REUSED",
+      "operationId",
+    );
+  }
+  return operation.acknowledgement;
+}
+
+async function recordSellerSyncOperation(
+  client,
+  {
+    organizationId,
+    operationId,
+    requestHash,
+    expectedVersion,
+    sale,
+    actorAdminId,
+    acknowledgement,
+  },
+) {
+  if (!operationId) return;
+  await client.foundationLotterySellerSyncOperation.create({
+    data: {
+      organizationId,
+      operationId,
+      saleId: sale.id,
+      requestHash,
+      expectedVersion,
+      acknowledgedVersion: sale.syncVersion,
+      acknowledgement,
+      createdByAdminId: actorAdminId,
+    },
+  });
+}
+
 function isStockistMovement(movement) {
   return Boolean(
     movement.partyId && STOCKIST_MOVEMENT_TYPES.has(movement.movementType),
@@ -282,6 +380,7 @@ function visibleAfterClearances(clearances, rows, scope) {
 
 function createLotteryAccountingService({ prisma, now = () => new Date() }) {
   if (!prisma) throw new Error("A Prisma client is required.");
+  const accountingCorrectionService = createAccountingCorrectionService({ prisma });
 
   async function listOrganizations() {
     const organizations =
@@ -865,6 +964,38 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     return bill;
   }
 
+  async function ensureRecurringProfileBills(
+    client,
+    organizationId,
+    profile,
+    throughDate,
+    existing,
+  ) {
+    if (!profile.recurringStartsAt || BigInt(profile.usualAmountPaise) <= 0n) {
+      return;
+    }
+    for (const billingMonth of recurringMonthKeys(
+      profile.recurringStartsAt,
+      throughDate,
+    )) {
+      const key = `${profile.id}:${billingMonth}`;
+      if (existing.has(key)) continue;
+      try {
+        await createExpenseBillPosting(client, {
+          organizationId,
+          profileId: profile.id,
+          amountPaise: BigInt(profile.usualAmountPaise),
+          occurredAt: monthStartUtc(billingMonth),
+          actorAdminId: SYSTEM_MONTHLY_EXPENSE_ACTOR,
+          billingMonth,
+        });
+        existing.add(key);
+      } catch (error) {
+        if (error?.code !== "P2002") throw error;
+      }
+    }
+  }
+
   async function ensureRecurringExpenseBillsThrough(
     client,
     organizationId,
@@ -892,29 +1023,13 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     );
 
     for (const profile of profiles) {
-      if (!profile.recurringStartsAt || BigInt(profile.usualAmountPaise) <= 0n) {
-        continue;
-      }
-      for (const billingMonth of recurringMonthKeys(
-        profile.recurringStartsAt,
+      await ensureRecurringProfileBills(
+        client,
+        organizationId,
+        profile,
         throughDate,
-      )) {
-        const key = `${profile.id}:${billingMonth}`;
-        if (existing.has(key)) continue;
-        try {
-          await createExpenseBillPosting(client, {
-            organizationId,
-            profileId: profile.id,
-            amountPaise: BigInt(profile.usualAmountPaise),
-            occurredAt: monthStartUtc(billingMonth),
-            actorAdminId: SYSTEM_MONTHLY_EXPENSE_ACTOR,
-            billingMonth,
-          });
-          existing.add(key);
-        } catch (error) {
-          if (error?.code !== "P2002") throw error;
-        }
-      }
+        existing,
+      );
     }
   }
 
@@ -1753,7 +1868,10 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       reference: context.reference,
     });
     const sale = await client.foundationLotterySale.create({
-      data: saleData({ context, calculated, reference, status, actorAdminId }),
+      data: {
+        ...saleData({ context, calculated, reference, status, actorAdminId }),
+        syncVersion: 1,
+      },
     });
     return { context, calculated, reference, sale };
   }
@@ -1783,21 +1901,99 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     };
   }
 
+  async function updateVersionedSellerDraft(
+    client,
+    { existing, organizationId, expectedVersion, data },
+  ) {
+    const updated = await client.foundationLotterySale.updateMany({
+      where: {
+        id: existing.id,
+        organizationId,
+        status: "DRAFT",
+        syncVersion: expectedVersion,
+      },
+      data,
+    });
+    if (updated.count !== 1) {
+      const current = await client.foundationLotterySale.findFirst({
+        where: { id: existing.id, organizationId, status: "DRAFT" },
+      });
+      if (!current) throw accountingError("DRAFT_SALE_NOT_FOUND", "saleId");
+      throw sellerDraftConflict(current.syncVersion || 1);
+    }
+    const sale = await client.foundationLotterySale.findFirst({
+      where: { id: existing.id, organizationId, status: "DRAFT" },
+    });
+    if (!sale) throw accountingError("DRAFT_SALE_NOT_FOUND", "saleId");
+    return sale;
+  }
+
+  async function persistExistingSellerDraft(
+    client,
+    { existing, organizationId, expectedVersion, data, operationId },
+  ) {
+    if (!operationId) {
+      return client.foundationLotterySale.update({
+        where: { id: existing.id },
+        data,
+      });
+    }
+    return updateVersionedSellerDraft(client, {
+      existing,
+      organizationId,
+      expectedVersion,
+      data,
+    });
+  }
+
+  function sellerSyncAuditMetadata(sync, sale, calculated) {
+    const metadata = { reference: sale.reference, calculation: calculated };
+    if (sync.operationId) {
+      metadata.operationId = sync.operationId;
+      metadata.syncVersion = sale.syncVersion;
+    }
+    return metadata;
+  }
+
   async function saveExistingDailySellerDraft(
     client,
-    { existing, context, input, actorAdminId, eventType },
+    { existing, context, input, actorAdminId, eventType, sync, requestHash },
   ) {
+    const effectiveRequestHash =
+      requestHash || sellerSyncRequestHash(input, existing.id);
+    const replay = await replaySellerSyncOperation(client, {
+      organizationId: context.organizationId,
+      operationId: sync.operationId,
+      requestHash: effectiveRequestHash,
+    });
+    if (replay) return replay;
+
     const calculated = await calculateSellerEntry(client, context, input);
-    const sale = await client.foundationLotterySale.update({
-      where: { id: existing.id },
-      data: saleData({
+    const currentVersion = Number(existing.syncVersion || 1);
+    const expectedVersion = sync.expectedVersion ?? currentVersion;
+    if (sync.operationId && expectedVersion !== currentVersion) {
+      throw sellerDraftConflict(currentVersion);
+    }
+
+    const data = {
+      ...saleData({
         context,
         calculated,
         reference: existing.reference,
         status: "DRAFT",
         actorAdminId: existing.createdByAdminId,
       }),
+      syncVersion: currentVersion + 1,
+    };
+    const sale = await persistExistingSellerDraft(client, {
+      existing,
+      organizationId: context.organizationId,
+      expectedVersion,
+      data,
+      operationId: sync.operationId,
     });
+
+    const acknowledgement = { sale: serialize(sale), calculated };
     await client.foundationLotteryAuditEvent.create({
       data: {
         organizationId: context.organizationId,
@@ -1805,24 +2001,42 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         entityType: "SALE",
         entityId: sale.id,
         actorAdminId,
-        metadata: { reference: sale.reference, calculation: calculated },
+        metadata: sellerSyncAuditMetadata(sync, sale, calculated),
       },
     });
-    return { sale: serialize(sale), calculated };
+    await recordSellerSyncOperation(client, {
+      organizationId: context.organizationId,
+      operationId: sync.operationId,
+      requestHash: effectiveRequestHash,
+      expectedVersion,
+      sale,
+      actorAdminId,
+      acknowledgement,
+    });
+    return acknowledgement;
   }
 
   async function createDailySellerDraft(input, actorAdminId) {
     return prisma.$transaction(async (client) => {
       const context = postingContext(input);
+      const sync = sellerSyncMetadata(input);
+      const requestHash = sellerSyncRequestHash(input);
+      const replay = await replaySellerSyncOperation(client, {
+        organizationId: context.organizationId,
+        operationId: sync.operationId,
+        requestHash,
+      });
+      if (replay) return replay;
+
       const range = utcDayRange(context.occurredAt);
       const [candidate, clearances] = await Promise.all([
         client.foundationLotterySale.findFirst({
-        where: {
-          organizationId: context.organizationId,
-          partyId: context.partyId,
-          status: "DRAFT",
-          occurredAt: { gte: range.startsAt, lt: range.endsAt },
-        },
+          where: {
+            organizationId: context.organizationId,
+            partyId: context.partyId,
+            status: "DRAFT",
+            occurredAt: { gte: range.startsAt, lt: range.endsAt },
+          },
         }),
         client.foundationLotteryEntryClearance.findMany({
           where: { organizationId: context.organizationId },
@@ -1839,12 +2053,16 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           input,
           actorAdminId,
           eventType: "DAILY_SELLER_DRAFT_AUTOSAVED",
+          sync,
+          requestHash,
         });
       }
-      const { context: createdContext, calculated, reference, sale } = await createSellerSale(
-        client,
-        { input, actorAdminId, status: "DRAFT" },
-      );
+      if (sync.operationId && sync.expectedVersion !== 0) {
+        throw sellerDraftConflict(0);
+      }
+      const { context: createdContext, calculated, reference, sale } =
+        await createSellerSale(client, { input, actorAdminId, status: "DRAFT" });
+      const acknowledgement = { sale: serialize(sale), calculated };
       await client.foundationLotteryAuditEvent.create({
         data: {
           organizationId: createdContext.organizationId,
@@ -1852,17 +2070,41 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           entityType: "SALE",
           entityId: sale.id,
           actorAdminId,
-          metadata: { reference, calculation: calculated },
+          metadata: {
+            reference,
+            calculation: calculated,
+            ...(sync.operationId
+              ? { operationId: sync.operationId, syncVersion: sale.syncVersion }
+              : {}),
+          },
         },
       });
-      return { sale: serialize(sale), calculated };
+      await recordSellerSyncOperation(client, {
+        organizationId: createdContext.organizationId,
+        operationId: sync.operationId,
+        requestHash,
+        expectedVersion: sync.expectedVersion ?? 0,
+        sale,
+        actorAdminId,
+        acknowledgement,
+      });
+      return acknowledgement;
     });
   }
 
   async function updateDailySellerDraft(input, actorAdminId) {
     const context = postingContext(input);
     const saleId = requiredText(input?.saleId, "saleId");
+    const sync = sellerSyncMetadata(input);
     return prisma.$transaction(async (client) => {
+      const requestHash = sellerSyncRequestHash(input, saleId);
+      const replay = await replaySellerSyncOperation(client, {
+        organizationId: context.organizationId,
+        operationId: sync.operationId,
+        requestHash,
+      });
+      if (replay) return replay;
+
       const existing = await client.foundationLotterySale.findFirst({
         where: {
           id: saleId,
@@ -1877,6 +2119,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         input,
         actorAdminId,
         eventType: "DAILY_SELLER_DRAFT_UPDATED",
+        sync,
       });
     });
   }
@@ -2304,6 +2547,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       expenseBills,
       expensePayments,
       customerBills,
+      corrections,
       summary,
     ] = await Promise.all([
       prisma.foundationAccountingParty.findMany({
@@ -2370,10 +2614,35 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         where: { organizationId: scopedOrganizationId },
         orderBy: { occurredAt: "desc" },
       }),
+      prisma.foundationAccountingCorrection.findMany({
+        where: { organizationId: scopedOrganizationId },
+        orderBy: [{ entityType: "asc" }, { entityId: "asc" }, { version: "asc" }],
+      }),
       getVerifiedSummary({ organizationId: scopedOrganizationId }),
     ]);
 
     const partyNames = new Map(parties.map((party) => [party.id, party.name]));
+    const projectedPayments = projectAccountingRows(payments, corrections, "PAYMENT");
+    const projectedStockistEntries = projectAccountingRows(
+      stockistEntries,
+      corrections,
+      "STOCKIST_ENTRY",
+    );
+    const projectedExpenseBills = projectAccountingRows(
+      expenseBills,
+      corrections,
+      "EXPENSE_BILL",
+    );
+    const projectedExpensePayments = projectAccountingRows(
+      expensePayments,
+      corrections,
+      "EXPENSE_PAYMENT",
+    );
+    const projectedCustomerBills = projectAccountingRows(
+      customerBills,
+      corrections,
+      "CUSTOMER_BILL",
+    );
     const visibleStockMovements = stockMovements.filter(
       (movement) =>
         !rowWasCleared(
@@ -2390,12 +2659,12 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     );
     const visiblePayments = visibleAfterClearances(
       clearances,
-      payments,
+      projectedPayments,
       "PAYMENT",
     );
     const visibleDailyEntries = visibleAfterClearances(
       clearances,
-      stockistEntries,
+      projectedStockistEntries,
       "STOCKIST",
     );
     const visibleStockistEntries = effectiveStockistEntries(
@@ -2484,9 +2753,10 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       })),
       ledgerEntries,
       auditEvents,
+      corrections,
       expenseCategories,
       expenseProfiles,
-      expenseBills: expenseBills.map((bill) => {
+      expenseBills: projectedExpenseBills.map((bill) => {
         const profile = expenseProfiles.find((item) => item.id === bill.profileId);
         const category = profile
           ? expenseCategories.find((item) => item.id === profile.categoryId)
@@ -2498,7 +2768,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           categoryName: category?.name || "Expense",
         };
       }),
-      expensePayments: expensePayments.map((payment) => {
+      expensePayments: projectedExpensePayments.map((payment) => {
         const profile = expenseProfiles.find((item) => item.id === payment.profileId);
         const category = profile
           ? expenseCategories.find((item) => item.id === profile.categoryId)
@@ -2510,7 +2780,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           categoryName: category?.name || "Expense",
         };
       }),
-      customerBills: customerBills.map((bill) => ({
+      customerBills: projectedCustomerBills.map((bill) => ({
         ...bill,
         partyName: partyNames.get(bill.partyId) || UNKNOWN_PARTY_NAME,
       })),
@@ -2525,7 +2795,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     if (from) occurredAt.gte = optionalDate(from, "from");
     if (to) occurredAt.lte = optionalDate(to, "to");
     const dateFilter = Object.keys(occurredAt).length ? { occurredAt } : {};
-    const [sales, payments, stockMovements, stockistEntries, parties, clearances] = await Promise.all([
+    const [sales, payments, stockMovements, stockistEntries, parties, clearances, corrections] = await Promise.all([
       prisma.foundationLotterySale.findMany({
         where: {
           organizationId: scopedOrganizationId,
@@ -2556,11 +2826,21 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       prisma.foundationLotteryEntryClearance.findMany({
         where: { organizationId: scopedOrganizationId },
       }),
+      prisma.foundationAccountingCorrection.findMany({
+        where: { organizationId: scopedOrganizationId },
+        orderBy: [{ entityType: "asc" }, { entityId: "asc" }, { version: "asc" }],
+      }),
     ]);
+    const projectedPayments = projectAccountingRows(payments, corrections, "PAYMENT");
+    const projectedStockistEntries = projectAccountingRows(
+      stockistEntries,
+      corrections,
+      "STOCKIST_ENTRY",
+    );
     const visibleSales = visibleAfterClearances(clearances, sales, "SELLER");
     const visiblePayments = visibleAfterClearances(
       clearances,
-      payments,
+      projectedPayments,
       "PAYMENT",
     );
     const visibleStockMovements = stockMovements.filter(
@@ -2573,7 +2853,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     );
     const visibleStockistEntries = visibleAfterClearances(
       clearances,
-      stockistEntries,
+      projectedStockistEntries,
       "STOCKIST",
     );
     const effectiveEntries = effectiveStockistEntries(
@@ -2644,6 +2924,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
   return {
     analyzeVerifiedAccounting,
     clearDailyEntries,
+    correctAccountingTransaction: accountingCorrectionService.correctAccountingTransaction,
     correctPostedSale,
     createDailySellerDraft,
     createExpenseCategory,

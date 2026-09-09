@@ -41,6 +41,16 @@ const CLIENT_ERROR_CODES = new Set([
   "RETURN_TOTAL_MISMATCH",
   "SALE_HAS_SETTLEMENTS",
   "SALE_NOT_FOUND",
+  "SELLER_DRAFT_CONFLICT",
+  "SELLER_SYNC_OPERATION_REUSED",
+  "INVALID_SELLER_SYNC_OPERATION",
+  "CORRECTION_CONFLICT",
+  "CORRECTION_NO_CHANGE",
+  "CORRECTION_OPERATION_REUSED",
+  "CORRECTION_SOURCE_NOT_FOUND",
+  "INVALID_CORRECTION_REPLACEMENT",
+  "INVALID_CORRECTION_TYPE",
+  "PAYMENT_HAS_SETTLEMENTS",
   "SETTLEMENT_EXCEEDS_BALANCE",
   "UNBALANCED_LEDGER",
   "UNVERIFIED_SUMMARY",
@@ -53,25 +63,41 @@ const NOT_FOUND_CODES = new Set([
   "PAYMENT_NOT_FOUND",
   "SALE_NOT_FOUND",
   "ORGANIZATION_NOT_FOUND",
+  "CORRECTION_SOURCE_NOT_FOUND",
 ]);
 
 function sendAccountingError(res, error) {
   const code = CLIENT_ERROR_CODES.has(error?.code)
     ? error.code
     : "LOTTERY_ACCOUNTING_UNAVAILABLE";
+  const conflictCode =
+    code === "SETTLEMENT_EXCEEDS_BALANCE" ||
+    code === "SALE_HAS_SETTLEMENTS" ||
+    code === "SELLER_DRAFT_CONFLICT" ||
+    code === "SELLER_SYNC_OPERATION_REUSED" ||
+    code === "CORRECTION_CONFLICT" ||
+    code === "CORRECTION_OPERATION_REUSED" ||
+    code === "PAYMENT_HAS_SETTLEMENTS";
   const status = NOT_FOUND_CODES.has(code)
     ? 404
-    : code === "SETTLEMENT_EXCEEDS_BALANCE" || code === "SALE_HAS_SETTLEMENTS"
+    : conflictCode
       ? 409
       : code === "LOTTERY_ACCOUNTING_UNAVAILABLE"
         ? 503
         : 400;
+  const currentVersion =
+    (code === "SELLER_DRAFT_CONFLICT" || code === "CORRECTION_CONFLICT") &&
+    Number.isSafeInteger(error?.currentVersion) &&
+    error.currentVersion >= 0
+      ? error.currentVersion
+      : null;
   return res.status(status).json({
     success: false,
     error: {
       category: "lottery_accounting",
       code,
       ...(error?.field ? { field: error.field } : {}),
+      ...(currentVersion !== null ? { currentVersion } : {}),
     },
   });
 }
@@ -351,6 +377,22 @@ function createLotteryAccountingRouter({
         req.adminUser?.id,
       );
       return res.status(201).json(result);
+    } catch (error) {
+      return sendAccountingError(res, error);
+    }
+  });
+
+  router.post("/corrections/:entityType/:entityId", async (req, res) => {
+    try {
+      const correction = await service.correctAccountingTransaction(
+        {
+          ...req.body,
+          entityType: req.params.entityType,
+          entityId: req.params.entityId,
+        },
+        req.adminUser?.id,
+      );
+      return res.status(201).json({ correction });
     } catch (error) {
       return sendAccountingError(res, error);
     }

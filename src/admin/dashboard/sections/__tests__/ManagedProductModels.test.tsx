@@ -1,8 +1,12 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ManagedProductModels } from "../ManagedProductModels";
-import type { LotteryAccountingClient } from "../../../models/lotteryAccountingClient";
+import type {
+  LotteryAccountingClient,
+  LotteryAccountingReadClient,
+} from "../../../models/lotteryAccountingClient";
+import { lotteryAccountingDemoClient } from "../../../models/lotteryAccountingDemoClient";
 import type { ManagedProductModel } from "../../../models/types";
 
 const TEST_TIMESTAMP = "2026-08-30T00:00:00.000Z";
@@ -12,6 +16,7 @@ function accountingModel(
   sequence = 1,
   reviewStatus: "NOT_RUN" | "PASSED" = "NOT_RUN",
   published = false,
+  lotteryName = "Lottery Accounting",
 ): ManagedProductModel {
   const definition = {
     schemaVersion: 2,
@@ -32,7 +37,7 @@ function accountingModel(
     modules: [
       {
         slug: "lottery",
-        name: "Lottery Accounting",
+        name: lotteryName,
         lifecycle: "READY_FOR_REVIEW",
         workspace: [
           "overview",
@@ -185,8 +190,17 @@ describe("ManagedProductModels", () => {
       />,
     );
 
+    expect(
+      await screen.findByText(
+        "No published snapshot yet. Publish a reviewed draft first.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Published Live Inspection/i }),
+    ).toBeDisabled();
+
     fireEvent.click(
-      await screen.findByRole("button", { name: /Lottery Accounting/i }),
+      screen.getByRole("button", { name: /Admin Current Accounting/i }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Versions" }));
     expect(screen.getByRole("button", { name: "Publish v1" })).toBeDisabled();
@@ -227,11 +241,21 @@ describe("ManagedProductModels", () => {
     expect(loadModels).not.toHaveBeenCalled();
   });
 
-  it("shows Current, Publish Preview and Live User with all three public appearances", async () => {
+  it("keeps Admin Current, Preview, Published Live and Real Public User as separate data/version modes", async () => {
     const lotteryAccountingApi = {
       listOrganizations: vi.fn().mockResolvedValue([]),
       loadWorkspace: vi.fn(),
     } as unknown as LotteryAccountingClient;
+    const lotteryAccountingDemoApi: LotteryAccountingReadClient = {
+      listOrganizations: vi
+        .fn()
+        .mockImplementation(() => lotteryAccountingDemoClient.listOrganizations()),
+      loadWorkspace: vi
+        .fn()
+        .mockImplementation((organizationId) =>
+          lotteryAccountingDemoClient.loadWorkspace(organizationId),
+        ),
+    };
 
     render(
       <ManagedProductModels
@@ -240,14 +264,24 @@ describe("ManagedProductModels", () => {
           accountingModel(2, "NOT_RUN", true),
         ])}
         lotteryAccountingApi={lotteryAccountingApi}
+        lotteryAccountingDemoApi={lotteryAccountingDemoApi}
       />,
     );
 
     expect(
       await screen.findByRole("button", {
-        name: /Current Mode · Lottery Accounting · v2/i,
+        name: /Admin Current Accounting · Lottery Accounting · v2/i,
       }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /Published Live Inspection · v1/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Real Public User · Future/i }),
+    ).toBeDisabled();
+
     fireEvent.click(
       screen.getByRole("button", { name: /Publish Preview · v2/i }),
     );
@@ -255,13 +289,17 @@ describe("ManagedProductModels", () => {
     expect(
       await screen.findByRole("region", { name: "Publish Preview" }),
     ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(lotteryAccountingDemoApi.listOrganizations).toHaveBeenCalled(),
+    );
+    expect(lotteryAccountingApi.listOrganizations).not.toHaveBeenCalled();
     expect(screen.getByTestId("accounting-public-viewport")).toHaveClass(
       "fixed",
       "inset-0",
     );
     expect(
-      screen.queryByRole("button", { name: "Current Mode" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Back to ORBIS Accounting" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("CURRENT DRAFT")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Admin inspection is read-only/i),
@@ -293,14 +331,52 @@ describe("ManagedProductModels", () => {
       screen.getByRole("button", { name: "Close public menu" }),
     );
 
-    expect(
-      screen.queryByRole("button", { name: "Versions" }),
-    ).not.toBeInTheDocument();
-
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
     expect(
       await screen.findByRole("region", {
         name: "ORBiS Accounting AI model home",
+      }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Release history · Draft v2/i }),
+    );
+    expect(
+      screen.getByText("Draft, published and upgrade versions"),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Accounting model" }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Published Live Inspection · v1/i }),
+    );
+    expect(
+      await screen.findByRole("region", {
+        name: "Published Live Inspection",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Published Live Inspection · v1/i).length,
+    ).toBeGreaterThan(0);
+  });
+
+
+  it("falls back to the default Lottery label when the current module name is blank", async () => {
+    render(
+      <ManagedProductModels
+        initialScreen="model"
+        loadModels={vi.fn().mockResolvedValue([
+          accountingModel(1, "NOT_RUN", false, ""),
+        ])}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("button", {
+        name: /Admin Current Accounting · Lottery Accounting · v1/i,
       }),
     ).toBeInTheDocument();
   });

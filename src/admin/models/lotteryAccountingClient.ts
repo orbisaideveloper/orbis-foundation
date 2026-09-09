@@ -16,6 +16,18 @@ export type LotteryRecordedPayment = Omit<
   "partyName" | "periodLabel" | "settledPaise" | "availablePaise"
 >;
 
+export class LotteryAccountingRequestError extends Error {
+  readonly code: string;
+  readonly currentVersion?: number;
+
+  constructor(code: string, currentVersion?: number) {
+    super(code.replace(/_/g, " "));
+    this.name = "LotteryAccountingRequestError";
+    this.code = code;
+    this.currentVersion = currentVersion;
+  }
+}
+
 async function readLotteryResponse<T>(
   path: string,
   init: RequestInit = {},
@@ -43,7 +55,19 @@ async function readLotteryResponse<T>(
       typeof body.error.code === "string"
         ? body.error.code
         : "LOTTERY_ACCOUNTING_UNAVAILABLE";
-    throw new Error(code.replace(/_/g, " "));
+    const currentVersion =
+      typeof body === "object" &&
+      body !== null &&
+      "error" in body &&
+      typeof body.error === "object" &&
+      body.error !== null &&
+      "currentVersion" in body.error &&
+      typeof body.error.currentVersion === "number" &&
+      Number.isSafeInteger(body.error.currentVersion) &&
+      body.error.currentVersion >= 0
+        ? body.error.currentVersion
+        : undefined;
+    throw new LotteryAccountingRequestError(code, currentVersion);
   }
   return body as T;
 }
@@ -67,6 +91,21 @@ function deleteLottery<T>(path: string, payload: unknown): Promise<T> {
     method: "DELETE",
     body: JSON.stringify(payload),
   });
+}
+
+export type LotteryAccountingCorrectionEntityType =
+  | "STOCKIST_ENTRY"
+  | "CUSTOMER_BILL"
+  | "EXPENSE_BILL"
+  | "EXPENSE_PAYMENT"
+  | "PAYMENT";
+
+export interface LotteryAccountingCorrectionAck {
+  correctionId: string;
+  entityType: LotteryAccountingCorrectionEntityType;
+  entityId: string;
+  version: number;
+  operationId: string;
 }
 
 export interface LotteryAccountingClient {
@@ -121,6 +160,11 @@ export interface LotteryAccountingClient {
     saleId: string,
     payload: Record<string, unknown>,
   ) => Promise<LotteryDailySellerDraftIdentity>;
+  correctAccountingTransaction?: (
+    entityType: LotteryAccountingCorrectionEntityType,
+    entityId: string,
+    payload: Record<string, unknown>,
+  ) => Promise<LotteryAccountingCorrectionAck>;
   recordPayment: (
     payload: Record<string, unknown>,
   ) => Promise<LotteryRecordedPayment>;
@@ -140,6 +184,11 @@ export interface LotteryAccountingClient {
   recordCustomerBill: (payload: Record<string, unknown>) => Promise<void>;
   recordSettlement: (payload: Record<string, unknown>) => Promise<void>;
 }
+
+export type LotteryAccountingReadClient = Pick<
+  LotteryAccountingClient,
+  "listOrganizations" | "loadWorkspace"
+>;
 
 export const lotteryAccountingClient: LotteryAccountingClient = {
   async listOrganizations() {
@@ -233,6 +282,13 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
       payload,
     );
     return body.draft;
+  },
+  async correctAccountingTransaction(entityType, entityId, payload) {
+    const body = await postLottery<{ correction: LotteryAccountingCorrectionAck }>(
+      `/corrections/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`,
+      payload,
+    );
+    return body.correction;
   },
   async recordPayment(payload) {
     const body = await postLottery<{ payment: LotteryRecordedPayment }>(

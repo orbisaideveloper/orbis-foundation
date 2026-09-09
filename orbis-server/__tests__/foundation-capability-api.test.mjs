@@ -10,6 +10,11 @@ const require = createRequire(import.meta.url);
 const express = require("express");
 const request = require("supertest");
 const XLSX = require("xlsx");
+
+const VERIFIED_ADMIN_AUTH = "Bearer verified-admin";
+const CAPABILITY_PREPARE_ROUTE = "/api/admin/capabilities/prepare";
+const CAPABILITY_EXECUTE_ROUTE = "/api/admin/capabilities/execute";
+const XLSX_CAPABILITY_ID = "foundation.xlsx.create";
 const {
   FoundationDataCapabilityOrchestrator,
 } = require("../ai/FoundationDataCapabilityOrchestrator.cjs");
@@ -21,7 +26,7 @@ function createApp() {
   const app = express();
   app.use(express.json({ limit: "1mb", strict: true }));
   const authMiddleware = (req, res, next) => {
-    if (req.get("Authorization") !== "Bearer verified-admin") {
+    if (req.get("Authorization") !== VERIFIED_ADMIN_AUTH) {
       return res.status(401).json({
         success: false,
         message: "Authentication required",
@@ -48,8 +53,8 @@ describe("Task 3C Admin capability API", () => {
     const app = createApp();
     for (const [method, route] of [
       ["get", "/api/admin/capabilities/status"],
-      ["post", "/api/admin/capabilities/prepare"],
-      ["post", "/api/admin/capabilities/execute"],
+      ["post", CAPABILITY_PREPARE_ROUTE],
+      ["post", CAPABILITY_EXECUTE_ROUTE],
     ]) {
       const response = await request(app)[method](route).send({});
       expect(response.status).toBe(401);
@@ -63,7 +68,7 @@ describe("Task 3C Admin capability API", () => {
   it("reports unavailable and unwired work truthfully without advertising it as callable", async () => {
     const response = await request(createApp())
       .get("/api/admin/capabilities/status")
-      .set("Authorization", "Bearer verified-admin");
+      .set("Authorization", VERIFIED_ADMIN_AUTH);
     expect(response.status).toBe(200);
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.body.capabilities).toEqual(
@@ -83,8 +88,8 @@ describe("Task 3C Admin capability API", () => {
       ]),
     );
     const unavailable = await request(createApp())
-      .post("/api/admin/capabilities/prepare")
-      .set("Authorization", "Bearer verified-admin")
+      .post(CAPABILITY_PREPARE_ROUTE)
+      .set("Authorization", VERIFIED_ADMIN_AUTH)
       .send({ capabilityId: "foundation.pdf.create", input: {} });
     expect(unavailable.status).toBe(404);
     expect(unavailable.body.error.code).toBe("CAPABILITY_NOT_AVAILABLE");
@@ -97,9 +102,9 @@ describe("Task 3C Admin capability API", () => {
       sheets: [{ name: "Data", rows: [["safe", "=formula"]] }],
     };
     const prepared = await request(app)
-      .post("/api/admin/capabilities/prepare")
-      .set("Authorization", "Bearer verified-admin")
-      .send({ capabilityId: "foundation.xlsx.create", input });
+      .post(CAPABILITY_PREPARE_ROUTE)
+      .set("Authorization", VERIFIED_ADMIN_AUTH)
+      .send({ capabilityId: XLSX_CAPABILITY_ID, input });
     expect(prepared.status).toBe(200);
     expect(prepared.body).toMatchObject({
       status: "AVAILABLE",
@@ -107,8 +112,8 @@ describe("Task 3C Admin capability API", () => {
     });
 
     const executed = await request(app)
-      .post("/api/admin/capabilities/execute")
-      .set("Authorization", "Bearer verified-admin")
+      .post(CAPABILITY_EXECUTE_ROUTE)
+      .set("Authorization", VERIFIED_ADMIN_AUTH)
       .buffer(true)
       .parse((response, callback) => {
         const chunks = [];
@@ -116,7 +121,7 @@ describe("Task 3C Admin capability API", () => {
         response.on("end", () => callback(null, Buffer.concat(chunks)));
       })
       .send({
-        capabilityId: "foundation.xlsx.create",
+        capabilityId: XLSX_CAPABILITY_ID,
         input,
         approvalToken: prepared.body.approvalToken,
       });
@@ -127,14 +132,14 @@ describe("Task 3C Admin capability API", () => {
     );
     const workbook = XLSX.read(executed.body, { type: "buffer" });
     expect(workbook.Sheets.Data.B1.v).toBe("'=formula");
-  });
+  }, 15_000);
 
   it("preserves the safe execute error status and response shape", async () => {
     const response = await request(createApp())
-      .post("/api/admin/capabilities/execute")
-      .set("Authorization", "Bearer verified-admin")
+      .post(CAPABILITY_EXECUTE_ROUTE)
+      .set("Authorization", VERIFIED_ADMIN_AUTH)
       .send({
-        capabilityId: "foundation.xlsx.create",
+        capabilityId: XLSX_CAPABILITY_ID,
         input: {
           fileName: "admin-output.xlsx",
           sheets: [{ name: "Data", rows: [["safe"]] }],

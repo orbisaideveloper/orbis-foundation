@@ -31,6 +31,9 @@ const UNIVERSAL_LEDGER_HUB = "Universal Ledger Hub";
 const CORRECTED_DRAFT_ID = "draft-corrected-1";
 const CORRECTED_DRAFT_REFERENCE = "SAL-2026-2";
 const ENTRY_DATE_FOR_ALL_SELLERS = "Entry date for all sellers";
+const NET_PROFIT_LABEL = "Net Profit";
+const LEDGER_FROM_DATE_LABEL = "Ledger from date";
+const LEDGER_TO_DATE_LABEL = "Ledger to date";
 
 const organization = {
   id: "org-1",
@@ -314,7 +317,11 @@ describe("LotteryAccountingWorkspace", () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
     expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Today" })).toBeInTheDocument();
-    expect(screen.getByText("Net Profit")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "3 Days" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "7 Days" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Month" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Custom" })).toBeInTheDocument();
+    expect(screen.getByText(NET_PROFIT_LABEL)).toBeInTheDocument();
     expect(screen.getByText("Receivable")).toBeInTheDocument();
     expect(screen.getByText("Payable")).toBeInTheDocument();
 
@@ -325,6 +332,53 @@ describe("LotteryAccountingWorkspace", () => {
     expect(
       screen.getByLabelText("Ledger period summary"),
     ).toBeInTheDocument();
+  });
+
+  it("uses a 3-day dashboard window and preserves the selection across workspace tabs", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-07T06:30:00.000Z"));
+
+    try {
+      const threeDayWorkspace: LotteryWorkspace = {
+        ...workspace,
+        sales: [
+          ...workspace.sales,
+          {
+            ...workspace.sales[0],
+            id: "sale-three-day",
+            reference: "SALE-THREE-DAY",
+            occurredAt: CURRENT_RECORDED_AT,
+            grossSalesPaise: "10000",
+            commissionPaise: "0",
+            tdsPaise: "0",
+            netPayablePaise: "10000",
+          },
+        ],
+      };
+      const api = createApi();
+      vi.mocked(api.loadWorkspace).mockResolvedValue(threeDayWorkspace);
+
+      render(<LotteryAccountingWorkspace api={api} />);
+      await screen.findByText(ORGANIZATION_OVERVIEW);
+
+      fireEvent.click(screen.getByRole("button", { name: "3 Days" }));
+      expect(screen.getByText(NET_PROFIT_LABEL).parentElement).toHaveTextContent("₹100.00");
+      expect(screen.getByRole("button", { name: "3 Days" })).toHaveClass(
+        "bg-gradient-to-r",
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
+      await screen.findByText(UNIVERSAL_LEDGER_HUB);
+      fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
+
+      expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "3 Days" })).toHaveClass(
+        "bg-gradient-to-r",
+      );
+      expect(screen.getByText(NET_PROFIT_LABEL).parentElement).toHaveTextContent("₹100.00");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows selected ledger transactions as chronological date groups with totals separate", async () => {
@@ -338,6 +392,12 @@ describe("LotteryAccountingWorkspace", () => {
           reference: "SALE-NEXT-DATE",
           occurredAt: CURRENT_RECORDED_AT,
         },
+        {
+          ...workspace.sales[0],
+          id: "sale-next-date-2",
+          reference: "SALE-NEXT-DATE-2",
+          occurredAt: CURRENT_RECORDED_AT,
+        },
       ],
     };
     const api = createApi();
@@ -349,10 +409,10 @@ describe("LotteryAccountingWorkspace", () => {
     await screen.findByText(UNIVERSAL_LEDGER_HUB);
 
     fireEvent.click(screen.getByRole("button", { name: "Custom" }));
-    fireEvent.change(screen.getByLabelText("Ledger from date"), {
+    fireEvent.change(screen.getByLabelText(LEDGER_FROM_DATE_LABEL), {
       target: { value: ACCOUNTING_ENTRY_DATE },
     });
-    fireEvent.change(screen.getByLabelText("Ledger to date"), {
+    fireEvent.change(screen.getByLabelText(LEDGER_TO_DATE_LABEL), {
       target: { value: "2026-09-05" },
     });
 
@@ -360,11 +420,40 @@ describe("LotteryAccountingWorkspace", () => {
     expect(groups).toHaveLength(2);
     expect(groups[0]).toHaveTextContent("30 Aug 2026");
     expect(groups[1]).toHaveTextContent("05 Sept 2026");
+    expect(groups[1]).toHaveTextContent("2 entries");
 
     const summary = screen.getByLabelText("Ledger period summary");
     expect(summary).toHaveTextContent("Net Business");
     expect(summary).toHaveTextContent("Received");
     expect(summary).toHaveTextContent("Balance");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open ledger day 05 Sept 2026",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "05 Sept 2026 · Full day",
+      }),
+    ).toBeInTheDocument();
+
+    const dayTotals = screen.getByLabelText("Ledger day totals");
+    expect(dayTotals).toHaveTextContent("Net Business");
+    expect(dayTotals).toHaveTextContent("Received");
+    expect(dayTotals).toHaveTextContent("Balance");
+
+    const dayTable = screen.getByRole("table");
+    expect(within(dayTable).getAllByRole("row")).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(screen.getByLabelText(LEDGER_FROM_DATE_LABEL)).toHaveValue(
+      ACCOUNTING_ENTRY_DATE,
+    );
+    expect(screen.getByLabelText(LEDGER_TO_DATE_LABEL)).toHaveValue("2026-09-05");
+    expect(await screen.findAllByTestId("ledger-date-group")).toHaveLength(2);
   });
 
   it("shows an optional public greeting only on the dashboard", async () => {
@@ -445,7 +534,7 @@ describe("LotteryAccountingWorkspace", () => {
     expect(screen.getByText("Commission reconciliation")).toBeInTheDocument();
     expect(screen.getByText("Profit & Loss")).toBeInTheDocument();
 
-    const profitCard = screen.getByText("Net Profit").parentElement;
+    const profitCard = screen.getByText(NET_PROFIT_LABEL).parentElement;
     expect(profitCard).toHaveTextContent("₹90.00");
     expect(screen.getAllByText("₹10.00").length).toBeGreaterThan(0);
   });
@@ -1088,10 +1177,10 @@ describe("LotteryAccountingWorkspace", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Ledger Book")).toHaveValue("money");
       expect(screen.getByLabelText("Ledger type")).toHaveValue("cashPaise");
-      expect(screen.getByLabelText("Ledger from date")).toHaveValue(
+      expect(screen.getByLabelText(LEDGER_FROM_DATE_LABEL)).toHaveValue(
         ACCOUNTING_ENTRY_DATE,
       );
-      expect(screen.getByLabelText("Ledger to date")).toHaveValue(
+      expect(screen.getByLabelText(LEDGER_TO_DATE_LABEL)).toHaveValue(
         ACCOUNTING_ENTRY_DATE,
       );
     });
