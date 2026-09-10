@@ -955,7 +955,7 @@ export function LotteryAccountingWorkspace({
     }
   };
 
-  if (loading) {
+  if (loading || (Boolean(organizationId) && !workspace && !error)) {
     return (
       <SectionCard title="Lottery Accounting">
         <p className="flex items-center gap-2 text-xs text-slate-500">

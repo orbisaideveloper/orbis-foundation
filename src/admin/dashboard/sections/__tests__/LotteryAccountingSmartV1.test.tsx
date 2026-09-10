@@ -352,72 +352,77 @@ describe("LotteryAccountingWorkspace smart V1", () => {
   });
 
   it("maps saved Expense profile bills and payments into Expenses Ledger", async () => {
-    const expenseWorkspace: LotteryWorkspace = {
-      ...workspace,
-      expensePayments: [
-        {
-          id: "expense-payment-1",
-          organizationId: "org-1",
-          profileId: SALARY_RAJU_ID,
-          profileName: "Raju",
-          categoryId: "salary",
-          categoryName: "Salary",
-          totalAmountPaise: "120000",
-          cashPaise: "100000",
-          bankPaise: "20000",
-          reference: "EXP-PAY-1",
-          occurredAt: RECORDED_AT,
-          createdAt: RECORDED_AT,
-        },
-      ],
-    };
-    const api = createApi();
-    vi.mocked(api.loadWorkspace).mockResolvedValue(expenseWorkspace);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-09T06:30:00.000Z"));
+    try {
+      const expenseWorkspace: LotteryWorkspace = {
+        ...workspace,
+        expensePayments: [
+          {
+            id: "expense-payment-1",
+            organizationId: "org-1",
+            profileId: SALARY_RAJU_ID,
+            profileName: "Raju",
+            categoryId: "salary",
+            categoryName: "Salary",
+            totalAmountPaise: "120000",
+            cashPaise: "100000",
+            bankPaise: "20000",
+            reference: "EXP-PAY-1",
+            occurredAt: RECORDED_AT,
+            createdAt: RECORDED_AT,
+          },
+        ],
+      };
+      const api = createApi();
+      vi.mocked(api.loadWorkspace).mockResolvedValue(expenseWorkspace);
 
-    render(<LotteryAccountingWorkspace api={api} />);
-    await screen.findByText(DASHBOARD_TITLE);
+      render(<LotteryAccountingWorkspace api={api} />);
+      await screen.findByText(DASHBOARD_TITLE);
 
-    fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
-    fireEvent.change(screen.getByLabelText(LEDGER_BOOK_LABEL), {
-      target: { value: "expense" },
-    });
+      fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
+      fireEvent.change(screen.getByLabelText(LEDGER_BOOK_LABEL), {
+        target: { value: "expense" },
+      });
 
-    await waitFor(() => {
-      expect(screen.getByLabelText(LEDGER_TYPE_LABEL)).toHaveValue("salary");
-      expect(screen.getByLabelText(LEDGER_PARTY_LABEL)).toHaveValue(SALARY_RAJU_ID);
-    });
+      await waitFor(() => {
+        expect(screen.getByLabelText(LEDGER_TYPE_LABEL)).toHaveValue("salary");
+        expect(screen.getByLabelText(LEDGER_PARTY_LABEL)).toHaveValue(SALARY_RAJU_ID);
+      });
 
-    expect(
-      screen.getByRole("heading", { name: "Salary › Raju" }),
-    ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Salary › Raju" }),
+      ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "7 Days" }));
+      fireEvent.click(screen.getByRole("button", { name: "7 Days" }));
 
-    expect(screen.getByText("Bill EXB-1")).toBeInTheDocument();
-    expect(
-      screen.getByText("Cash ₹1,000.00 · Bank ₹200.00"),
-    ).toBeInTheDocument();
+      expect(screen.getByText("Bill EXB-1")).toBeInTheDocument();
+      expect(
+        screen.getByText("Cash ₹1,000.00 · Bank ₹200.00"),
+      ).toBeInTheDocument();
 
-    const summary = screen.getByLabelText("Ledger period summary");
-    expect(summary).toHaveTextContent("Bills");
-    expect(summary).toHaveTextContent("₹7,200.00");
-    expect(summary).toHaveTextContent("Paid");
-    expect(summary).toHaveTextContent("₹1,200.00");
-    expect(summary).toHaveTextContent("Balance");
-    expect(summary).toHaveTextContent("₹6,000.00");
+      const summary = screen.getByLabelText("Ledger period summary");
+      expect(summary).toHaveTextContent("Bills");
+      expect(summary).toHaveTextContent("₹7,200.00");
+      expect(summary).toHaveTextContent("Paid");
+      expect(summary).toHaveTextContent("₹1,200.00");
+      expect(summary).toHaveTextContent("Balance");
+      expect(summary).toHaveTextContent("₹6,000.00");
 
-    fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
-    await screen.findByText(DASHBOARD_TITLE);
+      fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
+      await screen.findByText(DASHBOARD_TITLE);
 
-    const expensesButton = screen.getByText("Expenses").closest("button");
-    expect(expensesButton).not.toBeNull();
-    fireEvent.click(expensesButton!);
+      const expensesButton = screen.getByText("Expenses").closest("button");
+      expect(expensesButton).not.toBeNull();
+      fireEvent.click(expensesButton!);
 
-    await waitFor(() => {
-      expect(screen.getByLabelText(LEDGER_BOOK_LABEL)).toHaveValue("expense");
-      expect(screen.getByLabelText(LEDGER_TYPE_LABEL)).toHaveValue("salary");
-      expect(screen.getByLabelText(LEDGER_PARTY_LABEL)).toHaveValue(SALARY_RAJU_ID);
-    });
+      await waitFor(() => {
+        expect(screen.getByLabelText(LEDGER_BOOK_LABEL)).toHaveValue("expense");
+        expect(screen.getByLabelText(LEDGER_TYPE_LABEL)).toHaveValue("salary");
+        expect(screen.getByLabelText(LEDGER_PARTY_LABEL)).toHaveValue(SALARY_RAJU_ID);
+      });    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps Expenses as top type with editable Category and Profile lists", async () => {

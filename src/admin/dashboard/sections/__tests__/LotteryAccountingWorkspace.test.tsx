@@ -313,6 +313,30 @@ function createApi(): LotteryAccountingClient {
 }
 
 describe("LotteryAccountingWorkspace", () => {
+  it("keeps loading while an existing accounting workspace is still loading", async () => {
+    let resolveWorkspace!: (value: LotteryWorkspace) => void;
+    const pendingWorkspace = new Promise<LotteryWorkspace>((resolve) => {
+      resolveWorkspace = resolve;
+    });
+    const api = createApi();
+    vi.mocked(api.loadWorkspace).mockReturnValue(pendingWorkspace);
+
+    render(<LotteryAccountingWorkspace api={api} />);
+
+    await waitFor(() =>
+      expect(api.loadWorkspace).toHaveBeenCalledWith(organization.id),
+    );
+
+    expect(screen.getByText("Loading accounting…")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Create your first accounting workspace"),
+    ).not.toBeInTheDocument();
+
+    resolveWorkspace(workspace);
+
+    expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
+  });
+
   it("shows the smart dashboard and opens the hierarchical seller ledger", async () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
     expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();

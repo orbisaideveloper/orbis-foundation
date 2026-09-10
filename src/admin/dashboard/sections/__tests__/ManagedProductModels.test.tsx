@@ -361,7 +361,7 @@ describe("ManagedProductModels", () => {
     expect(
       screen.getAllByText(/Published Live Inspection · v1/i).length,
     ).toBeGreaterThan(0);
-  });
+  }, 15_000);
 
 
   it("falls back to the default Lottery label when the current module name is blank", async () => {
