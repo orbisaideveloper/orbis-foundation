@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Heart,
   Activity,
@@ -104,6 +104,8 @@ export default function SystemLogManager() {
 
   const [isCopied, setIsCopied] = useState(false);
   const [isTreeCopied, setIsTreeCopied] = useState(false);
+  const copyCodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyTreeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isLoadingTree, setIsLoadingTree] = useState(false);
   const [sourceStateMessage, setSourceStateMessage] = useState<string | null>(
     null,
@@ -113,6 +115,17 @@ export default function SystemLogManager() {
     file: string | null;
     errorLine: number | null;
   }>({ hasError: false, file: null, errorLine: null });
+
+  useEffect(() => {
+    return () => {
+      if (copyCodeTimerRef.current !== null) {
+        clearTimeout(copyCodeTimerRef.current);
+      }
+      if (copyTreeTimerRef.current !== null) {
+        clearTimeout(copyTreeTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (isOpen && activeView === "source") {
@@ -182,7 +195,13 @@ export default function SystemLogManager() {
   const handleCopyCode = () => {
     navigator.clipboard.writeText(fileContent);
     setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+    if (copyCodeTimerRef.current !== null) {
+      clearTimeout(copyCodeTimerRef.current);
+    }
+    copyCodeTimerRef.current = setTimeout(() => {
+      setIsCopied(false);
+      copyCodeTimerRef.current = null;
+    }, 2000);
   };
 
   const handleCopyTree = () => {
@@ -205,7 +224,13 @@ export default function SystemLogManager() {
       "ORBIS Foundation Project Structure:\n\n" + generateTreeText(treeData);
     navigator.clipboard.writeText(fullTreeText);
     setIsTreeCopied(true);
-    setTimeout(() => setIsTreeCopied(false), 2000);
+    if (copyTreeTimerRef.current !== null) {
+      clearTimeout(copyTreeTimerRef.current);
+    }
+    copyTreeTimerRef.current = setTimeout(() => {
+      setIsTreeCopied(false);
+      copyTreeTimerRef.current = null;
+    }, 2000);
   };
 
   // সার্চের উপর ভিত্তি করে ট্রি ফিল্টার করার লজিক

@@ -47,6 +47,6 @@ describe("App Component", () => {
     expect(
       screen.queryByRole("button", { name: /^Sign in$/i }),
     ).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
 });

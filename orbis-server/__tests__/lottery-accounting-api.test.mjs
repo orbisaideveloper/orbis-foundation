@@ -10,6 +10,9 @@ const {
   createLotteryAccountingRouter,
 } = require("../lottery-accounting-api.cjs");
 const SALES_ROUTE = "/lottery/sales";
+const ORGANIZATIONS_ROUTE = "/lottery/organizations";
+const DAILY_SELLER_SALE_ROUTE = "/lottery/daily-seller-drafts/sale-1";
+const CACHE_CONTROL_HEADER = "cache-control";
 
 function appWith(
   service,
@@ -79,7 +82,7 @@ describe("Lottery Accounting Admin API", () => {
     await request(app)
       .get("/lottery/analysis?organizationId=org-1")
       .expect(401);
-    await request(app).get("/lottery/organizations").expect(401);
+    await request(app).get(ORGANIZATIONS_ROUTE).expect(401);
     await request(app)
       .get("/lottery/workspace?organizationId=org-1")
       .expect(401);
@@ -107,7 +110,7 @@ describe("Lottery Accounting Admin API", () => {
     const service = serviceMock();
     const app = appWith(service);
     await request(app)
-      .post("/lottery/organizations")
+      .post(ORGANIZATIONS_ROUTE)
       .send({ name: "Org" })
       .expect(201);
     await request(app)
@@ -148,7 +151,7 @@ describe("Lottery Accounting Admin API", () => {
       .send({ organizationId: "org-1" })
       .expect(201);
     await request(app)
-      .patch("/lottery/daily-seller-drafts/sale-1")
+      .patch(DAILY_SELLER_SALE_ROUTE)
       .send({ organizationId: "org-1" })
       .expect(200);
     await request(app)
@@ -156,7 +159,7 @@ describe("Lottery Accounting Admin API", () => {
       .send({ organizationId: "org-1" })
       .expect(200);
     await request(app)
-      .delete("/lottery/daily-seller-drafts/sale-1")
+      .delete(DAILY_SELLER_SALE_ROUTE)
       .send({ organizationId: "org-1" })
       .expect(200);
     await request(app)
@@ -203,8 +206,8 @@ describe("Lottery Accounting Admin API", () => {
     const analysis = await request(app)
       .get("/lottery/analysis?organizationId=org-1")
       .expect(200);
-    expect(summary.headers["cache-control"]).toBe("no-store");
-    expect(analysis.headers["cache-control"]).toBe("no-store");
+    expect(summary.headers[CACHE_CONTROL_HEADER]).toBe("no-store");
+    expect(analysis.headers[CACHE_CONTROL_HEADER]).toBe("no-store");
     expect(service.getVerifiedSummary).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: "org-1" }),
     );
@@ -214,7 +217,7 @@ describe("Lottery Accounting Admin API", () => {
     const service = serviceMock();
     const app = appWith(service);
     const organizations = await request(app)
-      .get("/lottery/organizations")
+      .get(ORGANIZATIONS_ROUTE)
       .expect(200);
     const workspace = await request(app)
       .get("/lottery/workspace?organizationId=org-1")
@@ -224,15 +227,41 @@ describe("Lottery Accounting Admin API", () => {
       .send({ dispatchQuantity: 1 })
       .expect(200);
 
-    expect(organizations.headers["cache-control"]).toBe("no-store");
-    expect(workspace.headers["cache-control"]).toBe("no-store");
-    expect(preview.headers["cache-control"]).toBe("no-store");
+    expect(organizations.headers[CACHE_CONTROL_HEADER]).toBe("no-store");
+    expect(workspace.headers[CACHE_CONTROL_HEADER]).toBe("no-store");
+    expect(preview.headers[CACHE_CONTROL_HEADER]).toBe("no-store");
     expect(service.getWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: "org-1" }),
     );
     expect(service.previewSale).toHaveBeenCalledWith(
       expect.objectContaining({ dispatchQuantity: 1 }),
     );
+  });
+
+  it("returns a safe seller conflict acknowledgement with the current server version", async () => {
+    const service = serviceMock();
+    const error = Object.assign(new Error("private conflict detail"), {
+      code: "SELLER_DRAFT_CONFLICT",
+      field: "expectedVersion",
+      currentVersion: 7,
+    });
+    service.updateDailySellerDraft.mockRejectedValue(error);
+
+    const response = await request(appWith(service))
+      .patch(DAILY_SELLER_SALE_ROUTE)
+      .send({ organizationId: "org-1", expectedVersion: 6 })
+      .expect(409);
+
+    expect(response.body).toEqual({
+      success: false,
+      error: {
+        category: "lottery_accounting",
+        code: "SELLER_DRAFT_CONFLICT",
+        field: "expectedVersion",
+        currentVersion: 7,
+      },
+    });
+    expect(JSON.stringify(response.body)).not.toContain("private conflict detail");
   });
 
   it.each([

@@ -2,12 +2,30 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ChevronRight, LoaderCircle, RefreshCw, WalletCards } from "lucide-react";
 import { DailySellerEntry } from "./DailySellerEntry";
 import { DailyStockistEntry } from "./DailyStockistEntry";
+import {
+  LedgerTransactionDetail,
+  type LedgerTransactionContext,
+} from "./LedgerTransactionDetail";
 import { WorkspaceSectionTabs } from "./WorkspaceSectionTabs";
 import {
   lotteryAccountingClient,
   type LotteryAccountingClient,
   type LotteryRecordedPayment,
 } from "../../models/lotteryAccountingClient";
+import {
+  accountingLocalPartitionKey,
+  accountingSellerWorkingKey,
+  getLotteryAccountingLocalStore,
+  type AccountingLocalScope,
+  type AccountingLocalSyncState,
+  type AccountingSellerWorkingRecord,
+  type AccountingSellerWorkingRow,
+  type LotteryAccountingLocalStore,
+} from "../../models/lotteryAccountingLocalStore";
+import {
+  projectSellerWorkingRecords,
+  sellerWorkingRecordConfirmed,
+} from "../../models/lotteryAccountingLocalProjection";
 import {
   formatPaise,
   rupeesToPaise,
@@ -35,13 +53,55 @@ export type LotteryAccountingWorkspaceNavigationRequest = Readonly<{
   tab: LotteryAccountingWorkspaceTab;
   ledgerView?: "party";
 }>;
+
+type SellerWorkingRowsLoad = {
+  records: AccountingSellerWorkingRecord[];
+  failed: boolean;
+};
+
+async function loadSellerWorkingRows(
+  localStore: LotteryAccountingLocalStore | null,
+  scope: AccountingLocalScope,
+): Promise<SellerWorkingRowsLoad> {
+  if (!localStore) return { records: [], failed: false };
+  try {
+    return {
+      records: await localStore.listSellerRows(scope),
+      failed: false,
+    };
+  } catch {
+    return { records: [], failed: true };
+  }
+}
+
+function clearConfirmedSellerWorkingRows(
+  localStore: LotteryAccountingLocalStore | null,
+  scope: AccountingLocalScope,
+  currentWorkspace: LotteryWorkspace,
+  records: AccountingSellerWorkingRecord[],
+  onRemoveFailure: () => void,
+) {
+  if (!localStore) return;
+  for (const record of records) {
+    if (!sellerWorkingRecordConfirmed(currentWorkspace, record)) continue;
+    void localStore
+      .removeSellerRow(scope, record.partyId, record.occurredAt)
+      .catch(onRemoveFailure);
+  }
+}
 type DailyMode = "SELLER" | "STOCKIST" | "CASH_CUSTOMER" | "EXPENSE";
 type PartyMasterType = Extract<LotteryPartyType, "SELLER" | "STOCKIST" | "CUSTOMER">;
 type PaymentKind = "SELLER" | "STOCKIST" | "CUSTOMER" | "EXPENSE";
 type MoneyMethod = "cashPaise" | "bankPaise" | "upiPaise" | "pwtPaise";
 type LedgerPeriod = "today" | "7d" | "10d" | "month" | "year" | "custom";
+type DashboardPeriod = "today" | "3d" | "7d" | "month" | "custom";
 type SellerFlush = () => Promise<boolean>;
 type SellerPersistenceTracker = <T,>(action: () => Promise<T>) => Promise<T>;
+type SellerLocalStateChange = (
+  occurredAt: string,
+  row: AccountingSellerWorkingRow,
+  syncState: AccountingLocalSyncState,
+) => void;
 type LedgerBookType =
   | "seller"
   | "customer"
@@ -71,6 +131,14 @@ const PARTY_PAYMENT_METHODS: Array<[MoneyMethod, string]> = [
   ["bankPaise", "Bank"],
   ["upiPaise", "UPI"],
   ["pwtPaise", "PWT"],
+];
+
+const DASHBOARD_PERIODS: Array<[DashboardPeriod, string]> = [
+  ["today", "Today"],
+  ["3d", "3 Days"],
+  ["7d", "7 Days"],
+  ["month", "Month"],
+  ["custom", "Custom"],
 ];
 
 const CONTROL =
@@ -572,19 +640,32 @@ interface LotteryAccountingWorkspaceProps {
   api?: LotteryAccountingClient;
   dashboardGreeting?: React.ReactNode;
   navigationRequest?: LotteryAccountingWorkspaceNavigationRequest | null;
+  localScope?: Omit<AccountingLocalScope, "organizationId">;
+  localStore?: LotteryAccountingLocalStore | null;
 }
 
 export function LotteryAccountingWorkspace({
   api = lotteryAccountingClient,
   dashboardGreeting,
   navigationRequest = null,
+  localScope = { ownerKind: "ADMIN_REAL", ownerId: "admin-current" },
+  localStore = getLotteryAccountingLocalStore(),
 }: Readonly<LotteryAccountingWorkspaceProps>) {
   const [organizations, setOrganizations] = useState<
     LotteryWorkspace["organization"][]
   >([]);
   const [organizationId, setOrganizationId] = useState("");
   const [workspace, setWorkspace] = useState<LotteryWorkspace | null>(null);
+  const [sellerWorkingRecords, setSellerWorkingRecords] = useState<
+    AccountingSellerWorkingRecord[]
+  >([]);
+  const [localStoreWarning, setLocalStoreWarning] = useState<string | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>("dashboard");
+  const dashboardToday = businessDateToday();
+  const [dashboardPeriod, setDashboardPeriod] =
+    useState<DashboardPeriod>("today");
+  const [dashboardFrom, setDashboardFrom] = useState(dashboardToday);
+  const [dashboardTo, setDashboardTo] = useState(dashboardToday);
   const [dailyMode, setDailyMode] = useState<DailyMode>("SELLER");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -596,6 +677,11 @@ export function LotteryAccountingWorkspace({
   const sellerWorkspaceStaleRef = useRef(false);
   const sellerPersistenceTailRef = useRef<Promise<void>>(Promise.resolve());
   const [ledgerLaunch, setLedgerLaunch] = useState<LedgerLaunch | null>(null);
+  const [sellerEditRequest, setSellerEditRequest] = useState<{
+    partyId: string;
+    occurredAt: string;
+    token: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!navigationRequest) return;
@@ -622,14 +708,52 @@ export function LotteryAccountingWorkspace({
       const requestId = ++refreshRequestRef.current;
       if (!nextId) {
         setWorkspace(null);
+        setSellerWorkingRecords([]);
+        setLocalStoreWarning(null);
         setRefreshing(false);
         return true;
       }
       setRefreshing(true);
+      const scope: AccountingLocalScope = {
+        ...localScope,
+        organizationId: nextId,
+      };
       try {
-        const nextWorkspace = await api.loadWorkspace(nextId);
+        const [nextWorkspace, localRows] = await Promise.all([
+          api.loadWorkspace(nextId),
+          loadSellerWorkingRows(localStore, scope),
+        ]);
         if (requestId === refreshRequestRef.current) {
+          const devicePrimary =
+            nextWorkspace.organization.userLedgerStorage === "DEVICE";
+          const retainedRecords = devicePrimary
+            ? localRows.records
+            : localRows.records.filter(
+                (record) =>
+                  !sellerWorkingRecordConfirmed(nextWorkspace, record),
+              );
           setWorkspace(nextWorkspace);
+          setSellerWorkingRecords(retainedRecords);
+          setLocalStoreWarning(
+            localRows.failed
+              ? "Device accounting storage could not be read. Cloud data remains available."
+              : null,
+          );
+          if (!devicePrimary) {
+            clearConfirmedSellerWorkingRows(
+              localStore,
+              scope,
+              nextWorkspace,
+              localRows.records,
+              () => {
+                if (requestId === refreshRequestRef.current) {
+                  setLocalStoreWarning(
+                    "A synced local recovery record could not be cleared yet.",
+                  );
+                }
+              },
+            );
+          }
         }
         return requestId === refreshRequestRef.current;
       } catch (cause) {
@@ -641,7 +765,13 @@ export function LotteryAccountingWorkspace({
         if (requestId === refreshRequestRef.current) setRefreshing(false);
       }
     },
-    [api, organizationId],
+    [
+      api,
+      localScope.ownerId,
+      localScope.ownerKind,
+      localStore,
+      organizationId,
+    ],
   );
 
   const trackSellerPersistence = useCallback<SellerPersistenceTracker>(
@@ -667,25 +797,25 @@ export function LotteryAccountingWorkspace({
     dailySellerFlushRef.current = flush;
   }, []);
 
+  const reconcileSellerPersistence = useCallback(async () => {
+    await sellerPersistenceTailRef.current;
+    const flushed = dailySellerFlushRef.current
+      ? await dailySellerFlushRef.current()
+      : true;
+    await sellerPersistenceTailRef.current;
+    if (!flushed || !sellerWorkspaceStaleRef.current) return;
+    const refreshed = await refreshWorkspace();
+    if (refreshed) sellerWorkspaceStaleRef.current = false;
+  }, [refreshWorkspace]);
+
   const selectWorkspaceTab = useCallback(
-    async (nextTab: WorkspaceTab) => {
+    (nextTab: WorkspaceTab) => {
       if (nextTab === tab) return;
-      if (tab === "daily" && nextTab !== "daily") {
-        await sellerPersistenceTailRef.current;
-        const flushed = dailySellerFlushRef.current
-          ? await dailySellerFlushRef.current()
-          : true;
-        await sellerPersistenceTailRef.current;
-        if (!flushed) return;
-        if (sellerWorkspaceStaleRef.current) {
-          const refreshed = await refreshWorkspace();
-          if (!refreshed) return;
-          sellerWorkspaceStaleRef.current = false;
-        }
-      }
+      const leavingDaily = tab === "daily" && nextTab !== "daily";
       setTab(nextTab);
+      if (leavingDaily) void reconcileSellerPersistence();
     },
-    [refreshWorkspace, tab],
+    [reconcileSellerPersistence, tab],
   );
 
   useEffect(() => {
@@ -753,6 +883,61 @@ export function LotteryAccountingWorkspace({
     [],
   );
 
+  const updateSellerWorkingRecord = useCallback<SellerLocalStateChange>(
+    (occurredAt, row, syncState) => {
+      if (!organizationId) return;
+      const scope: AccountingLocalScope = { ...localScope, organizationId };
+      const key = accountingSellerWorkingKey(scope, row.partyId, occurredAt);
+      const nextRecord: AccountingSellerWorkingRecord = {
+        key,
+        partitionKey: accountingLocalPartitionKey(scope),
+        entityType: "SELLER_DAILY",
+        partyId: row.partyId,
+        occurredAt,
+        row: { ...row },
+        syncState,
+        updatedAt: Date.now(),
+      };
+      setSellerWorkingRecords((current) => [
+        ...current.filter((record) => record.key !== key),
+        nextRecord,
+      ]);
+    },
+    [localScope.ownerId, localScope.ownerKind, organizationId],
+  );
+
+  const removeSellerWorkingRecord = useCallback(
+    (partyId: string, occurredAt: string) => {
+      if (!organizationId) return;
+      const scope: AccountingLocalScope = { ...localScope, organizationId };
+      const key = accountingSellerWorkingKey(scope, partyId, occurredAt);
+      setSellerWorkingRecords((current) =>
+        current.filter((record) => record.key !== key),
+      );
+    },
+    [localScope.ownerId, localScope.ownerKind, organizationId],
+  );
+
+  const localSyncLabel = useMemo(() => {
+    if (localStoreWarning) return "Storage warning";
+    const devicePrimary =
+      workspace?.organization.userLedgerStorage === "DEVICE";
+    if (sellerWorkingRecords.some((record) => record.syncState === "ERROR")) {
+      return devicePrimary ? "Device storage error" : "Sync error";
+    }
+    if (devicePrimary) {
+      return sellerWorkingRecords.length ? "Saved on device" : "Device storage";
+    }
+    if (sellerWorkingRecords.some((record) => record.syncState === "SYNCING")) {
+      return "Syncing";
+    }
+    const pendingCount = sellerWorkingRecords.filter(
+      (record) => record.syncState === "PENDING",
+    ).length;
+    if (pendingCount) return `Pending sync (${pendingCount})`;
+    return "Synced";
+  }, [localStoreWarning, sellerWorkingRecords, workspace]);
+
   const createOrganization = async (name: string) => {
     setWorking("organization");
     try {
@@ -770,7 +955,7 @@ export function LotteryAccountingWorkspace({
     }
   };
 
-  if (loading) {
+  if (loading || (Boolean(organizationId) && !workspace && !error)) {
     return (
       <SectionCard title="Lottery Accounting">
         <p className="flex items-center gap-2 text-xs text-slate-500">
@@ -803,7 +988,11 @@ export function LotteryAccountingWorkspace({
           <select
             aria-label="Accounting organization"
             value={organizationId}
-            onChange={(event) => setOrganizationId(event.target.value)}
+            onChange={(event) => {
+              const nextOrganizationId = event.target.value;
+              setOrganizationId(nextOrganizationId);
+              if (!nextOrganizationId) void refreshWorkspace("");
+            }}
             className={`${CONTROL} flex-1`}
           >
             <option value="">Create organization</option>
@@ -824,6 +1013,15 @@ export function LotteryAccountingWorkspace({
           </button>
         </div>
       </header>
+
+      <div className="flex justify-end">
+        <span
+          aria-label="Accounting local sync status"
+          className="rounded-full border border-emerald-100 bg-white px-2 py-1 text-[8px] font-black text-emerald-700"
+        >
+          {localSyncLabel}
+        </span>
+      </div>
 
       {notice && <InlineNotice>{notice}</InlineNotice>}
       {error && <InlineNotice tone="orange">{error}</InlineNotice>}
@@ -850,7 +1048,13 @@ export function LotteryAccountingWorkspace({
             <>
               {dashboardGreeting}
               <DashboardPanel
-                workspace={workspace}
+                workspace={projectSellerWorkingRecords(workspace, sellerWorkingRecords)}
+                period={dashboardPeriod}
+                setPeriod={setDashboardPeriod}
+                from={dashboardFrom}
+                setFrom={setDashboardFrom}
+                to={dashboardTo}
+                setTo={setDashboardTo}
                 openLedger={(launch) => {
                   setLedgerLaunch(launch || null);
                   setTab("ledger");
@@ -869,11 +1073,16 @@ export function LotteryAccountingWorkspace({
               refreshWorkspace={refreshWorkspace}
               trackSellerPersistence={trackSellerPersistence}
               registerSellerFlush={registerDailySellerFlush}
+              sellerEditRequest={sellerEditRequest}
+              localScope={localScope}
+              localStore={localStore}
+              onLocalRowStateChange={updateSellerWorkingRecord}
+              onLocalRowRemoved={removeSellerWorkingRecord}
             />
           )}
           {tab === "payment" && (
             <PaymentPanel
-              workspace={workspace}
+              workspace={projectSellerWorkingRecords(workspace, sellerWorkingRecords)}
               organizationId={organizationId}
               api={api}
               working={working}
@@ -883,7 +1092,15 @@ export function LotteryAccountingWorkspace({
           )}
           {tab === "ledger" && (
             <LedgerPanel
-              workspace={workspace}
+              workspace={projectSellerWorkingRecords(workspace, sellerWorkingRecords)}
+              organizationId={organizationId}
+              api={api}
+              refreshWorkspace={refreshWorkspace}
+              openSellerCorrection={(partyId, occurredAt) => {
+                setSellerEditRequest({ partyId, occurredAt, token: Date.now() });
+                setDailyMode("SELLER");
+                setTab("daily");
+              }}
               launch={ledgerLaunch}
               navigationRequest={
                 navigationRequest?.tab === "ledger" ? navigationRequest : null
@@ -918,15 +1135,24 @@ export function LotteryAccountingWorkspace({
 
 function DashboardPanel({
   workspace,
+  period,
+  setPeriod,
+  from,
+  setFrom,
+  to,
+  setTo,
   openLedger,
 }: Readonly<{
   workspace: LotteryWorkspace;
+  period: DashboardPeriod;
+  setPeriod: (period: DashboardPeriod) => void;
+  from: string;
+  setFrom: (value: string) => void;
+  to: string;
+  setTo: (value: string) => void;
   openLedger: (launch?: LedgerLaunch) => void;
 }>) {
   const today = businessDateToday();
-  const [period, setPeriod] = useState<"today" | "7d" | "month" | "custom">("today");
-  const [from, setFrom] = useState(today);
-  const [to, setTo] = useState(today);
   const [expanded, setExpanded] = useState<
     "profit" | "receivable" | "payable" | "commission" | null
   >(null);
@@ -936,6 +1162,7 @@ function DashboardPanel({
 
   const bounds = useMemo(() => {
     if (period === "today") return { from: today, to: today };
+    if (period === "3d") return { from: addDays(today, -2), to: today };
     if (period === "7d") return { from: addDays(today, -6), to: today };
     if (period === "month") return { from: monthStart(today), to: today };
     return { from: from || today, to: to >= from ? to : from };
@@ -964,7 +1191,7 @@ function DashboardPanel({
     0n,
   );
 
-  const balances = moneyMethodBalances(workspace);
+  const balances = moneyMethodBalances(workspace, bounds.to);
   const totalMoney = Object.values(balances).reduce(
     (total, value) => total + value,
     0n,
@@ -1050,15 +1277,13 @@ function DashboardPanel({
         hint="Pick a period. Receivable and Payable always rank the largest open accounts first as of the selected end date."
       >
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {(["today", "7d", "month", "custom"] as const).map((value) => (
+          {DASHBOARD_PERIODS.map(([value, label]) => (
             <Button
               key={value}
               active={period === value}
               onClick={() => setPeriod(value)}
             >
-              {{ today: "Today", "7d": "7 Days", month: "Month", custom: "Custom" }[
-                value
-              ]}
+              {label}
             </Button>
           ))}
         </div>
@@ -1179,8 +1404,8 @@ function DashboardPanel({
           tone="orange"
           onClick={() =>
             openLedger({
-              bookType: "payment",
-              subtype: "expense",
+              bookType: "expense",
+              subtype: workspace.expenseCategories[0]?.id || "",
               accountId: ALL_ACCOUNTS,
               from: bounds.from,
               to: bounds.to,
@@ -1475,6 +1700,11 @@ function DailyPanel({
   refreshWorkspace,
   trackSellerPersistence,
   registerSellerFlush,
+  sellerEditRequest,
+  localScope,
+  localStore,
+  onLocalRowStateChange,
+  onLocalRowRemoved,
 }: Readonly<{
   workspace: LotteryWorkspace;
   organizationId: string;
@@ -1489,6 +1719,11 @@ function DailyPanel({
   refreshWorkspace: () => Promise<boolean>;
   trackSellerPersistence: SellerPersistenceTracker;
   registerSellerFlush: (flush: SellerFlush | null) => void;
+  sellerEditRequest: { partyId: string; occurredAt: string; token: number } | null;
+  localScope: Omit<AccountingLocalScope, "organizationId">;
+  localStore: LotteryAccountingLocalStore | null;
+  onLocalRowStateChange: SellerLocalStateChange;
+  onLocalRowRemoved: (partyId: string, occurredAt: string) => void;
 }>) {
   return (
     <div className="space-y-3">
@@ -1516,7 +1751,11 @@ function DailyPanel({
         <DailySellerEntry
           organizationId={organizationId}
           workspace={workspace}
-          editRequest={null}
+          editRequest={sellerEditRequest}
+          localScope={localScope}
+          localStore={localStore}
+          onLocalRowStateChange={onLocalRowStateChange}
+          onLocalRowRemoved={onLocalRowRemoved}
           onSaveDraft={(payload) =>
             trackSellerPersistence(() => api.saveDailySellerDraft(payload))
           }
@@ -2254,6 +2493,59 @@ type LedgerBook = {
   transactions: LedgerTxn[];
 };
 
+function ledgerTransactionContext(
+  book: LedgerBook,
+  transaction: LedgerTxn,
+): LedgerTransactionContext {
+  return {
+    ...transaction,
+    book: {
+      id: book.id,
+      category: book.category,
+      subtype: book.subtype,
+      name: book.name,
+      typeLabel: book.typeLabel,
+    },
+  };
+}
+
+function LedgerClickableTransactionRow({
+  book,
+  transaction,
+  includeAccount = false,
+  onOpen,
+}: Readonly<{
+  book: LedgerBook;
+  transaction: LedgerTxn;
+  includeAccount?: boolean;
+  onOpen: (context: LedgerTransactionContext) => void;
+}>) {
+  const open = () => onOpen(ledgerTransactionContext(book, transaction));
+  return (
+    <tr
+      tabIndex={0}
+      aria-label={`Open transaction ${transaction.id}`}
+      onClick={open}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      }}
+      className="cursor-pointer border-t border-slate-100 outline-none hover:bg-emerald-50/40 focus:bg-emerald-50/60"
+    >
+      {includeAccount && <td className="px-2 py-2 font-black">{book.name}</td>}
+      <td className="px-2 py-2">{displayDate(transaction.occurredAt)}</td>
+      <td className="px-2 py-2">{transaction.business}</td>
+      <td className="px-2 py-2">{transaction.money}</td>
+      <td className="px-2 py-2 font-black">{transaction.balance}</td>
+      <td className="max-w-[240px] whitespace-normal px-2 py-2 text-[8px] text-slate-500">
+        {transaction.detail}
+      </td>
+    </tr>
+  );
+}
+
 type LedgerLaunch = {
   bookType: LedgerBookType;
   subtype: string;
@@ -2291,35 +2583,49 @@ function LedgerDateGroupHeaderRow({
   date,
   rowCount,
   colSpan,
+  onOpenDate,
 }: Readonly<{
   date: string;
   rowCount: number;
   colSpan: number;
+  onOpenDate?: (date: string) => void;
 }>) {
   return (
     <tr
       data-testid="ledger-date-group"
       className="border-t border-emerald-100 bg-emerald-50/75"
     >
-      <td
-        colSpan={colSpan}
-        className="px-2 py-2 text-[8px] font-black uppercase tracking-[0.08em] text-emerald-800"
-      >
-        {displayDate(date)} · {rowCount} entries
+      <td colSpan={colSpan} className="p-0">
+        {onOpenDate ? (
+          <button
+            type="button"
+            aria-label={`Open ledger day ${displayDate(date)}`}
+            onClick={() => onOpenDate(date)}
+            className="flex min-h-11 w-full items-center justify-between gap-2 px-2 py-2 text-left text-[8px] font-black uppercase tracking-[0.08em] text-emerald-800"
+          >
+            <span>{displayDate(date)} · {rowCount} entries</span>
+            <span className="text-[7px]">Open day ›</span>
+          </button>
+        ) : (
+          <div className="px-2 py-2 text-[8px] font-black uppercase tracking-[0.08em] text-emerald-800">
+            {displayDate(date)} · {rowCount} entries
+          </div>
+        )}
       </td>
     </tr>
   );
 }
 
-
 function LedgerDateGroupedBody<T>({
   groups,
   colSpan,
   renderRows,
+  onOpenDate,
 }: Readonly<{
   groups: LedgerDateGroup<T>[];
   colSpan: number;
   renderRows: (group: LedgerDateGroup<T>) => React.ReactNode;
+  onOpenDate?: (date: string) => void;
 }>) {
   return (
     <tbody>
@@ -2330,6 +2636,7 @@ function LedgerDateGroupedBody<T>({
               date={group.date}
               rowCount={group.rows.length}
               colSpan={colSpan}
+              onOpenDate={onOpenDate}
             />
             {renderRows(group)}
           </React.Fragment>
@@ -2348,18 +2655,26 @@ function LedgerDateGroupedBody<T>({
   );
 }
 
+function flattenLedgerTransactionRows(books: LedgerBook[]) {
+  return books.flatMap((book) =>
+    book.transactions.map((transaction) => ({ book, transaction })),
+  );
+}
+
 function LedgerCombinedStatement({
   books,
   bounds,
   onBack,
+  onOpenDate,
+  onOpenTransaction,
 }: Readonly<{
   books: LedgerBook[];
   bounds: { from: string; to: string };
   onBack: () => void;
+  onOpenDate: (date: string) => void;
+  onOpenTransaction: (context: LedgerTransactionContext) => void;
 }>) {
-  const rows = books.flatMap((book) =>
-    book.transactions.map((transaction) => ({ book, transaction })),
-  );
+  const rows = flattenLedgerTransactionRows(books);
   const dateGroups = groupLedgerRowsByDate(
     rows,
     (row) => row.transaction.occurredAt,
@@ -2382,25 +2697,16 @@ function LedgerCombinedStatement({
           <LedgerDateGroupedBody
             groups={dateGroups}
             colSpan={6}
+            onOpenDate={onOpenDate}
             renderRows={(group) =>
               group.rows.map(({ book, transaction }) => (
-                <tr
+                <LedgerClickableTransactionRow
                   key={`${book.id}-${transaction.id}`}
-                  className="border-t border-slate-100"
-                >
-                  <td className="px-2 py-2 font-black">{book.name}</td>
-                  <td className="px-2 py-2">
-                    {displayDate(transaction.occurredAt)}
-                  </td>
-                  <td className="px-2 py-2">{transaction.business}</td>
-                  <td className="px-2 py-2">{transaction.money}</td>
-                  <td className="px-2 py-2 font-black">
-                    {transaction.balance}
-                  </td>
-                  <td className="max-w-[240px] whitespace-normal px-2 py-2 text-[8px] text-slate-500">
-                    {transaction.detail}
-                  </td>
-                </tr>
+                  book={book}
+                  transaction={transaction}
+                  includeAccount
+                  onOpen={onOpenTransaction}
+                />
               ))
             }
           />
@@ -2410,6 +2716,73 @@ function LedgerCombinedStatement({
   );
 }
 
+function LedgerDayDetail({
+  books,
+  date,
+  onBack,
+  onOpenTransaction,
+}: Readonly<{
+  books: LedgerBook[];
+  date: string;
+  onBack: () => void;
+  onOpenTransaction: (context: LedgerTransactionContext) => void;
+}>) {
+  const rows = flattenLedgerTransactionRows(books);
+
+  return (
+    <SectionCard
+      title={`${displayDate(date)} · Full day`}
+      hint={`${rows.length} entries · selected day only`}
+    >
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <Button onClick={onBack}>Back</Button>
+        <span className="text-[8px] font-bold text-slate-500">
+          {rows.length} entries
+        </span>
+      </div>
+
+      <section aria-label="Ledger day totals" className="mb-3 space-y-2">
+        {books.map((book) => (
+          <div
+            key={book.id}
+            className="rounded-xl border border-emerald-100 bg-gradient-to-br from-white via-emerald-50/45 to-orange-50/45 p-3"
+          >
+            <p className="text-[9px] font-black text-slate-900">{book.name}</p>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {book.summary.slice(-3).map(([label, value]) => (
+                <div key={label}>
+                  <p className="text-[7px] font-black uppercase tracking-[0.08em] text-slate-400">
+                    {label}
+                  </p>
+                  <p className="mt-1 text-[10px] font-black text-slate-900">
+                    {value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <div className="overflow-x-auto rounded-xl border border-slate-100">
+        <table className="min-w-[760px] border-collapse text-left text-[9px]">
+          <LedgerTransactionHeader includeAccount />
+          <tbody>
+            {rows.map(({ book, transaction }) => (
+              <LedgerClickableTransactionRow
+                key={`${book.id}-${transaction.id}`}
+                book={book}
+                transaction={transaction}
+                includeAccount
+                onOpen={onOpenTransaction}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
+  );
+}
 
 function resolveLedgerAccountId(current: string, books: LedgerBook[]) {
   if (current === ALL_ACCOUNTS && books.length > 1) return current;
@@ -2604,6 +2977,8 @@ function LedgerSelectionContent({
   setStatementOpen,
   editParty,
   editExpense,
+  onOpenDate,
+  onOpenTransaction,
 }: Readonly<{
   workspace: LotteryWorkspace;
   visibleBooks: LedgerBook[];
@@ -2616,6 +2991,8 @@ function LedgerSelectionContent({
   setStatementOpen: (value: boolean) => void;
   editParty: (party: LotteryParty) => void;
   editExpense: (profile: LotteryExpenseProfile) => void;
+  onOpenDate: (date: string) => void;
+  onOpenTransaction: (context: LedgerTransactionContext) => void;
 }>) {
   if (!visibleBooks.length) {
     return (
@@ -2630,6 +3007,8 @@ function LedgerSelectionContent({
       <LedgerStatement
         book={selected}
         bounds={bounds}
+        onOpenDate={onOpenDate}
+        onOpenTransaction={onOpenTransaction}
         onEdit={() =>
           editLedgerSelection({
             workspace,
@@ -2659,12 +3038,18 @@ function LedgerSelectionContent({
       books={visibleBooks}
       bounds={bounds}
       onBack={() => setStatementOpen(false)}
+      onOpenDate={onOpenDate}
+      onOpenTransaction={onOpenTransaction}
     />
   );
 }
 
 function LedgerPanel({
   workspace,
+  organizationId,
+  api,
+  refreshWorkspace,
+  openSellerCorrection,
   launch,
   navigationRequest,
   onLaunchApplied,
@@ -2672,6 +3057,10 @@ function LedgerPanel({
   editExpense,
 }: Readonly<{
   workspace: LotteryWorkspace;
+  organizationId: string;
+  api: LotteryAccountingClient;
+  refreshWorkspace: () => Promise<boolean>;
+  openSellerCorrection: (partyId: string, occurredAt: string) => void;
   launch: LedgerLaunch | null;
   navigationRequest: LotteryAccountingWorkspaceNavigationRequest | null;
   onLaunchApplied: () => void;
@@ -2687,6 +3076,8 @@ function LedgerPanel({
   const [to, setTo] = useState(today);
   const [view, setView] = useState<"list" | "table">("list");
   const [statementOpen, setStatementOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<LedgerTransactionContext | null>(null);
 
   useEffect(() => {
     if (navigationRequest?.ledgerView !== "party") return;
@@ -2704,6 +3095,14 @@ function LedgerPanel({
     () => ledgerSubtypeOptions(workspace, bookType),
     [bookType, workspace],
   );
+
+  useEffect(() => {
+    setSubtype((current) =>
+      subtypeOptions.some(([value]) => value === current)
+        ? current
+        : subtypeOptions[0]?.[0] || "",
+    );
+  }, [subtypeOptions]);
 
   useEffect(() => {
     applyLedgerLaunchState({
@@ -2727,6 +3126,8 @@ function LedgerPanel({
   useEffect(() => {
     setAccountId((current) => resolveLedgerAccountId(current, books));
     setStatementOpen(false);
+    setSelectedDate(null);
+    setSelectedTransaction(null);
   }, [books]);
 
   const needsSubtype = subtypeOptions.length > 1 || bookType === "expense";
@@ -2739,6 +3140,20 @@ function LedgerPanel({
     ? undefined
     : books.find((book) => book.id === accountId) || books[0];
   const visibleBooks = allSelected ? books : selected ? [selected] : [];
+  const dayBooks = useMemo(() => {
+    if (!selectedDate) return [];
+    const dailyBooks = buildLedgerBooks(
+      workspace,
+      bookType,
+      subtype,
+      selectedDate,
+      selectedDate,
+    );
+    if (allSelected) return dailyBooks;
+    return selected
+      ? dailyBooks.filter((book) => book.id === selected.id)
+      : [];
+  }, [allSelected, bookType, selected, selectedDate, subtype, workspace]);
 
   return (
     <div className="space-y-3">
@@ -2864,19 +3279,40 @@ function LedgerPanel({
         </div>
       </SectionCard>
 
-      <LedgerSelectionContent
-        workspace={workspace}
-        visibleBooks={visibleBooks}
-        selected={selected}
-        allSelected={allSelected}
-        statementOpen={statementOpen}
-        bounds={bounds}
-        view={view}
-        setView={setView}
-        setStatementOpen={setStatementOpen}
-        editParty={editParty}
-        editExpense={editExpense}
-      />
+      {selectedTransaction ? (
+        <LedgerTransactionDetail
+          workspace={workspace}
+          organizationId={organizationId}
+          api={api}
+          context={selectedTransaction}
+          onBack={() => setSelectedTransaction(null)}
+          onRefresh={refreshWorkspace}
+          onSellerCorrection={openSellerCorrection}
+        />
+      ) : selectedDate ? (
+        <LedgerDayDetail
+          books={dayBooks}
+          date={selectedDate}
+          onBack={() => setSelectedDate(null)}
+          onOpenTransaction={setSelectedTransaction}
+        />
+      ) : (
+        <LedgerSelectionContent
+          workspace={workspace}
+          visibleBooks={visibleBooks}
+          selected={selected}
+          allSelected={allSelected}
+          statementOpen={statementOpen}
+          bounds={bounds}
+          view={view}
+          setView={setView}
+          setStatementOpen={setStatementOpen}
+          editParty={editParty}
+          editExpense={editExpense}
+          onOpenDate={setSelectedDate}
+          onOpenTransaction={setSelectedTransaction}
+        />
+      )}
     </div>
   );
 }
@@ -3882,17 +4318,22 @@ function LedgerStatement({
   bounds,
   onBack,
   onEdit,
+  onOpenDate,
+  onOpenTransaction,
 }: Readonly<{
   book: LedgerBook;
   bounds: { from: string; to: string };
   onBack?: () => void;
   onEdit: () => void;
+  onOpenDate: (date: string) => void;
+  onOpenTransaction: (context: LedgerTransactionContext) => void;
 }>) {
   const editable = Boolean(book.accountKind);
   const dateGroups = groupLedgerRowsByDate(
     book.transactions,
     (row) => row.occurredAt,
   );
+
   return (
     <SectionCard
       title={book.name}
@@ -3906,6 +4347,7 @@ function LedgerStatement({
           </Button>
         )}
       </div>
+
       <section
         aria-label="Ledger period summary"
         className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3"
@@ -3922,25 +4364,22 @@ function LedgerStatement({
           </div>
         ))}
       </section>
+
       <div className="overflow-x-auto rounded-xl border border-slate-100">
         <table className="min-w-[640px] border-collapse text-left text-[9px]">
           <LedgerTransactionHeader />
           <LedgerDateGroupedBody
             groups={dateGroups}
             colSpan={5}
+            onOpenDate={onOpenDate}
             renderRows={(group) =>
               group.rows.map((row) => (
-                <tr key={row.id} className="border-t border-slate-100">
-                  <td className="px-2 py-2">
-                    {displayDate(row.occurredAt)}
-                  </td>
-                  <td className="px-2 py-2">{row.business}</td>
-                  <td className="px-2 py-2">{row.money}</td>
-                  <td className="px-2 py-2 font-black">{row.balance}</td>
-                  <td className="max-w-[230px] whitespace-normal px-2 py-2 text-[8px] text-slate-500">
-                    {row.detail}
-                  </td>
-                </tr>
+                <LedgerClickableTransactionRow
+                  key={row.id}
+                  book={book}
+                  transaction={row}
+                  onOpen={onOpenTransaction}
+                />
               ))
             }
           />

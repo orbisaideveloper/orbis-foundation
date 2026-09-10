@@ -61,6 +61,7 @@ interface LotterySaleFields {
   periodId: string | null;
   periodLabel: string | null;
   reference: string;
+  syncVersion?: number;
   dispatchQuantity: number;
   morningReturnQuantity: number;
   dayReturnQuantity: number;
@@ -97,7 +98,9 @@ export interface LotteryDraftSale extends LotterySaleFields {
 export type LotteryDailySellerDraftIdentity = Pick<
   LotteryDraftSale,
   "id" | "reference" | "status"
->;
+> & {
+  syncVersion?: number;
+};
 
 export interface LotteryDailyStockistEntryIdentity {
   partyId: string;

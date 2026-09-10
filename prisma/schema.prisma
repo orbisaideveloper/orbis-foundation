@@ -170,10 +170,12 @@ model FoundationAccountingOrganization {
   stockMovement     FoundationLotteryStockMovement[]
   stockistEntries   FoundationLotteryStockistEntry[]
   sales             FoundationLotterySale[]
+  sellerSyncOperations FoundationLotterySellerSyncOperation[]
   payments          FoundationLotteryPayment[]
   settlements       FoundationLotterySettlement[]
   ledgerEntries     FoundationLotteryLedgerEntry[]
   auditEvents       FoundationLotteryAuditEvent[]
+  corrections       FoundationAccountingCorrection[]
   entryClearances   FoundationLotteryEntryClearance[]
   expenseCategories FoundationAccountingExpenseCategory[]
   expenseProfiles   FoundationAccountingExpenseProfile[]
@@ -364,6 +366,7 @@ model FoundationLotterySale {
   netPayablePaise       BigInt
   status                String   @default("DRAFT")
   correctionOfSaleId    String?
+  syncVersion           Int      @default(1)
   occurredAt            DateTime
   createdByAdminId      String
   createdAt             DateTime @default(now())
@@ -372,13 +375,36 @@ model FoundationLotterySale {
   party        FoundationAccountingParty          @relation(fields: [partyId], references: [id], onDelete: Restrict)
   period       FoundationLotteryAccountingPeriod? @relation(fields: [periodId], references: [id], onDelete: Restrict)
   settlements  FoundationLotterySettlement[]
+  sellerSyncOperations FoundationLotterySellerSyncOperation[]
 
+  // 20260908070000 also adds a PostgreSQL partial unique index for one
+  // DRAFT per organization/party/occurredAt; Prisma cannot express it here.
   @@unique([organizationId, reference])
   @@index([organizationId, occurredAt])
   @@index([organizationId, status, occurredAt])
   @@index([partyId, occurredAt])
   @@index([periodId])
   @@index([correctionOfSaleId])
+}
+
+model FoundationLotterySellerSyncOperation {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  operationId         String
+  saleId              String
+  requestHash         String
+  expectedVersion     Int
+  acknowledgedVersion Int
+  acknowledgement     Json
+  createdByAdminId    String
+  createdAt           DateTime @default(now())
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sale         FoundationLotterySale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, operationId])
+  @@index([organizationId, saleId, createdAt])
+  @@index([saleId, createdAt])
 }
 
 model FoundationLotteryPayment {
@@ -464,6 +490,28 @@ model FoundationLotteryAuditEvent {
 // A clearance never deletes a party or an immutable accounting row. It marks
 // a selected day's operational entries as replaced, so a new correction for
 // that same date can be saved cleanly and the audit trail stays intact.
+model FoundationAccountingCorrection {
+  id               String   @id @default(uuid())
+  organizationId   String
+  entityType       String
+  entityId         String
+  version          Int
+  operationId      String
+  requestHash      String
+  previousSnapshot Json
+  replacement      Json
+  acknowledgement  Json
+  reason           String?
+  actorAdminId     String
+  createdAt        DateTime @default(now())
+
+  organization FoundationAccountingOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, operationId])
+  @@unique([organizationId, entityType, entityId, version])
+  @@index([organizationId, entityType, entityId, createdAt])
+}
+
 model FoundationLotteryEntryClearance {
   id               String   @id @default(uuid())
   organizationId   String

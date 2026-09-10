@@ -7,6 +7,7 @@ const { sanitizeDiagnosticLogs } = require("./telemetry-module.cjs");
 const MAX_EXPORT_BYTES = 128 * 1024;
 const MAX_RECENT_EVENTS = 50;
 const MAX_LOCAL_MIGRATIONS = 100;
+const DIAGNOSTIC_DB_QUERY_TIMEOUT_MS = 5_000;
 const repositoryRoot = path.resolve(__dirname, "..");
 const GIT_EXECUTABLE_CANDIDATES = Object.freeze([
   "/usr/bin/git",
@@ -314,19 +315,39 @@ function capabilitySummary(capabilityRegistry) {
   }
 }
 
-async function countFoundationTables(prisma) {
+async function settleWithin(promise, timeoutMs) {
+  let timeout;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("DIAGNOSTIC_DB_QUERY_TIMEOUT")),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function countFoundationTables(prisma, timeoutMs) {
   const results = await Promise.allSettled([
     ...FOUNDATION_COUNT_QUERIES.map(([, clientName]) => {
       const count = prisma?.[clientName]?.count;
       return typeof count === "function"
-        ? count.call(prisma[clientName])
+        ? settleWithin(count.call(prisma[clientName]), timeoutMs)
         : Promise.reject(new Error("unavailable"));
     }),
     typeof prisma?.$queryRaw === "function"
-      ? prisma.$queryRaw`
-          SELECT COUNT(*)::text AS "count"
-          FROM public."FoundationTimeMachine"
-        `
+      ? settleWithin(
+          prisma.$queryRaw`
+            SELECT COUNT(*)::text AS "count"
+            FROM public."FoundationTimeMachine"
+          `,
+          timeoutMs,
+        )
       : Promise.reject(new Error("unavailable")),
   ]);
 
@@ -369,23 +390,26 @@ function summarizeTelemetry(logs) {
   return summary;
 }
 
-async function telemetryFacts(prisma) {
+async function telemetryFacts(prisma, timeoutMs) {
   try {
-    const rows = await prisma?.foundationSystemLog?.findMany({
-      take: MAX_RECENT_EVENTS,
-      orderBy: { lastSeen: "desc" },
-      select: {
-        timestamp: true,
-        level: true,
-        source: true,
-        message: true,
-        category: true,
-        severity: true,
-        count: true,
-        firstSeen: true,
-        lastSeen: true,
-      },
-    });
+    const rows = await settleWithin(
+      prisma?.foundationSystemLog?.findMany({
+        take: MAX_RECENT_EVENTS,
+        orderBy: { lastSeen: "desc" },
+        select: {
+          timestamp: true,
+          level: true,
+          source: true,
+          message: true,
+          category: true,
+          severity: true,
+          count: true,
+          firstSeen: true,
+          lastSeen: true,
+        },
+      }),
+      timeoutMs,
+    );
     const recentEvents = sanitizeDiagnosticLogs(rows);
     return {
       status: "available",
@@ -403,9 +427,15 @@ async function telemetryFacts(prisma) {
 
 async function buildAdminDiagnosticExport(dependencies) {
   const { prisma, providerManager, capabilityRegistry } = dependencies;
+  const databaseQueryTimeoutMs = boundedInteger(
+    dependencies.databaseQueryTimeoutMs,
+    DIAGNOSTIC_DB_QUERY_TIMEOUT_MS,
+    1,
+    DIAGNOSTIC_DB_QUERY_TIMEOUT_MS,
+  );
   const [tables, telemetry] = await Promise.all([
-    countFoundationTables(prisma),
-    telemetryFacts(prisma),
+    countFoundationTables(prisma, databaseQueryTimeoutMs),
+    telemetryFacts(prisma, databaseQueryTimeoutMs),
   ]);
   const availableCounts = tables.filter(
     (table) => table.status === "available",
@@ -461,6 +491,7 @@ async function buildAdminDiagnosticExport(dependencies) {
 }
 
 module.exports = {
+  DIAGNOSTIC_DB_QUERY_TIMEOUT_MS,
   FOUNDATION_COUNT_QUERIES,
   FOUNDATION_TABLE_PAGE_LIMIT,
   MAX_EXPORT_BYTES,

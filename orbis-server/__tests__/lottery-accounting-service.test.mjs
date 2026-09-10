@@ -7,6 +7,16 @@ const require = createRequire(import.meta.url);
 const {
   createLotteryAccountingService,
 } = require("../lottery-accounting-service.cjs");
+const DEMO_LOTTERY_NAME = "Demo Lottery";
+const SEPTEMBER_FIRST = "2026-09-01";
+const STOCKIST_PAYMENT_ID = "stockist-payment";
+const SEPTEMBER_SECOND = "2026-09-02";
+const STOCKIST_A_NAME = "Stockist A";
+const STOCKIST_ID = "stockist-1";
+const STOCKIST_CODE = "stockist-code-1";
+const SEPTEMBER_FIRST_UTC = "2026-09-01T00:00:00.000Z";
+const STOCKIST_LEGACY_ID = "stockist-legacy";
+const SELLER_ENTRY_DATE = "2026-08-30";
 
 function createPrismaMock() {
   let id = 2;
@@ -14,7 +24,7 @@ function createPrismaMock() {
     organizations: [
       {
         id: "org-1",
-        name: "Demo Lottery",
+        name: DEMO_LOTTERY_NAME,
         status: "ACTIVE",
         tdsRateBps: 200,
       },
@@ -37,9 +47,11 @@ function createPrismaMock() {
     stocks: [],
     stockistEntries: [],
     sales: [],
+    syncOperations: [],
     payments: [],
     settlements: [],
     clearances: [],
+    corrections: [],
     expenseCategories: [],
     expenseProfiles: [],
     expenseBills: [],
@@ -170,7 +182,7 @@ function createPrismaMock() {
     },
     foundationLotterySale: {
       create: async ({ data }) => {
-        const row = created("sale", data);
+        const row = created("sale", { syncVersion: 1, ...data });
         state.sales.push(row);
         return row;
       },
@@ -183,9 +195,23 @@ function createPrismaMock() {
         Object.assign(row, data);
         return row;
       },
+      updateMany: async ({ where, data }) => {
+        const rows = state.sales.filter((row) => within(row, where));
+        for (const row of rows) Object.assign(row, data);
+        return { count: rows.length };
+      },
       delete: async ({ where }) => {
         const index = state.sales.findIndex((item) => item.id === where.id);
         return state.sales.splice(index, 1)[0];
+      },
+    },
+    foundationLotterySellerSyncOperation: {
+      findFirst: async ({ where }) =>
+        state.syncOperations.find((row) => within(row, where)) || null,
+      create: async ({ data }) => {
+        const row = created("seller-sync", data);
+        state.syncOperations.push(row);
+        return row;
       },
     },
     foundationLotteryPayment: {
@@ -237,6 +263,10 @@ function createPrismaMock() {
       findMany: async ({ where = {} }) =>
         state.customerBills.filter((row) => within(row, where)),
     },
+    foundationAccountingCorrection: {
+      findMany: async ({ where = {} }) =>
+        state.corrections.filter((row) => within(row, where)),
+    },
     foundationLotteryLedgerEntry: {
       createMany: async ({ data }) => {
         state.ledger.push(...data.map((row) => created("ledger", row)));
@@ -277,7 +307,7 @@ describe("Lottery Accounting Service", () => {
     const prisma = createPrismaMock();
     const service = createLotteryAccountingService({ prisma });
     const organization = await service.createOrganization(
-      { name: "Demo Lottery" },
+      { name: DEMO_LOTTERY_NAME },
       "admin-1",
     );
     const party = await service.createParty(
@@ -333,7 +363,7 @@ describe("Lottery Accounting Service", () => {
         {
           organizationId: organization.id,
           label: "bad",
-          startsAt: "2026-09-01",
+          startsAt: SEPTEMBER_FIRST,
           endsAt: "2026-08-01",
         },
         "admin-1",
@@ -525,7 +555,7 @@ describe("Lottery Accounting Service", () => {
   it("keeps cash, bank and PWT balances separate for stockist payments", async () => {
     const prisma = createPrismaMock();
     prisma.state.parties.push({
-      id: "stockist-payment",
+      id: STOCKIST_PAYMENT_ID,
       organizationId: "org-1",
       status: "ACTIVE",
       partyType: "STOCKIST",
@@ -547,7 +577,7 @@ describe("Lottery Accounting Service", () => {
           bankPaise: 300_000,
           pwtPaise: 200_000,
         },
-        occurredAt: "2026-09-02",
+        occurredAt: SEPTEMBER_SECOND,
       },
       "admin-1",
     );
@@ -555,7 +585,7 @@ describe("Lottery Accounting Service", () => {
     const outgoing = await service.recordPayment(
       {
         organizationId: "org-1",
-        partyId: "stockist-payment",
+        partyId: STOCKIST_PAYMENT_ID,
         reference: "PAY-OUT-1",
         direction: "PAYMENT",
         totalAmountPaise: 500_000,
@@ -564,7 +594,7 @@ describe("Lottery Accounting Service", () => {
           bankPaise: 200_000,
           pwtPaise: 150_000,
         },
-        occurredAt: "2026-09-02",
+        occurredAt: SEPTEMBER_SECOND,
       },
       "admin-1",
     );
@@ -603,12 +633,12 @@ describe("Lottery Accounting Service", () => {
       service.recordPayment(
         {
           organizationId: "org-1",
-          partyId: "stockist-payment",
+          partyId: STOCKIST_PAYMENT_ID,
           reference: "PAY-OUT-2",
           direction: "PAYMENT",
           totalAmountPaise: 60_000,
           methodSplit: { pwtPaise: 60_000 },
-          occurredAt: "2026-09-02",
+          occurredAt: SEPTEMBER_SECOND,
         },
         "admin-1",
       ),
@@ -715,7 +745,7 @@ describe("Lottery Accounting Service", () => {
     const prisma = createPrismaMock();
     const service = createLotteryAccountingService({ prisma });
     const organization = await service.createOrganization(
-      { name: "Demo Lottery" },
+      { name: DEMO_LOTTERY_NAME },
       "admin-1",
     );
     const party = await service.createParty(
@@ -773,7 +803,7 @@ describe("Lottery Accounting Service", () => {
 
     expect(preview.calculated.netPayablePaise).toBe("76080");
     expect(preview.ledger).toHaveLength(4);
-    expect(workspace.organization.name).toBe("Demo Lottery");
+    expect(workspace.organization.name).toBe(DEMO_LOTTERY_NAME);
     expect(workspace.sales[0]).toMatchObject({
       partyName: "Seller A",
       settledPaise: "40000",
@@ -791,7 +821,7 @@ describe("Lottery Accounting Service", () => {
     const party = await service.createParty(
       {
         organizationId: "org-1",
-        name: "Stockist A",
+        name: STOCKIST_A_NAME,
         partyType: "STOCKIST",
         phone: "9999999999",
         ticketRatePaise: 700,
@@ -816,19 +846,19 @@ describe("Lottery Accounting Service", () => {
   it("freezes stockist receipt rate, commission and common TDS on the receipt", async () => {
     const prisma = createPrismaMock();
     prisma.state.parties.push({
-      id: "stockist-1",
+      id: STOCKIST_ID,
       organizationId: "org-1",
       status: "ACTIVE",
       partyType: "STOCKIST",
-      name: "Stockist A",
-      uniqueCode: "stockist-code-1",
+      name: STOCKIST_A_NAME,
+      uniqueCode: STOCKIST_CODE,
       ticketRatePaise: 1_000n,
     });
     const service = createLotteryAccountingService({ prisma });
     const movement = await service.recordStockMovement(
       {
         organizationId: "org-1",
-        partyId: "stockist-1",
+        partyId: STOCKIST_ID,
         type: "RECEIPT",
         quantity: 100,
         commissionPaise: 10_000,
@@ -836,7 +866,7 @@ describe("Lottery Accounting Service", () => {
       "admin-1",
     );
     expect(movement).toMatchObject({
-      partyId: "stockist-1",
+      partyId: STOCKIST_ID,
       unitRatePaise: "1000",
       grossPurchasePaise: "100000",
       commissionPaise: "10000",
@@ -849,12 +879,12 @@ describe("Lottery Accounting Service", () => {
   it("saves one simple editable stockist row and calculates payable from net purchase", async () => {
     const prisma = createPrismaMock();
     prisma.state.parties.push({
-      id: "stockist-1",
+      id: STOCKIST_ID,
       organizationId: "org-1",
       status: "ACTIVE",
       partyType: "STOCKIST",
-      name: "Stockist A",
-      uniqueCode: "stockist-code-1",
+      name: STOCKIST_A_NAME,
+      uniqueCode: STOCKIST_CODE,
       ticketRatePaise: 100n,
     });
     prisma.state.sales.push({
@@ -867,14 +897,14 @@ describe("Lottery Accounting Service", () => {
       dayReturnQuantity: 500n,
       eveningReturnQuantity: 500n,
       returnQuantity: 2_000n,
-      occurredAt: new Date("2026-09-01T00:00:00.000Z"),
+      occurredAt: new Date(SEPTEMBER_FIRST_UTC),
     });
     const service = createLotteryAccountingService({ prisma });
     const first = await service.saveDailyStockistEntry(
       {
         organizationId: "org-1",
-        partyId: "stockist-1",
-        occurredAt: "2026-09-01",
+        partyId: STOCKIST_ID,
+        occurredAt: SEPTEMBER_FIRST,
         purchaseQuantity: 7_000,
         morningReturnQuantity: 1_000,
         dayReturnQuantity: 500,
@@ -894,8 +924,8 @@ describe("Lottery Accounting Service", () => {
     const updated = await service.saveDailyStockistEntry(
       {
         organizationId: "org-1",
-        partyId: "stockist-1",
-        occurredAt: "2026-09-01",
+        partyId: STOCKIST_ID,
+        occurredAt: SEPTEMBER_FIRST,
         purchaseQuantity: 6_500,
         morningReturnQuantity: 1_000,
         dayReturnQuantity: 500,
@@ -931,12 +961,12 @@ describe("Lottery Accounting Service", () => {
   it("rejects a stockist return above the seller-return stock", async () => {
     const prisma = createPrismaMock();
     prisma.state.parties.push({
-      id: "stockist-1",
+      id: STOCKIST_ID,
       organizationId: "org-1",
       status: "ACTIVE",
       partyType: "STOCKIST",
-      name: "Stockist A",
-      uniqueCode: "stockist-code-1",
+      name: STOCKIST_A_NAME,
+      uniqueCode: STOCKIST_CODE,
       ticketRatePaise: 100n,
     });
     const service = createLotteryAccountingService({ prisma });
@@ -944,8 +974,8 @@ describe("Lottery Accounting Service", () => {
       service.saveDailyStockistEntry(
         {
           organizationId: "org-1",
-          partyId: "stockist-1",
-          occurredAt: "2026-09-01",
+          partyId: STOCKIST_ID,
+          occurredAt: SEPTEMBER_FIRST,
           purchaseQuantity: 0,
           morningReturnQuantity: 1,
         },
@@ -957,7 +987,7 @@ describe("Lottery Accounting Service", () => {
   it("lets a zero daily row override and clear an older technical stock entry", async () => {
     const prisma = createPrismaMock();
     prisma.state.parties.push({
-      id: "stockist-legacy",
+      id: STOCKIST_LEGACY_ID,
       organizationId: "org-1",
       status: "ACTIVE",
       partyType: "STOCKIST",
@@ -969,7 +999,7 @@ describe("Lottery Accounting Service", () => {
       {
         id: "legacy-purchase",
         organizationId: "org-1",
-        partyId: "stockist-legacy",
+        partyId: STOCKIST_LEGACY_ID,
         movementType: "RECEIPT",
         quantity: 100n,
         unitRatePaise: 100n,
@@ -979,7 +1009,7 @@ describe("Lottery Accounting Service", () => {
         tdsPaise: 0n,
         netPayablePaise: 10_000n,
         reference: "OLD-1",
-        occurredAt: new Date("2026-09-01T00:00:00.000Z"),
+        occurredAt: new Date(SEPTEMBER_FIRST_UTC),
       },
       {
         id: "seller-return",
@@ -988,15 +1018,15 @@ describe("Lottery Accounting Service", () => {
         movementType: "RETURN",
         quantity: 20n,
         reference: "SALE-OLD",
-        occurredAt: new Date("2026-09-01T00:00:00.000Z"),
+        occurredAt: new Date(SEPTEMBER_FIRST_UTC),
       },
     );
     const service = createLotteryAccountingService({ prisma });
     await service.saveDailyStockistEntry(
       {
         organizationId: "org-1",
-        partyId: "stockist-legacy",
-        occurredAt: "2026-09-01",
+        partyId: STOCKIST_LEGACY_ID,
+        occurredAt: SEPTEMBER_FIRST,
         purchaseQuantity: 0,
         morningReturnQuantity: 0,
         dayReturnQuantity: 0,
@@ -1008,7 +1038,7 @@ describe("Lottery Accounting Service", () => {
     const workspace = await service.getWorkspace({ organizationId: "org-1" });
     expect(workspace.stockistEntries).toEqual([
       expect.objectContaining({
-        partyId: "stockist-legacy",
+        partyId: STOCKIST_LEGACY_ID,
         purchaseQuantity: "0",
         totalReturnQuantity: "0",
         source: "DAILY",
@@ -1020,7 +1050,7 @@ describe("Lottery Accounting Service", () => {
   it("autosave upserts one same-seller daily draft instead of duplicating it", async () => {
     const prisma = createPrismaMock();
     const service = createLotteryAccountingService({ prisma });
-    const input = { ...sale, occurredAt: "2026-08-30" };
+    const input = { ...sale, occurredAt: SELLER_ENTRY_DATE };
     const first = await service.createDailySellerDraft(input, "admin-1");
     const second = await service.createDailySellerDraft(
       { ...input, dispatchQuantity: 110 },
@@ -1031,6 +1061,98 @@ describe("Lottery Accounting Service", () => {
     expect(second.sale.dispatchQuantity).toBe(110);
   });
 
+
+  it("replays one CLOUD seller operation idempotently without a second mutation", async () => {
+    const prisma = createPrismaMock();
+    const service = createLotteryAccountingService({ prisma });
+    const input = {
+      ...sale,
+      occurredAt: SELLER_ENTRY_DATE,
+      operationId: "seller-op-create-1",
+      expectedVersion: 0,
+    };
+
+    const first = await service.createDailySellerDraft(input, "admin-1");
+    const second = await service.createDailySellerDraft(input, "admin-1");
+
+    expect(first).toEqual(second);
+    expect(first.sale).toMatchObject({ syncVersion: 1, status: "DRAFT" });
+    expect(prisma.state.sales).toHaveLength(1);
+    expect(prisma.state.syncOperations).toHaveLength(1);
+    expect(
+      prisma.state.audits.filter(
+        (event) => event.eventType === "DAILY_SELLER_DRAFT_SAVED",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("rejects stale CLOUD seller versions and operation-id reuse with changed input", async () => {
+    const prisma = createPrismaMock();
+    const service = createLotteryAccountingService({ prisma });
+    const created = await service.createDailySellerDraft(
+      {
+        ...sale,
+        occurredAt: SELLER_ENTRY_DATE,
+        operationId: "seller-op-create-2",
+        expectedVersion: 0,
+      },
+      "admin-1",
+    );
+
+    const updated = await service.updateDailySellerDraft(
+      {
+        ...sale,
+        saleId: created.sale.id,
+        occurredAt: SELLER_ENTRY_DATE,
+        dispatchQuantity: 110,
+        operationId: "seller-op-update-1",
+        expectedVersion: 1,
+      },
+      "admin-1",
+    );
+    expect(updated.sale).toMatchObject({
+      id: created.sale.id,
+      dispatchQuantity: 110,
+      syncVersion: 2,
+    });
+
+    await expect(
+      service.updateDailySellerDraft(
+        {
+          ...sale,
+          saleId: created.sale.id,
+          occurredAt: SELLER_ENTRY_DATE,
+          dispatchQuantity: 120,
+          operationId: "seller-op-update-stale",
+          expectedVersion: 1,
+        },
+        "admin-1",
+      ),
+    ).rejects.toMatchObject({
+      code: "SELLER_DRAFT_CONFLICT",
+      field: "expectedVersion",
+      currentVersion: 2,
+    });
+    expect(prisma.state.sales[0].dispatchQuantity).toBe(110);
+
+    await expect(
+      service.updateDailySellerDraft(
+        {
+          ...sale,
+          saleId: created.sale.id,
+          occurredAt: SELLER_ENTRY_DATE,
+          dispatchQuantity: 111,
+          operationId: "seller-op-update-1",
+          expectedVersion: 1,
+        },
+        "admin-1",
+      ),
+    ).rejects.toMatchObject({
+      code: "SELLER_SYNC_OPERATION_REUSED",
+      field: "operationId",
+    });
+    expect(prisma.state.syncOperations).toHaveLength(2);
+  });
 
   it("can load a workspace without materializing recurring expenses", async () => {
     const prisma = createPrismaMock();

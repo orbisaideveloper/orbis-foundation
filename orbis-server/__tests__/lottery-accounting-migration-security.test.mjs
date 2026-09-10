@@ -35,6 +35,12 @@ const stockistDailyEntryMigration = fs.readFileSync(
   ),
   "utf8",
 );
+const sellerSyncMigration = fs.readFileSync(
+  path.resolve(
+    "prisma/migrations/20260908070000_add_lottery_seller_sync_contract/migration.sql",
+  ),
+  "utf8",
+);
 
 const TABLES = [
   "FoundationAccountingOrganization",
@@ -113,6 +119,35 @@ describe("Lottery Accounting migration security", () => {
     expect(stockistPurchaseMigration).toContain('"grossPurchasePaise" BIGINT NOT NULL DEFAULT 0');
     expect(stockistPurchaseMigration).toContain('"FoundationLotteryStockMovement_partyId_fkey"');
     expect(stockistPurchaseMigration).toContain('"tdsRateBps" BETWEEN 0 AND 10000');
+  });
+
+  it("adds a private seller sync acknowledgement contract", () => {
+    expect(sellerSyncMigration).toContain(
+      'ADD COLUMN "syncVersion" INTEGER NOT NULL DEFAULT 1',
+    );
+    expect(sellerSyncMigration).toContain(
+      'CREATE TABLE "FoundationLotterySellerSyncOperation"',
+    );
+    expect(sellerSyncMigration).toContain(
+      '"FoundationLotterySale_one_daily_draft_uq"',
+    );
+    expect(sellerSyncMigration).toContain(
+      `WHERE "status" = 'DRAFT'`,
+    );
+    expect(sellerSyncMigration).toContain(
+      '"organizationId", "operationId"',
+    );
+    expect(sellerSyncMigration).toContain(
+      'ON DELETE CASCADE ON UPDATE CASCADE',
+    );
+    expect(sellerSyncMigration).toContain(
+      'ALTER TABLE "FoundationLotterySellerSyncOperation" ENABLE ROW LEVEL SECURITY',
+    );
+    expect(sellerSyncMigration).toContain(
+      'REVOKE ALL ON TABLE "FoundationLotterySellerSyncOperation" FROM PUBLIC, anon, authenticated',
+    );
+    expect(sellerSyncMigration.trim().startsWith("BEGIN;")).toBe(true);
+    expect(sellerSyncMigration.trim().endsWith("COMMIT;")).toBe(true);
   });
 
   it("keeps editable stockist daily rows private and uniquely scoped by party and date", () => {

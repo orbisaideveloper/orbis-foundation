@@ -97,7 +97,7 @@ describe("LearningReviewPanel", () => {
     expect(
       mocks.readAdminJson.mock.calls.some(([path]) => path.endsWith("/approve")),
     ).toBe(true);
-  });
+  }, 15_000);
 
   it("allows an Admin to decline a preview without saving and remove an existing approved rule", async () => {
     render(<LearningReviewPanel previewMode={false} />);

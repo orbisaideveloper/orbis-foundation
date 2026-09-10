@@ -1,4 +1,8 @@
 import {
+  indexedDbRequestResult,
+  indexedDbTransactionDone,
+} from "../../../core/storage/indexedDbPromises";
+import {
   CachedChatResponse,
   ChatConsent,
   ChatMessage,
@@ -77,23 +81,16 @@ function rejectionError(reason: unknown, fallbackMessage: string): Error {
   return new Error(fallbackMessage);
 }
 
-function requestResult<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () =>
-      reject(rejectionError(request.error, "STORAGE_REQUEST_FAILED"));
-  });
-}
+const requestResult = <T,>(request: IDBRequest<T>): Promise<T> =>
+  indexedDbRequestResult(request, "STORAGE_REQUEST_FAILED", rejectionError);
 
-function transactionDone(transaction: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () =>
-      reject(rejectionError(transaction.error, "STORAGE_TRANSACTION_FAILED"));
-    transaction.onabort = () =>
-      reject(rejectionError(transaction.error, "STORAGE_TRANSACTION_ABORTED"));
-  });
-}
+const transactionDone = (transaction: IDBTransaction): Promise<void> =>
+  indexedDbTransactionDone(
+    transaction,
+    "STORAGE_TRANSACTION_FAILED",
+    "STORAGE_TRANSACTION_ABORTED",
+    rejectionError,
+  );
 
 function encodedBytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;

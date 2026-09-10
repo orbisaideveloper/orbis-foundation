@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
+const DIAGNOSTIC_EVENT_TIMESTAMP = "2026-08-24T12:00:00.000Z";
 const {
   FOUNDATION_COUNT_QUERIES,
   MAX_EXPORT_BYTES,
@@ -18,7 +19,7 @@ function fakePrisma() {
   }
   prisma.foundationSystemLog.findMany = vi.fn().mockResolvedValue([
     {
-      timestamp: "2026-08-24T12:00:00.000Z",
+      timestamp: DIAGNOSTIC_EVENT_TIMESTAMP,
       level: "INFO",
       source: "FOUNDATION",
       category: "FOUNDATION",
@@ -26,10 +27,10 @@ function fakePrisma() {
       message: "Foundation worker ready",
       count: 4,
       firstSeen: new Date("2026-08-24T11:59:00.000Z"),
-      lastSeen: new Date("2026-08-24T12:00:00.000Z"),
+      lastSeen: new Date(DIAGNOSTIC_EVENT_TIMESTAMP),
     },
     {
-      timestamp: "2026-08-24T12:00:00.000Z",
+      timestamp: DIAGNOSTIC_EVENT_TIMESTAMP,
       level: "ERROR",
       source: "PROVIDER",
       category: "PROVIDER",
@@ -106,5 +107,49 @@ describe("redacted Admin diagnostic export", () => {
         table.startsWith("Foundation"),
       ),
     ).toBe(true);
+  });
+
+  it("returns a degraded export when one database query never settles", async () => {
+    const prisma = fakePrisma();
+    prisma.foundationAdminMetric.count = vi.fn(
+      () => new Promise(() => undefined),
+    );
+
+    const report = await buildAdminDiagnosticExport({
+      prisma,
+      databaseQueryTimeoutMs: 10,
+    });
+
+    expect(report.database.state).toBe("degraded");
+    expect(report.database.foundationTableCounts).toContainEqual({
+      table: "FoundationAdminMetric",
+      count: null,
+      status: "unavailable",
+    });
+    expect(report.telemetry.status).toBe("available");
+  });
+
+  it("returns unavailable telemetry when its database query never settles", async () => {
+    const prisma = fakePrisma();
+    prisma.foundationSystemLog.findMany = vi.fn(
+      () => new Promise(() => undefined),
+    );
+
+    const report = await buildAdminDiagnosticExport({
+      prisma,
+      databaseQueryTimeoutMs: 10,
+    });
+
+    expect(report.database.state).toBe("connected");
+    expect(report.telemetry).toEqual({
+      status: "unavailable",
+      summary: {
+        records: 0,
+        occurrences: 0,
+        bySeverity: {},
+        byCategory: {},
+      },
+      recentEvents: [],
+    });
   });
 });

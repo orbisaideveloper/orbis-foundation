@@ -22,7 +22,11 @@ import type {
 } from "../../models/types";
 import { LotteryAccountingWorkspace } from "./LotteryAccountingWorkspace";
 import { WorkspaceSectionTabs } from "./WorkspaceSectionTabs";
-import type { LotteryAccountingClient } from "../../models/lotteryAccountingClient";
+import type {
+  LotteryAccountingClient,
+  LotteryAccountingReadClient,
+} from "../../models/lotteryAccountingClient";
+import { lotteryAccountingDemoClient } from "../../models/lotteryAccountingDemoClient";
 import { AccountingPublicView } from "./AccountingPublicView";
 
 type WorkspaceScreen = "catalog" | "model" | "module";
@@ -53,6 +57,7 @@ interface ManagedProductModelsProps {
   publishModel?: (slug: string) => Promise<ManagedProductModel>;
   reviewModel?: (slug: string) => Promise<ManagedProductModel>;
   lotteryAccountingApi?: LotteryAccountingClient;
+  lotteryAccountingDemoApi?: LotteryAccountingReadClient;
 }
 
 function versionLabel(version: number | null | undefined): string {
@@ -92,7 +97,7 @@ function NavigationCard({
   title: string;
   subtitle: string;
   icon: React.ReactNode;
-  onClick: () => void;
+  onClick?: () => void;
   disabled?: boolean;
 }>) {
   return (
@@ -144,6 +149,7 @@ export function ManagedProductModels({
   publishModel = publishManagedProductModel,
   reviewModel = reviewManagedProductModel,
   lotteryAccountingApi,
+  lotteryAccountingDemoApi = lotteryAccountingDemoClient,
 }: Readonly<ManagedProductModelsProps>) {
   const [models, setModels] = useState<ManagedProductModel[]>([]);
   const [screen, setScreen] = useState<WorkspaceScreen>(initialScreen);
@@ -290,7 +296,7 @@ export function ManagedProductModels({
       <AccountingPublicView
         mode="PREVIEW"
         version={model.currentVersion}
-        api={lotteryAccountingApi}
+        demoApi={lotteryAccountingDemoApi}
         onBack={() => window.history.back()}
       />
     );
@@ -301,7 +307,7 @@ export function ManagedProductModels({
       <AccountingPublicView
         mode="LIVE"
         version={model.publishedVersion}
-        api={lotteryAccountingApi}
+        demoApi={lotteryAccountingDemoApi}
         onBack={() => window.history.back()}
       />
     );
@@ -364,8 +370,8 @@ export function ManagedProductModels({
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <NavigationCard
-            title={`Current Mode · ${lottery?.name || "Lottery Accounting"} · ${versionLabel(model.currentVersion?.sequence)}`}
-            subtitle="Full Admin working mode. Existing Accounting behavior stays here."
+            title={`Admin Current Accounting · ${lottery?.name || "Lottery Accounting"} · ${versionLabel(model.currentVersion?.sequence)}`}
+            subtitle="Private real Accounting data and the full Admin working workflow."
             icon={<Sparkles className="h-5 w-5" />}
             onClick={() => {
               setTab("accounting");
@@ -374,31 +380,39 @@ export function ManagedProductModels({
           />
           <NavigationCard
             title={`Publish Preview · ${versionLabel(model.currentVersion?.sequence)}`}
-            subtitle="See the latest Current Draft through Classic, Signature Emerald or Signature Dark."
+            subtitle="Inspect the latest Current Draft with isolated Admin Demo data."
             icon={<Eye className="h-5 w-5" />}
             onClick={() => openPublicView("PREVIEW")}
           />
           <NavigationCard
-            title={`Live User · ${versionLabel(model.publishedVersion?.sequence)}`}
+            title={`Published Live Inspection · ${versionLabel(model.publishedVersion?.sequence)}`}
             subtitle={
               model.publishedVersion
-                ? "Inspect the currently published user snapshot."
-                : "No live version yet. Publish the reviewed first draft to create it."
+                ? "Inspect the published snapshot with the same isolated Admin Demo data."
+                : "No published snapshot yet. Publish a reviewed draft first."
             }
             icon={<Radio className="h-5 w-5" />}
             onClick={() => openPublicView("LIVE")}
             disabled={!model.publishedVersion}
           />
           <NavigationCard
-            title="Release history"
-            subtitle={`Draft ${versionLabel(model.currentVersion?.sequence)} · Review ${model.currentVersion?.reviewStatus || "NOT_RUN"} · Publish history`}
-            icon={<GitBranch className="h-5 w-5" />}
-            onClick={() => {
-              setTab("versions");
-              setScreen("module");
-            }}
+            title="Real Public User · Future"
+            subtitle="Future customer login uses its own authenticated tenant and never Admin or Demo data."
+            icon={<Database className="h-5 w-5" />}
+            disabled
           />
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            setTab("versions");
+            setScreen("module");
+          }}
+          className="inline-flex items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-[10px] font-bold text-slate-600"
+        >
+          <GitBranch className="h-4 w-4" />
+          Release history · Draft {versionLabel(model.currentVersion?.sequence)}
+        </button>
       </section>
     );
   }

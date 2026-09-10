@@ -11,6 +11,18 @@ import {
   percentToBasisPoints,
   rupeesToPaise,
 } from "../../models/lotteryAccountingMoney";
+import {
+  calculateLotterySeller,
+  sumLotterySellerCalculations,
+  type LotterySellerCalculation,
+} from "../../models/lotteryAccountingSellerCalculation";
+import {
+  getLotteryAccountingLocalStore,
+  type AccountingLocalScope,
+  type AccountingLocalSyncState,
+  type AccountingSellerWorkingRow,
+  type LotteryAccountingLocalStore,
+} from "../../models/lotteryAccountingLocalStore";
 import type {
   LotteryDraftSale,
   LotteryDailySellerDraftIdentity,
@@ -21,22 +33,15 @@ import type {
 
 type DailyViewMode = "table" | "grid";
 
-type DailySellerRow = {
-  saleId?: string;
-  partyId: string;
-  reference?: string;
-  status?: "DRAFT" | "POSTED";
-  dispatchQuantity: string;
-  morningReturnQuantity: string;
-  dayReturnQuantity: string;
-  eveningReturnQuantity: string;
-  commissionRupees: string;
-};
+type DailySellerRow = AccountingSellerWorkingRow;
 
 type SaleLike = LotterySale | LotteryDraftSale;
 
 const CONTROL_CLASS =
   "w-full rounded-lg border border-emerald-100 bg-white px-2 py-2 text-[11px] text-slate-800 outline-none focus:border-emerald-500";
+
+const DEVICE_STORAGE_UNAVAILABLE_MESSAGE =
+  "Device accounting storage is unavailable. This entry has not been durably saved.";
 
 const METHOD_LABELS = {
   cashPaise: "Cash",
@@ -48,10 +53,6 @@ const METHOD_LABELS = {
 
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function naturalNumber(value: string) {
-  return /^\d+$/.test(value) ? BigInt(value) : 0n;
 }
 
 function isSameEntryDate(value: string, day: string) {
@@ -71,6 +72,7 @@ function rowFromSale(sale: SaleLike): DailySellerRow {
     partyId: sale.partyId,
     reference: sale.reference,
     status: sale.status,
+    syncVersion: sale.syncVersion ?? 1,
     dispatchQuantity: String(sale.dispatchQuantity),
     morningReturnQuantity: String(sale.morningReturnQuantity),
     dayReturnQuantity: String(sale.dayReturnQuantity),
@@ -88,6 +90,16 @@ function blankRow(partyId: string): DailySellerRow {
     eveningReturnQuantity: "0",
     commissionRupees: "0",
   };
+}
+
+function sellerExpectedVersion(row: DailySellerRow) {
+  return row.syncVersion ?? (row.saleId ? 1 : 0);
+}
+
+function fallbackSellerSyncOperationId() {
+  const id =
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+  return `SELLER_ROW_SYNC:FALLBACK:${id}`;
 }
 
 function rowIsZero(row: DailySellerRow) {
@@ -173,46 +185,20 @@ function paiseToRupeesInput(value: string) {
   return `${paise / 100n}.${(paise % 100n).toString().padStart(2, "0")}`;
 }
 
-function roundedBasisPoints(amount: bigint, rateBps: number) {
-  return (amount * BigInt(rateBps) + 5_000n) / 10_000n;
-}
-
 function calculateRow(
   row: DailySellerRow,
   party: LotteryParty,
   tdsRateBps: number,
-) {
-  const dispatch = naturalNumber(row.dispatchQuantity);
-  const morningReturn = naturalNumber(row.morningReturnQuantity);
-  const dayReturn = naturalNumber(row.dayReturnQuantity);
-  const eveningReturn = naturalNumber(row.eveningReturnQuantity);
-  const totalReturn = morningReturn + dayReturn + eveningReturn;
-  const hasInvalidReturn = totalReturn > dispatch;
-  const netSale = hasInvalidReturn ? 0n : dispatch - totalReturn;
-  const rate = BigInt(party.ticketRatePaise || "0");
-  const grossAmount = netSale * rate;
-  const commission = BigInt(rupeesToPaise(row.commissionRupees) || "0");
-  const hasInvalidCommission = commission > grossAmount;
-  const tds = hasInvalidCommission
-    ? 0n
-    : roundedBasisPoints(commission, tdsRateBps);
-  const partyPayable = hasInvalidCommission
-    ? 0n
-    : grossAmount - commission + tds;
-  return {
-    dispatch,
-    morningReturn,
-    dayReturn,
-    eveningReturn,
-    totalReturn,
-    netSale,
-    grossAmount,
-    commission,
-    tds,
-    partyPayable,
-    hasInvalidReturn,
-    hasInvalidCommission,
-  };
+): LotterySellerCalculation {
+  return calculateLotterySeller({
+    dispatchQuantity: row.dispatchQuantity,
+    morningReturnQuantity: row.morningReturnQuantity,
+    dayReturnQuantity: row.dayReturnQuantity,
+    eveningReturnQuantity: row.eveningReturnQuantity,
+    ticketRatePaise: party.ticketRatePaise || "0",
+    commissionPaise: rupeesToPaise(row.commissionRupees) || "0",
+    tdsRateBps,
+  });
 }
 
 function sumValues(values: Iterable<bigint>) {
@@ -298,14 +284,15 @@ function ActionButton({
 
 function DailyTotals({
   title,
-  sales,
+  calculations,
   payments,
 }: Readonly<{
   title: string;
-  sales: Array<LotterySale | LotteryDraftSale>;
+  calculations: LotterySellerCalculation[];
   payments: LotteryWorkspace["payments"];
 }>) {
   const totals = useMemo(() => {
+    const sellerTotals = sumLotterySellerCalculations(calculations);
     const methodTotals = Object.fromEntries(
       Object.keys(METHOD_LABELS).map((key) => [key, 0n]),
     ) as Record<keyof typeof METHOD_LABELS, bigint>;
@@ -318,20 +305,7 @@ function DailyTotals({
       }
     }
     return {
-      dispatch: sumValues(sales.map((sale) => BigInt(sale.dispatchQuantity))),
-      morningReturn: sumValues(
-        sales.map((sale) => BigInt(sale.morningReturnQuantity)),
-      ),
-      dayReturn: sumValues(sales.map((sale) => BigInt(sale.dayReturnQuantity))),
-      eveningReturn: sumValues(
-        sales.map((sale) => BigInt(sale.eveningReturnQuantity)),
-      ),
-      totalReturn: sumValues(sales.map((sale) => BigInt(sale.returnQuantity))),
-      netSale: sumValues(sales.map((sale) => BigInt(sale.netTickets))),
-      grossAmount: sumValues(sales.map((sale) => BigInt(sale.grossSalesPaise))),
-      partyPayable: sumValues(
-        sales.map((sale) => BigInt(sale.netPayablePaise)),
-      ),
+      ...sellerTotals,
       paymentTotal: sumValues(
         payments
           .filter((payment) => payment.direction === "RECEIPT")
@@ -339,7 +313,7 @@ function DailyTotals({
       ),
       methodTotals,
     };
-  }, [payments, sales]);
+  }, [calculations, payments]);
   const items = [
     ["Dispatch", totals.dispatch.toString()],
     ["Morning return", totals.morningReturn.toString()],
@@ -347,8 +321,8 @@ function DailyTotals({
     ["Evening return", totals.eveningReturn.toString()],
     ["Total return", totals.totalReturn.toString()],
     ["Net sale", totals.netSale.toString()],
-    ["Net amount", formatPaise(totals.grossAmount)],
-    ["Party payable", formatPaise(totals.partyPayable)],
+    ["Net amount", formatPaise(totals.grossAmountPaise)],
+    ["Party payable", formatPaise(totals.partyPayablePaise)],
     ["Payment received", formatPaise(totals.paymentTotal)],
     ...Object.entries(METHOD_LABELS).map(([key, label]) => [
       label,
@@ -395,6 +369,14 @@ export interface DailySellerEntryProps {
   onRegisterFlush?: (
     flush: (() => Promise<boolean>) | null,
   ) => void;
+  localScope?: Omit<AccountingLocalScope, "organizationId">;
+  localStore?: LotteryAccountingLocalStore | null;
+  onLocalRowStateChange?: (
+    occurredAt: string,
+    row: AccountingSellerWorkingRow,
+    syncState: AccountingLocalSyncState,
+  ) => void;
+  onLocalRowRemoved?: (partyId: string, occurredAt: string) => void;
   editRequest?: { partyId: string; occurredAt: string; token: number } | null;
 }
 
@@ -407,6 +389,10 @@ export function DailySellerEntry({
   onCorrectPosted,
   onUpdateTdsRate,
   onRegisterFlush,
+  localScope = { ownerKind: "ADMIN_REAL", ownerId: "admin-current" },
+  localStore = getLotteryAccountingLocalStore(),
+  onLocalRowStateChange,
+  onLocalRowRemoved,
   editRequest,
 }: Readonly<DailySellerEntryProps>) {
   const [viewMode, setViewMode] = useState<DailyViewMode>("grid");
@@ -421,6 +407,10 @@ export function DailySellerEntry({
     [workspace.parties],
   );
   const [rows, setRows] = useState<Record<string, DailySellerRow>>({});
+  const accountingScope = useMemo<AccountingLocalScope>(
+    () => ({ ...localScope, organizationId }),
+    [localScope.ownerId, localScope.ownerKind, organizationId],
+  );
   const [localError, setLocalError] = useState<string | null>(null);
   const [savingPartyIds, setSavingPartyIds] = useState<Set<string>>(
     () => new Set(),
@@ -459,6 +449,7 @@ export function DailySellerEntry({
   }, [globalTdsRateBps]);
 
   useEffect(() => {
+    let cancelled = false;
     const currentWorkspace = workspaceRef.current;
     const nextRows = buildRows({
       parties: sellersRef.current,
@@ -466,21 +457,72 @@ export function DailySellerEntry({
       drafts: currentWorkspace.draftSales,
       selectedDate,
     });
-    const recoveredPartyIds = sellersRef.current.flatMap((party) => {
+    const legacyRecoveredPartyIds = sellersRef.current.flatMap((party) => {
       const pending = readPendingRow(organizationId, party.id, selectedDate);
       if (!pending) return [];
       nextRows[party.id] = { ...nextRows[party.id], ...pending, partyId: party.id };
       return [party.id];
     });
     setRows(nextRows);
-    dirtyPartyIdsRef.current = new Set(recoveredPartyIds);
+    dirtyPartyIdsRef.current = new Set(legacyRecoveredPartyIds);
     rowVersionsRef.current = new Map(
-      recoveredPartyIds.map((partyId) => [partyId, 1]),
+      legacyRecoveredPartyIds.map((partyId) => [partyId, 1]),
     );
-    if (recoveredPartyIds.length) {
+    if (legacyRecoveredPartyIds.length) {
       setAutosaveVersion((current) => current + 1);
     }
-  }, [organizationId, selectedDate, sellerKey]);
+
+    if (localStore) {
+      void localStore
+        .loadSellerRows(accountingScope, selectedDate)
+        .then((records) => {
+          if (cancelled || currentDateRef.current !== selectedDate) return;
+          const recoveredRecords = records.filter(
+            (record) =>
+              record.syncState !== "SYNCED" &&
+              (rowVersionsRef.current.get(record.partyId) || 0) <= 1,
+          );
+          if (recoveredRecords.length) {
+            const shouldRetryCloud =
+              currentWorkspace.organization.userLedgerStorage === "CLOUD";
+            for (const record of recoveredRecords) {
+              if (shouldRetryCloud && record.syncState !== "LOCAL_SAVED") {
+                dirtyPartyIdsRef.current.add(record.partyId);
+              }
+              rowVersionsRef.current.set(
+                record.partyId,
+                Math.max(rowVersionsRef.current.get(record.partyId) || 0, 1),
+              );
+            }
+            setRows((current) => {
+              const recovered = { ...current };
+              for (const record of recoveredRecords) {
+                recovered[record.partyId] = {
+                  ...(recovered[record.partyId] || blankRow(record.partyId)),
+                  ...record.row,
+                  partyId: record.partyId,
+                };
+              }
+              return recovered;
+            });
+            if (shouldRetryCloud && dirtyPartyIdsRef.current.size) {
+              setAutosaveVersion((current) => current + 1);
+            }
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setLocalError(
+              "Device accounting storage could not be read; browser recovery fallback remains available.",
+            );
+          }
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountingScope, localStore, organizationId, selectedDate, sellerKey]);
 
   useEffect(() => {
     if (!selectedPartyId && sellers[0]) setSelectedPartyId(sellers[0].id);
@@ -492,21 +534,16 @@ export function DailySellerEntry({
     setSelectedPartyId(editRequest.partyId);
   }, [editRequest]);
 
-  const postedSales = useMemo(
+  const liveSellerCalculations = useMemo(
     () =>
-      workspace.sales.filter((sale) =>
-        isSameEntryDate(sale.occurredAt, selectedDate),
+      sellers.map((party) =>
+        calculateRow(
+          rows[party.id] || blankRow(party.id),
+          party,
+          globalTdsRateBps,
+        ),
       ),
-    [selectedDate, workspace.sales],
-  );
-  const savedSales = useMemo(
-    () => [
-      ...postedSales,
-      ...workspace.draftSales.filter((sale) =>
-        isSameEntryDate(sale.occurredAt, selectedDate),
-      ),
-    ],
-    [postedSales, selectedDate, workspace.draftSales],
+    [globalTdsRateBps, rows, sellers],
   );
   const dailyPayments = useMemo(
     () =>
@@ -526,6 +563,38 @@ export function DailySellerEntry({
       [field]: value,
     };
     storePendingRow(organizationId, partyId, selectedDate, nextRow);
+    onLocalRowStateChange?.(selectedDate, nextRow, "PENDING");
+    if (localStore) {
+      const stage =
+        workspace.organization.userLedgerStorage === "DEVICE"
+          ? localStore.stageSellerRow(
+              accountingScope,
+              selectedDate,
+              nextRow,
+              "DEVICE",
+            )
+          : localStore.stageSellerRow(accountingScope, selectedDate, nextRow);
+      void stage
+        .then(() => {
+          if (workspace.organization.userLedgerStorage === "DEVICE") {
+            clearPendingRow(organizationId, partyId, selectedDate);
+            onLocalRowStateChange?.(selectedDate, nextRow, "LOCAL_SAVED");
+          }
+        })
+        .catch(() => {
+          onLocalRowStateChange?.(selectedDate, nextRow, "ERROR");
+          setLocalError(
+            workspace.organization.userLedgerStorage === "DEVICE"
+              ? DEVICE_STORAGE_UNAVAILABLE_MESSAGE
+              : "Device accounting storage could not be written; browser recovery fallback remains available.",
+          );
+        });
+    } else if (workspace.organization.userLedgerStorage === "DEVICE") {
+      onLocalRowStateChange?.(selectedDate, nextRow, "ERROR");
+      setLocalError(
+        DEVICE_STORAGE_UNAVAILABLE_MESSAGE,
+      );
+    }
     setRows((current) => ({
       ...current,
       [partyId]: nextRow,
@@ -608,43 +677,92 @@ export function DailySellerEntry({
     party: LotteryParty,
     row: DailySellerRow,
     actions: typeof actionsRef.current,
+    sync: { operationId: string; expectedVersion: number },
   ) => {
-    const payload = entryPayload(party, row);
+    const payload = {
+      ...entryPayload(party, row),
+      operationId: sync.operationId,
+      expectedVersion: sync.expectedVersion,
+    };
     if (!row.saleId) return actions.onSaveDraft(payload);
     if (row.status !== "POSTED") {
       return actions.onUpdateDraft(row.saleId, payload);
     }
     const replacement = await actions.onCorrectPosted(row.saleId);
     return replacement
-      ? actions.onUpdateDraft(replacement.id, payload)
+      ? actions.onUpdateDraft(replacement.id, {
+          ...payload,
+          expectedVersion: replacement.syncVersion ?? 1,
+        })
       : null;
   };
 
-  const finishSavingRow = (
+  const finishSavingRow = async (
     partyId: string,
     entryDate: string,
     versionAtStart: number,
+    operationId: string,
     saved: LotteryDailySellerDraftIdentity | null,
   ) => {
-    if (
-      currentDateRef.current !== selectedDate ||
-      rowVersionsRef.current.get(partyId) !== versionAtStart
-    ) {
+    const isCurrentRow =
+      currentDateRef.current === entryDate &&
+      (rowVersionsRef.current.get(partyId) || 0) === versionAtStart;
+    if (!saved) return;
+
+    const currentRow = rowsRef.current[partyId] || blankRow(partyId);
+    const acknowledgedVersion =
+      saved.syncVersion ?? sellerExpectedVersion(currentRow) + 1;
+    const acknowledgedRow: DailySellerRow = {
+      ...currentRow,
+      saleId: saved.id,
+      reference: saved.reference,
+      status: "DRAFT",
+      syncVersion: acknowledgedVersion,
+    };
+    setRows((current) => ({
+      ...current,
+      [partyId]: {
+        ...(current[partyId] || blankRow(partyId)),
+        saleId: saved.id,
+        reference: saved.reference,
+        status: "DRAFT",
+        syncVersion: acknowledgedVersion,
+      },
+    }));
+
+    try {
+      if (localStore?.acknowledgeSellerSync) {
+        await localStore.acknowledgeSellerSync(
+          accountingScope,
+          entryDate,
+          partyId,
+          operationId,
+          { ...saved, syncVersion: acknowledgedVersion },
+        );
+      } else if (isCurrentRow && localStore) {
+        await localStore.markSellerRowSynced(
+          accountingScope,
+          entryDate,
+          acknowledgedRow,
+        );
+      }
+    } catch {
+      dirtyPartyIdsRef.current.add(partyId);
+      onLocalRowStateChange?.(entryDate, acknowledgedRow, "ERROR");
+      setLocalError(
+        "Server save was acknowledged, but the local sync acknowledgement could not be stored. It will retry safely.",
+      );
       setAutosaveVersion((current) => current + 1);
       return;
     }
-    if (saved) {
-      setRows((current) => ({
-        ...current,
-        [partyId]: {
-          ...(current[partyId] || blankRow(partyId)),
-          saleId: saved.id,
-          reference: saved.reference,
-          status: "DRAFT",
-        },
-      }));
-      clearPendingRow(organizationId, partyId, entryDate);
+
+    if (!isCurrentRow) {
+      setAutosaveVersion((current) => current + 1);
+      return;
     }
+
+    onLocalRowStateChange?.(entryDate, acknowledgedRow, "SYNCED");
+    clearPendingRow(organizationId, partyId, entryDate);
     dirtyPartyIdsRef.current.delete(partyId);
   };
 
@@ -656,14 +774,155 @@ export function DailySellerEntry({
   ) => {
     const isCurrentRow =
       currentDateRef.current === entryDate &&
-      rowVersionsRef.current.get(partyId) === versionAtStart;
+      (rowVersionsRef.current.get(partyId) || 0) === versionAtStart;
     if (!deleted || !isCurrentRow) return;
     setRows((current) => ({
       ...current,
       [partyId]: blankRow(partyId),
     }));
+    onLocalRowRemoved?.(partyId, entryDate);
+    if (localStore) {
+      void localStore
+        .removeSellerRow(accountingScope, partyId, entryDate)
+        .catch(() => undefined);
+    }
     clearPendingRow(organizationId, partyId, entryDate);
     dirtyPartyIdsRef.current.delete(partyId);
+  };
+
+  const handlePersistRowError = (
+    error: unknown,
+    partyId: string,
+    row: DailySellerRow,
+    entryDate: string,
+    versionAtStart: number,
+    showValidation: boolean,
+  ) => {
+    const isCurrentRow =
+      currentDateRef.current === entryDate &&
+      (rowVersionsRef.current.get(partyId) || 0) === versionAtStart;
+    if (isCurrentRow) {
+      onLocalRowStateChange?.(entryDate, row, "ERROR");
+      dirtyPartyIdsRef.current.delete(partyId);
+      if (localStore?.markSellerRowSyncError) {
+        const message =
+          error instanceof Error ? error.message : "Entry could not be saved.";
+        void localStore
+          .markSellerRowSyncError(
+            accountingScope,
+            entryDate,
+            row,
+            message,
+          )
+          .catch(() => undefined);
+      }
+    }
+    if (showValidation) {
+      setLocalError(
+        error instanceof Error ? error.message : "Entry could not be saved.",
+      );
+    }
+  };
+
+  const persistDeviceSellerRow = async (
+    partyId: string,
+    entryDate: string,
+    row: DailySellerRow,
+  ) => {
+    if (!localStore) {
+      dirtyPartyIdsRef.current.delete(partyId);
+      onLocalRowStateChange?.(entryDate, row, "ERROR");
+      setLocalError(DEVICE_STORAGE_UNAVAILABLE_MESSAGE);
+      return;
+    }
+    setPartySaving(partyId, true);
+    try {
+      await localStore.stageSellerRow(
+        accountingScope,
+        entryDate,
+        row,
+        "DEVICE",
+      );
+      clearPendingRow(organizationId, partyId, entryDate);
+      dirtyPartyIdsRef.current.delete(partyId);
+      onLocalRowStateChange?.(entryDate, row, "LOCAL_SAVED");
+    } catch {
+      dirtyPartyIdsRef.current.delete(partyId);
+      onLocalRowStateChange?.(entryDate, row, "ERROR");
+      setLocalError(DEVICE_STORAGE_UNAVAILABLE_MESSAGE);
+    } finally {
+      setPartySaving(partyId, false);
+    }
+  };
+
+  const persistCloudSellerRow = async (
+    partyId: string,
+    entryDate: string,
+    versionAtStart: number,
+    party: LotteryParty,
+    row: DailySellerRow,
+    showValidation: boolean,
+  ) => {
+    const actions = actionsRef.current;
+    let durableOperation = null;
+    if (localStore?.getSellerSyncOperation) {
+      try {
+        durableOperation = await localStore.getSellerSyncOperation(
+          accountingScope,
+          entryDate,
+          partyId,
+        );
+      } catch {
+        // Browser recovery remains available; a fresh operation still receives
+        // optimistic version protection on the server.
+      }
+    }
+    const sync = {
+      operationId:
+        durableOperation?.operationId ?? fallbackSellerSyncOperationId(),
+      expectedVersion:
+        durableOperation?.expectedVersion ?? sellerExpectedVersion(row),
+    };
+    onLocalRowStateChange?.(entryDate, row, "SYNCING");
+    if (localStore?.markSellerRowSyncing) {
+      void localStore
+        .markSellerRowSyncing(accountingScope, entryDate, row)
+        .catch(() => undefined);
+    }
+    setPartySaving(partyId, true);
+    try {
+      if (rowIsZero(row)) {
+        const deleted = await deleteZeroSellerRow(row, actions);
+        finishDeletingRow(partyId, entryDate, versionAtStart, deleted);
+        return;
+      }
+      const saved = await saveSellerRow(party, row, actions, sync);
+      if (!saved && showValidation) {
+        setLocalError("The seller entry could not be saved. Please try again.");
+        return;
+      }
+      await finishSavingRow(
+        partyId,
+        entryDate,
+        versionAtStart,
+        sync.operationId,
+        saved,
+      );
+    } catch (error) {
+      handlePersistRowError(
+        error,
+        partyId,
+        row,
+        entryDate,
+        versionAtStart,
+        showValidation,
+      );
+    } finally {
+      setPartySaving(partyId, false);
+      if (dirtyPartyIdsRef.current.has(partyId)) {
+        setAutosaveVersion((current) => current + 1);
+      }
+    }
   };
 
   const persistRow = async (partyId: string, showValidation: boolean) => {
@@ -673,33 +932,20 @@ export function DailySellerEntry({
     if (!party || !row) return;
     const entryDate = currentDateRef.current;
     const versionAtStart = rowVersionsRef.current.get(partyId) || 0;
-    const actions = actionsRef.current;
-    setPartySaving(partyId, true);
-    try {
-      if (rowIsZero(row)) {
-        const deleted = await deleteZeroSellerRow(row, actions);
-        finishDeletingRow(partyId, entryDate, versionAtStart, deleted);
-        return;
-      }
+    const storageMode = workspaceRef.current.organization.userLedgerStorage;
 
-      const saved = await saveSellerRow(party, row, actions);
-      if (!saved && showValidation) {
-        setLocalError("The seller entry could not be saved. Please try again.");
-        return;
-      }
-      finishSavingRow(partyId, entryDate, versionAtStart, saved);
-    } catch (error) {
-      if (showValidation) {
-        setLocalError(
-          error instanceof Error ? error.message : "Entry could not be saved.",
-        );
-      }
-    } finally {
-      setPartySaving(partyId, false);
-      if (dirtyPartyIdsRef.current.has(partyId)) {
-        setAutosaveVersion((current) => current + 1);
-      }
+    if (storageMode === "DEVICE") {
+      await persistDeviceSellerRow(partyId, entryDate, row);
+      return;
     }
+    await persistCloudSellerRow(
+      partyId,
+      entryDate,
+      versionAtStart,
+      party,
+      row,
+      showValidation,
+    );
   };
 
   const persistRowRef = useRef(persistRow);
@@ -732,6 +978,31 @@ export function DailySellerEntry({
     }, 800);
     return () => window.clearTimeout(timer);
   }, [autosaveVersion, selectedDate, sellerKey]);
+
+  useEffect(() => {
+    if (!localStore) return undefined;
+    const retryCloudOutbox = () => {
+      if (workspaceRef.current.organization.userLedgerStorage !== "CLOUD") {
+        return;
+      }
+      void localStore
+        .listPendingOutbox(accountingScope)
+        .then((records) => {
+          if (!records.length) return;
+          for (const record of records) {
+            dirtyPartyIdsRef.current.add(record.payload.partyId);
+          }
+          setAutosaveVersion((current) => current + 1);
+        })
+        .catch(() => {
+          setLocalError(
+            "Pending cloud accounting changes could not be read for retry.",
+          );
+        });
+    };
+    window.addEventListener("online", retryCloudOutbox);
+    return () => window.removeEventListener("online", retryCloudOutbox);
+  }, [accountingScope, localStore]);
 
   useEffect(() => {
     const flushPendingRows = () => {
@@ -904,7 +1175,7 @@ export function DailySellerEntry({
 
       <DailyTotals
         title={`Daily saved total · ${dateCaption(selectedDate)}`}
-        sales={savedSales}
+        calculations={liveSellerCalculations}
         payments={dailyPayments}
       />
     </section>
@@ -1000,19 +1271,19 @@ function DailySellerTable({
         calculateRow(row, party, tdsRateBps).netSale,
       ),
     ),
-    grossAmount: sumValues(
+    grossAmountPaise: sumValues(
       rowCalculations.map(
-        ({ party, row }) => calculateRow(row, party, tdsRateBps).grossAmount,
+        ({ party, row }) => calculateRow(row, party, tdsRateBps).grossAmountPaise,
       ),
     ),
-    commission: sumValues(
+    commissionPaise: sumValues(
       rowCalculations.map(
-        ({ party, row }) => calculateRow(row, party, tdsRateBps).commission,
+        ({ party, row }) => calculateRow(row, party, tdsRateBps).commissionPaise,
       ),
     ),
-    partyPayable: sumValues(
+    partyPayablePaise: sumValues(
       rowCalculations.map(
-        ({ party, row }) => calculateRow(row, party, tdsRateBps).partyPayable,
+        ({ party, row }) => calculateRow(row, party, tdsRateBps).partyPayablePaise,
       ),
     ),
   };
@@ -1101,14 +1372,14 @@ function DailySellerTable({
                     invalid={calculation.hasInvalidReturn}
                   />
                   <AmountCell value={calculation.netSale.toString()} />
-                  <AmountCell value={formatPaise(calculation.grossAmount)} />
+                  <AmountCell value={formatPaise(calculation.grossAmountPaise)} />
                   <CommissionCell
                     party={party}
                     row={row}
                     onChange={onChange}
                     invalid={calculation.hasInvalidCommission}
                   />
-                  <AmountCell value={formatPaise(calculation.partyPayable)} />
+                  <AmountCell value={formatPaise(calculation.partyPayablePaise)} />
                   <td className="min-w-[130px] px-2 py-2">
                     <p className="mb-1 text-[8px] font-bold text-slate-500">
                       {row.reference || "Auto bill on save"}
@@ -1128,9 +1399,9 @@ function DailySellerTable({
               <td className="px-2 py-2">{totals.eveningReturn.toString()}</td>
               <td className="px-2 py-2">{totals.totalReturn.toString()}</td>
               <td className="px-2 py-2">{totals.netSale.toString()}</td>
-              <td className="px-2 py-2">{formatPaise(totals.grossAmount)}</td>
-              <td className="px-2 py-2">{formatPaise(totals.commission)}</td>
-              <td className="px-2 py-2">{formatPaise(totals.partyPayable)}</td>
+              <td className="px-2 py-2">{formatPaise(totals.grossAmountPaise)}</td>
+              <td className="px-2 py-2">{formatPaise(totals.commissionPaise)}</td>
+              <td className="px-2 py-2">{formatPaise(totals.partyPayablePaise)}</td>
               <td className="px-2 py-2">Draft values</td>
             </tr>
           </tfoot>
@@ -1319,19 +1590,19 @@ function DailySellerGrid({
                 />
                 <GridMetric
                   label="Net amount"
-                  value={formatPaise(calculation.grossAmount)}
+                  value={formatPaise(calculation.grossAmountPaise)}
                 />
                 <GridMetric
                   label="Commission"
-                  value={formatPaise(calculation.commission)}
+                  value={formatPaise(calculation.commissionPaise)}
                 />
                 <GridMetric
                   label="TDS on commission"
-                  value={formatPaise(calculation.tds)}
+                  value={formatPaise(calculation.tdsPaise)}
                 />
                 <GridMetric
                   label="Party payable"
-                  value={formatPaise(calculation.partyPayable)}
+                  value={formatPaise(calculation.partyPayablePaise)}
                 />
               </div>
 

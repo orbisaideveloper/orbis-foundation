@@ -10,6 +10,9 @@ const STOCKIST_A_ID = "stockist-a";
 const CASH_CUSTOMER_ID = "cash-customer";
 const SALARY_RAJU_ID = "salary-raju";
 const DASHBOARD_TITLE = "Demo Lottery dashboard";
+const LEDGER_BOOK_LABEL = "Ledger Book";
+const LEDGER_TYPE_LABEL = "Ledger type";
+const LEDGER_PARTY_LABEL = "Ledger Party";
 const organization = {
   id: "org-1",
   name: "Demo Lottery",
@@ -326,13 +329,13 @@ describe("LotteryAccountingWorkspace smart V1", () => {
     await screen.findByText(DASHBOARD_TITLE);
     fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
 
-    const book = screen.getByLabelText("Ledger Book");
+    const book = screen.getByLabelText(LEDGER_BOOK_LABEL);
     fireEvent.change(book, { target: { value: "commission" } });
-    expect(screen.getByLabelText("Ledger type")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Ledger type"), {
+    expect(screen.getByLabelText(LEDGER_TYPE_LABEL)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(LEDGER_TYPE_LABEL), {
       target: { value: "seller" },
     });
-    expect(screen.getByLabelText("Ledger Party")).toHaveValue(
+    expect(screen.getByLabelText(LEDGER_PARTY_LABEL)).toHaveValue(
       "commission-seller-seller-a",
     );
     expect(screen.getByRole("button", { name: "7 Days" })).toBeInTheDocument();
@@ -346,6 +349,80 @@ describe("LotteryAccountingWorkspace smart V1", () => {
       screen.getByRole("heading", { name: "Seller A" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("table")).toBeInTheDocument();
+  });
+
+  it("maps saved Expense profile bills and payments into Expenses Ledger", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-09T06:30:00.000Z"));
+    try {
+      const expenseWorkspace: LotteryWorkspace = {
+        ...workspace,
+        expensePayments: [
+          {
+            id: "expense-payment-1",
+            organizationId: "org-1",
+            profileId: SALARY_RAJU_ID,
+            profileName: "Raju",
+            categoryId: "salary",
+            categoryName: "Salary",
+            totalAmountPaise: "120000",
+            cashPaise: "100000",
+            bankPaise: "20000",
+            reference: "EXP-PAY-1",
+            occurredAt: RECORDED_AT,
+            createdAt: RECORDED_AT,
+          },
+        ],
+      };
+      const api = createApi();
+      vi.mocked(api.loadWorkspace).mockResolvedValue(expenseWorkspace);
+
+      render(<LotteryAccountingWorkspace api={api} />);
+      await screen.findByText(DASHBOARD_TITLE);
+
+      fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
+      fireEvent.change(screen.getByLabelText(LEDGER_BOOK_LABEL), {
+        target: { value: "expense" },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(LEDGER_TYPE_LABEL)).toHaveValue("salary");
+        expect(screen.getByLabelText(LEDGER_PARTY_LABEL)).toHaveValue(SALARY_RAJU_ID);
+      });
+
+      expect(
+        screen.getByRole("heading", { name: "Salary › Raju" }),
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "7 Days" }));
+
+      expect(screen.getByText("Bill EXB-1")).toBeInTheDocument();
+      expect(
+        screen.getByText("Cash ₹1,000.00 · Bank ₹200.00"),
+      ).toBeInTheDocument();
+
+      const summary = screen.getByLabelText("Ledger period summary");
+      expect(summary).toHaveTextContent("Bills");
+      expect(summary).toHaveTextContent("₹7,200.00");
+      expect(summary).toHaveTextContent("Paid");
+      expect(summary).toHaveTextContent("₹1,200.00");
+      expect(summary).toHaveTextContent("Balance");
+      expect(summary).toHaveTextContent("₹6,000.00");
+
+      fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
+      await screen.findByText(DASHBOARD_TITLE);
+
+      const expensesButton = screen.getByText("Expenses").closest("button");
+      expect(expensesButton).not.toBeNull();
+      fireEvent.click(expensesButton!);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(LEDGER_BOOK_LABEL)).toHaveValue("expense");
+        expect(screen.getByLabelText(LEDGER_TYPE_LABEL)).toHaveValue("salary");
+        expect(screen.getByLabelText(LEDGER_PARTY_LABEL)).toHaveValue(SALARY_RAJU_ID);
+      });    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps Expenses as top type with editable Category and Profile lists", async () => {

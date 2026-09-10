@@ -12,10 +12,11 @@ import {
   Users,
   X,
 } from "lucide-react";
-import {
-  lotteryAccountingClient,
-  type LotteryAccountingClient,
+import type {
+  LotteryAccountingClient,
+  LotteryAccountingReadClient,
 } from "../../models/lotteryAccountingClient";
+import { lotteryAccountingDemoClient } from "../../models/lotteryAccountingDemoClient";
 import type { ManagedProductModelVersion } from "../../models/types";
 import {
   LotteryAccountingWorkspace,
@@ -41,12 +42,15 @@ import "./accountingPublicTheme.css";
 
 export type AccountingPublicViewMode = "PREVIEW" | "LIVE";
 
-const PUBLIC_LIVE_USER_MODE_KEY = "public.liveUserMode";
+const ADMIN_DEMO_LOCAL_SCOPE = {
+  ownerKind: "ADMIN_DEMO",
+  ownerId: "accounting-demo",
+} as const;
 
 interface AccountingPublicViewProps {
   mode: AccountingPublicViewMode;
   version: ManagedProductModelVersion | null;
-  api?: LotteryAccountingClient;
+  demoApi?: LotteryAccountingReadClient;
   onBack: () => void;
   viewerName?: string | null;
 }
@@ -56,36 +60,39 @@ function blockedMutation<T>(message: string): Promise<T> {
 }
 
 function createReadOnlyClient(
-  source: LotteryAccountingClient,
+  source: LotteryAccountingReadClient,
   blockedMessage: string,
 ): LotteryAccountingClient {
+  const blocked = <T,>() => blockedMutation<T>(blockedMessage);
   return {
-    ...source,
-    createOrganization: () => blockedMutation(blockedMessage),
-    createParty: () => blockedMutation(blockedMessage),
-    updatePartyProfile: () => blockedMutation(blockedMessage),
-    updateOrganizationTdsRate: () => blockedMutation(blockedMessage),
-    updateUserLedgerStorage: () => blockedMutation(blockedMessage),
-    createPeriod: () => blockedMutation(blockedMessage),
-    createFinancialYearPeriod: () => blockedMutation(blockedMessage),
-    recordStockMovement: () => blockedMutation(blockedMessage),
-    saveDailyStockistEntry: () => blockedMutation(blockedMessage),
-    clearDailyEntries: () => blockedMutation(blockedMessage),
-    recordSale: () => blockedMutation(blockedMessage),
-    saveDailySellerDraft: () => blockedMutation(blockedMessage),
-    updateDailySellerDraft: () => blockedMutation(blockedMessage),
-    deleteDailySellerDraft: () => blockedMutation(blockedMessage),
-    postDailySellerDraft: () => blockedMutation(blockedMessage),
-    correctPostedSale: () => blockedMutation(blockedMessage),
-    recordPayment: () => blockedMutation(blockedMessage),
-    createExpenseCategory: () => blockedMutation(blockedMessage),
-    updateExpenseCategory: () => blockedMutation(blockedMessage),
-    createExpenseProfile: () => blockedMutation(blockedMessage),
-    updateExpenseProfile: () => blockedMutation(blockedMessage),
-    recordExpenseBill: () => blockedMutation(blockedMessage),
-    recordExpensePayment: () => blockedMutation(blockedMessage),
-    recordCustomerBill: () => blockedMutation(blockedMessage),
-    recordSettlement: () => blockedMutation(blockedMessage),
+    listOrganizations: () => source.listOrganizations(),
+    loadWorkspace: (organizationId) => source.loadWorkspace(organizationId),
+    createOrganization: blocked,
+    createParty: blocked,
+    updatePartyProfile: blocked,
+    updateOrganizationTdsRate: blocked,
+    updateUserLedgerStorage: blocked,
+    createPeriod: blocked,
+    createFinancialYearPeriod: blocked,
+    recordStockMovement: blocked,
+    saveDailyStockistEntry: blocked,
+    clearDailyEntries: blocked,
+    previewSale: blocked,
+    recordSale: blocked,
+    saveDailySellerDraft: blocked,
+    updateDailySellerDraft: blocked,
+    deleteDailySellerDraft: blocked,
+    postDailySellerDraft: blocked,
+    correctPostedSale: blocked,
+    recordPayment: blocked,
+    createExpenseCategory: blocked,
+    updateExpenseCategory: blocked,
+    createExpenseProfile: blocked,
+    updateExpenseProfile: blocked,
+    recordExpenseBill: blocked,
+    recordExpensePayment: blocked,
+    recordCustomerBill: blocked,
+    recordSettlement: blocked,
   };
 }
 
@@ -101,7 +108,7 @@ function versionLabel(
 export function AccountingPublicView({
   mode,
   version,
-  api = lotteryAccountingClient,
+  demoApi = lotteryAccountingDemoClient,
   onBack,
   viewerName = null,
 }: Readonly<AccountingPublicViewProps>) {
@@ -121,12 +128,15 @@ export function AccountingPublicView({
   const readOnlyApi = useMemo(
     () =>
       createReadOnlyClient(
-        api,
+        demoApi,
         accountingText(language, "public.readOnlyBlocked"),
       ),
-    [api, language],
+    [demoApi, language],
   );
   const isPreview = mode === "PREVIEW";
+  const inspectionLabel = isPreview
+    ? "Publish Preview"
+    : "Published Live Inspection";
   const isClassic = appearance === "CLASSIC";
 
   const selectAppearance = (next: AccountingAppearance) => {
@@ -197,10 +207,11 @@ export function AccountingPublicView({
         <button
           type="button"
           onClick={onBack}
+          aria-label="Back to ORBIS Accounting"
           className="inline-flex items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-[10px] font-bold text-slate-600"
         >
-          <ArrowLeft className="h-3.5 w-3.5" />{" "}
-          {accountingText(language, "public.currentMode")}
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to ORBIS Accounting
         </button>
         <div className="rounded-[22px] border border-orange-100 bg-orange-50/70 p-4 text-xs leading-relaxed text-orange-800">
           {accountingText(language, "public.liveUnavailableMessage")}
@@ -224,15 +235,20 @@ export function AccountingPublicView({
     <section
       className="fixed inset-0 z-[100] overflow-y-auto bg-[#F8FAFC]"
       data-testid="accounting-public-viewport"
-      aria-label={
-        isPreview
-          ? accountingText(language, "public.publishPreview")
-          : accountingText(language, PUBLIC_LIVE_USER_MODE_KEY)
-      }
+      aria-label={inspectionLabel}
       lang={accountingHtmlLang(language)}
     >
       {isClassic ? (
         <div className="min-h-dvh space-y-3 p-3">
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Back to ORBIS Accounting"
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-[10px] font-bold text-slate-600"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to ORBIS Accounting
+          </button>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <AccountingLanguageSelector
               value={language}
@@ -251,6 +267,7 @@ export function AccountingPublicView({
             <LotteryAccountingWorkspace
               api={readOnlyApi}
               dashboardGreeting={dashboardGreeting}
+              localScope={ADMIN_DEMO_LOCAL_SCOPE}
             />
           </div>
         </div>
@@ -263,6 +280,14 @@ export function AccountingPublicView({
           <header className="orbis-public-app-header">
             <div className="relative z-[1] flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2.5">
+                <button
+                  type="button"
+                  className="orbis-public-icon-button"
+                  aria-label="Back to ORBIS Accounting"
+                  onClick={onBack}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
                 <span className="orbis-public-logo">O</span>
                 <div className="min-w-0">
                   <p className="text-[7px] font-black uppercase tracking-[0.15em] text-emerald-100">
@@ -274,8 +299,7 @@ export function AccountingPublicView({
                   <div className="mt-0.5 flex items-center gap-1 text-[8px] font-semibold text-emerald-50/85">
                     <Radio className="h-3 w-3" />
                     <span>
-                      {accountingText(language, PUBLIC_LIVE_USER_MODE_KEY)} ·{" "}
-                      {versionLabel(version, language)}
+                      {inspectionLabel} · {versionLabel(version, language)}
                     </span>
                   </div>
                 </div>
@@ -316,6 +340,7 @@ export function AccountingPublicView({
             <LotteryAccountingWorkspace
               api={readOnlyApi}
               navigationRequest={navigationRequest}
+              localScope={ADMIN_DEMO_LOCAL_SCOPE}
             />
           </div>
 
@@ -443,8 +468,7 @@ export function AccountingPublicView({
                       Version information
                     </p>
                     <p className="mt-1 text-[8px] leading-relaxed text-slate-500">
-                      {versionLabel(version, language)} ·{" "}
-                      {accountingText(language, PUBLIC_LIVE_USER_MODE_KEY)}
+                      {versionLabel(version, language)} · {inspectionLabel}
                     </p>
                   </div>
                 </section>
