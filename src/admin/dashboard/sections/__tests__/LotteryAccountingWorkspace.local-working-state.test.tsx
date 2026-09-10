@@ -14,6 +14,7 @@ const WORKSPACE_DASHBOARD_TITLE = "Working State Test dashboard";
 const LOCAL_SYNC_STATUS_LABEL = "Accounting local sync status";
 const SELLER_NAME = "Seller One";
 const DAILY_ENTRY_TAB_LABEL = "Daily entry";
+const PENDING_SYNC_LABEL = "Pending sync (1)";
 
 type LocalStateCallback = (
   occurredAt: string,
@@ -21,7 +22,6 @@ type LocalStateCallback = (
   syncState: AccountingLocalSyncState,
 ) => void;
 
-let latestOrganizationId: string | undefined;
 let latestLocalStateCallback: LocalStateCallback | undefined;
 let latestLocalRemoveCallback:
   | ((partyId: string, occurredAt: string) => void)
@@ -32,18 +32,13 @@ let latestRegisterFlush:
 let latestCorrectPosted:
   | ((saleId: string) => Promise<unknown>)
   | undefined;
-let latestUpdateTdsRate:
-  | ((tdsRateBps: number) => Promise<boolean>)
-  | undefined;
 
 vi.mock("../DailySellerEntry", () => ({
   DailySellerEntry: ({
-    organizationId,
     onLocalRowStateChange,
     onLocalRowRemoved,
     onRegisterFlush,
     onCorrectPosted,
-    onUpdateTdsRate,
   }: {
     organizationId: string;
     onLocalRowStateChange?: LocalStateCallback;
@@ -52,12 +47,10 @@ vi.mock("../DailySellerEntry", () => ({
     onCorrectPosted?: (saleId: string) => Promise<unknown>;
     onUpdateTdsRate?: (tdsRateBps: number) => Promise<boolean>;
   }) => {
-    latestOrganizationId = organizationId;
     latestLocalStateCallback = onLocalRowStateChange;
     latestLocalRemoveCallback = onLocalRowRemoved;
     latestRegisterFlush = onRegisterFlush;
     latestCorrectPosted = onCorrectPosted;
-    latestUpdateTdsRate = onUpdateTdsRate;
 
     return (
       <button
@@ -197,12 +190,10 @@ describe("LotteryAccountingWorkspace local working state", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-08T06:30:00.000Z"));
-    latestOrganizationId = undefined;
     latestLocalStateCallback = undefined;
     latestLocalRemoveCallback = undefined;
     latestRegisterFlush = undefined;
     latestCorrectPosted = undefined;
-    latestUpdateTdsRate = undefined;
   });
 
   afterEach(() => {
@@ -219,7 +210,7 @@ describe("LotteryAccountingWorkspace local working state", () => {
 
     await screen.findByText(WORKSPACE_DASHBOARD_TITLE);
     expect(screen.getByLabelText(LOCAL_SYNC_STATUS_LABEL)).toHaveTextContent(
-      "Pending sync (1)",
+      PENDING_SYNC_LABEL,
     );
     expect(screen.getAllByText("₹800.00").length).toBeGreaterThan(0);
   }, 15_000);
@@ -239,7 +230,7 @@ describe("LotteryAccountingWorkspace local working state", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
 
     expect(screen.getByLabelText(LOCAL_SYNC_STATUS_LABEL)).toHaveTextContent(
-      "Pending sync (1)",
+      PENDING_SYNC_LABEL,
     );
     expect(screen.getAllByText("₹800.00").length).toBeGreaterThan(0);
     expect(api.loadWorkspace).toHaveBeenCalledTimes(1);
@@ -629,7 +620,7 @@ describe("LotteryAccountingWorkspace local working state", () => {
     );
   });
 
-  it("keeps blank-organization callbacks inert and clears local state through the no-id refresh path", async () => {
+  it("clears local state and opens create workspace through the no-id refresh path", async () => {
     const api = createApi();
 
     render(
@@ -641,25 +632,24 @@ describe("LotteryAccountingWorkspace local working state", () => {
 
     await screen.findByText(WORKSPACE_DASHBOARD_TITLE);
     fireEvent.click(screen.getByRole("button", { name: DAILY_ENTRY_TAB_LABEL }));
+    expect(screen.getByLabelText(LOCAL_SYNC_STATUS_LABEL)).toHaveTextContent(
+      PENDING_SYNC_LABEL,
+    );
+
     fireEvent.change(screen.getByLabelText("Accounting organization"), {
       target: { value: "" },
     });
 
-    await waitFor(() => expect(latestOrganizationId).toBe(""));
-
-    act(() => {
-      latestLocalStateCallback?.(ENTRY_DATE, pendingRecord.row, "ERROR");
-      latestLocalRemoveCallback?.("seller-1", ENTRY_DATE);
-    });
-
-    await act(async () => {
-      await latestUpdateTdsRate?.(200);
-    });
-
-    expect(api.updateOrganizationTdsRate).toHaveBeenCalledWith({
-      organizationId: "",
-      tdsRateBps: 200,
-    });
+    expect(
+      await screen.findByText("Create your first accounting workspace"),
+    ).toBeVisible();
+    expect(screen.getByLabelText(LOCAL_SYNC_STATUS_LABEL)).toHaveTextContent(
+      "Synced",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Simulate local seller edit" }),
+    ).not.toBeInTheDocument();
+    expect(api.loadWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("uses a registered Daily flush and refreshes a stale seller workspace in the background", async () => {

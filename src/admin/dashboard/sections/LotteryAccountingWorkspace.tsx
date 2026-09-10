@@ -988,7 +988,11 @@ export function LotteryAccountingWorkspace({
           <select
             aria-label="Accounting organization"
             value={organizationId}
-            onChange={(event) => setOrganizationId(event.target.value)}
+            onChange={(event) => {
+              const nextOrganizationId = event.target.value;
+              setOrganizationId(nextOrganizationId);
+              if (!nextOrganizationId) void refreshWorkspace("");
+            }}
             className={`${CONTROL} flex-1`}
           >
             <option value="">Create organization</option>

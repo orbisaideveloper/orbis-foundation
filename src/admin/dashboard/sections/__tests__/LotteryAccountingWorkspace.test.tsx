@@ -337,6 +337,22 @@ describe("LotteryAccountingWorkspace", () => {
     expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
   });
 
+  it("opens the create-organization form after selecting Create organization", async () => {
+    render(<LotteryAccountingWorkspace api={createApi()} />);
+    expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Accounting organization"), {
+      target: { value: "" },
+    });
+
+    expect(
+      await screen.findByText("Create your first accounting workspace"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Business organization name"),
+    ).toBeInTheDocument();
+  });
+
   it("shows the smart dashboard and opens the hierarchical seller ledger", async () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
     expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
