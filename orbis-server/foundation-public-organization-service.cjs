@@ -53,15 +53,15 @@ function createFoundationPublicOrganizationService({ prisma } = {}) {
   } = {}) {
     const userId = requiredText(authUserId, "auth_user_id");
     const localAccountId = requiredText(account?.id, "local_account_id");
-    const orbisIdentityId = requiredText(
-      account?.orbisIdentityId,
-      "orbis_identity_id",
-    );
 
     if (account?.identityLinkStatus !== LINKED) {
       throw organizationServiceError("FOUNDATION_ORGANIZATION_IDENTITY_NOT_LINKED");
     }
 
+    const orbisIdentityId = requiredText(
+      account?.orbisIdentityId,
+      "orbis_identity_id",
+    );
     const name = organizationName(account, requestedName);
 
     return prisma.$transaction(async (client) => {
