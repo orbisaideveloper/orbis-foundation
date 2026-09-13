@@ -10,6 +10,8 @@ const {
 
 const LOCAL_USER_ID = "foundation-local-user-1";
 const DISPLAY_ID = "ORB-U-ABCDEFGH";
+const AUTH_EMAIL = "ajay@example.com";
+const AUTH_PHONE = "+919876543210";
 
 function repositoryMock() {
   const state = { account: null };
@@ -31,16 +33,34 @@ function repositoryMock() {
 
 const AUTH_USER = {
   id: "auth-user-1",
-  email: "ajay@example.com",
-  phone: "+919876543210",
+  email: AUTH_EMAIL,
+  phone: AUTH_PHONE,
 };
 
 const SIGNUP = {
   firstName: "Ajay",
   lastName: "Saha",
-  email: "ajay@example.com",
-  phone: "+919876543210",
+  email: AUTH_EMAIL,
+  phone: AUTH_PHONE,
 };
+
+function linkedAccount() {
+  return {
+    id: LOCAL_USER_ID,
+    authUserId: AUTH_USER.id,
+    firstName: SIGNUP.firstName,
+    lastName: SIGNUP.lastName,
+    email: AUTH_EMAIL,
+    phone: AUTH_PHONE,
+    phoneCountryCallingCode: null,
+    status: "ACTIVE",
+    identityLinkStatus: "LINKED",
+    orbisIdentityId: "identity-1",
+    orbisDisplayId: DISPLAY_ID,
+    orbisLifecycle: "active",
+    identityLinkReason: "product_reference_match",
+  };
+}
 
 describe("Foundation public account linkage", () => {
   it("creates one durable local account and links the central identity", async () => {
@@ -73,29 +93,68 @@ describe("Foundation public account linkage", () => {
       expect.objectContaining({
         localUserId: LOCAL_USER_ID,
         displayName: "Ajay Saha",
-        email: SIGNUP.email,
-        phone: SIGNUP.phone,
+        email: AUTH_EMAIL,
+        phone: AUTH_PHONE,
       }),
+    );
+  });
+
+  it("reads the durable account without exposing the auth lookup id", async () => {
+    const repository = repositoryMock();
+    repository.state.account = linkedAccount();
+    const service = createFoundationPublicAccountService({
+      repository,
+      identityClient: { writePerson: vi.fn() },
+    });
+
+    const account = await service.getAccount(AUTH_USER);
+
+    expect(account).toMatchObject({
+      id: LOCAL_USER_ID,
+      email: AUTH_EMAIL,
+      identityLinkStatus: "LINKED",
+    });
+    expect(account).not.toHaveProperty("authUserId");
+    expect(account).not.toHaveProperty("phoneCountryCallingCode");
+  });
+
+  it("prefers authenticated contacts over spoofed request contacts", async () => {
+    const repository = repositoryMock();
+    const identityClient = {
+      writePerson: vi.fn().mockResolvedValue({
+        outcome: "create_provisional",
+        orbisIdentityId: "0199f67a-2222-7000-8000-222222222222",
+        displayId: DISPLAY_ID,
+        lifecycle: "provisional",
+        candidateOrbisIdentityIds: [],
+        reason: "no_match",
+        replayed: false,
+      }),
+    };
+    const service = createFoundationPublicAccountService({
+      repository,
+      identityClient,
+      uuid: () => LOCAL_USER_ID,
+    });
+
+    await service.ensureAccountAndIdentity(AUTH_USER, {
+      ...SIGNUP,
+      email: "spoof@example.test",
+      phone: "+910000000000",
+    });
+
+    expect(repository.state.account).toMatchObject({
+      email: AUTH_EMAIL,
+      phone: AUTH_PHONE,
+    });
+    expect(identityClient.writePerson).toHaveBeenCalledWith(
+      expect.objectContaining({ email: AUTH_EMAIL, phone: AUTH_PHONE }),
     );
   });
 
   it("reuses the same local account for the same auth user", async () => {
     const repository = repositoryMock();
-    repository.state.account = {
-      id: LOCAL_USER_ID,
-      authUserId: AUTH_USER.id,
-      firstName: "Ajay",
-      lastName: "Saha",
-      email: SIGNUP.email,
-      phone: SIGNUP.phone,
-      phoneCountryCallingCode: null,
-      status: "ACTIVE",
-      identityLinkStatus: "LINKED",
-      orbisIdentityId: "identity-1",
-      orbisDisplayId: DISPLAY_ID,
-      orbisLifecycle: "active",
-      identityLinkReason: "product_reference_match",
-    };
+    repository.state.account = linkedAccount();
     const identityClient = { writePerson: vi.fn() };
     const service = createFoundationPublicAccountService({
       repository,
