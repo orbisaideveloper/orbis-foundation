@@ -5,6 +5,7 @@ import { AdminCoreProvider } from "./admin/providers/AdminCoreProvider";
 import { AuthGuard } from "./admin/auth/AuthGuard";
 import { useAuth } from "./admin/auth/AuthProvider";
 import { adminEmail, REQUIRED_ADMIN_EMAIL } from "./core/supabase/client";
+import PublicAccountingApp from "./public-accounting/PublicAccountingApp";
 
 function AdminLoginForm() {
   const {
@@ -196,7 +197,6 @@ export function AuthenticatedAdminApp() {
   );
 }
 
-
 function ReadOnlyPreviewApp() {
   React.useEffect(() => {
     const previousTitle = document.title;
@@ -227,21 +227,32 @@ function ReadOnlyPreviewApp() {
   return <AdminDashboard previewMode />;
 }
 
-function isReadOnlyPreviewPath(): boolean {
-  if (typeof window === "undefined") return false;
+function normalizedPathname(): string {
+  if (typeof window === "undefined") return "/";
   const { pathname } = window.location;
   let end = pathname.length;
-  while (end > 0 && pathname[end - 1] === "/") end -= 1;
-  return pathname.slice(0, end) === "/preview";
+  while (end > 1 && pathname[end - 1] === "/") end -= 1;
+  return pathname.slice(0, end) || "/";
+}
+
+function isReadOnlyPreviewPath(): boolean {
+  return normalizedPathname() === "/preview";
+}
+
+function isPublicAccountingPath(): boolean {
+  return normalizedPathname() === "/accounting";
 }
 
 function App() {
   const previewMode = isReadOnlyPreviewPath();
+  const publicAccountingMode = isPublicAccountingPath();
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans selection:bg-green-100">
       {previewMode ? (
         <ReadOnlyPreviewApp />
+      ) : publicAccountingMode ? (
+        <PublicAccountingApp />
       ) : (
         <AdminCoreProvider>
           <AuthenticatedAdminApp />
