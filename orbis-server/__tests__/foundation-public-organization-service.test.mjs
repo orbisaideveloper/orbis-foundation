@@ -12,6 +12,7 @@ const AUTH_USER_ID = "auth-user-1";
 const LOCAL_ACCOUNT_ID = "foundation-local-user-1";
 const ORBIS_IDENTITY_ID = "0199f67a-1111-7000-8000-111111111111";
 const ORGANIZATION_ID = "organization-1";
+const ORGANIZATION_NAME = "Ajay Books";
 
 const LINKED_ACCOUNT = {
   id: LOCAL_ACCOUNT_ID,
@@ -24,7 +25,7 @@ const LINKED_ACCOUNT = {
 function organizationRow(overrides = {}) {
   return {
     id: ORGANIZATION_ID,
-    name: "Ajay Books",
+    name: ORGANIZATION_NAME,
     tdsRateBps: 200,
     userLedgerStorage: "CLOUD",
     status: "ACTIVE",
@@ -63,12 +64,12 @@ describe("Foundation public OWNER organization bootstrap", () => {
     const result = await service.ensureOwnerOrganization({
       authUserId: AUTH_USER_ID,
       account: LINKED_ACCOUNT,
-      requestedName: "Ajay Books",
+      requestedName: ORGANIZATION_NAME,
     });
 
     expect(result).toMatchObject({
       id: ORGANIZATION_ID,
-      name: "Ajay Books",
+      name: ORGANIZATION_NAME,
       status: "ACTIVE",
     });
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
@@ -86,7 +87,7 @@ describe("Foundation public OWNER organization bootstrap", () => {
     });
     expect(client.foundationAccountingOrganization.create).toHaveBeenCalledWith({
       data: {
-        name: "Ajay Books",
+        name: ORGANIZATION_NAME,
         tdsRateBps: 200,
         userLedgerStorage: "CLOUD",
         status: "ACTIVE",
