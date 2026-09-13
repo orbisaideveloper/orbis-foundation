@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { registerAccountingPwa } from "./registerAccountingPwa";
 
 const REGISTRATION = {} as ServiceWorkerRegistration;
+const ACCOUNTING_PATH = "/accounting";
 
 describe("registerAccountingPwa", () => {
   it("registers the Accounting worker only for the production /accounting route", async () => {
@@ -9,14 +10,14 @@ describe("registerAccountingPwa", () => {
 
     await expect(
       registerAccountingPwa({
-        pathname: "/accounting/",
+        pathname: `${ACCOUNTING_PATH}/`,
         production: true,
         serviceWorker: { register },
       }),
     ).resolves.toBe(REGISTRATION);
 
     expect(register).toHaveBeenCalledWith("/accounting-sw.js", {
-      scope: "/accounting",
+      scope: ACCOUNTING_PATH,
     });
   });
 
@@ -39,7 +40,7 @@ describe("registerAccountingPwa", () => {
 
     await expect(
       registerAccountingPwa({
-        pathname: "/accounting",
+        pathname: ACCOUNTING_PATH,
         production: false,
         serviceWorker: { register },
       }),
@@ -53,7 +54,7 @@ describe("registerAccountingPwa", () => {
 
     await expect(
       registerAccountingPwa({
-        pathname: "/accounting",
+        pathname: ACCOUNTING_PATH,
         production: true,
         serviceWorker: { register },
       }),
