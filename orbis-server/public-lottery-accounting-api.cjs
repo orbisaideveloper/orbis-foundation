@@ -15,6 +15,9 @@ const {
 const {
   createFoundationPublicOrganizationService,
 } = require("./foundation-public-organization-service.cjs");
+const {
+  createFoundationPublicModelService,
+} = require("./foundation-public-model-service.cjs");
 
 const CACHE_CONTROL = "Cache-Control";
 const NO_STORE = "no-store";
@@ -73,6 +76,17 @@ function sendPublicAccountError(res, error) {
   });
 }
 
+function sendPublicModelError(res) {
+  res.setHeader(CACHE_CONTROL, NO_STORE);
+  return res.status(503).json({
+    success: false,
+    error: {
+      category: "foundation_model",
+      code: "ACCOUNTING_MODEL_UNAVAILABLE",
+    },
+  });
+}
+
 function createPublicLotteryAccountingRouter({
   prisma,
   authMiddleware,
@@ -80,6 +94,7 @@ function createPublicLotteryAccountingRouter({
   identityService: suppliedIdentityService,
   publicAccountService: suppliedPublicAccountService,
   publicOrganizationService: suppliedPublicOrganizationService,
+  publicModelService: suppliedPublicModelService,
 }) {
   if (!prisma) throw new Error("A Prisma client is required.");
   if (typeof authMiddleware !== "function") {
@@ -92,6 +107,7 @@ function createPublicLotteryAccountingRouter({
     suppliedIdentityService || createAccountingIdentityService({ prisma });
   let publicAccountService = suppliedPublicAccountService || null;
   let publicOrganizationService = suppliedPublicOrganizationService || null;
+  let publicModelService = suppliedPublicModelService || null;
   router.use(authMiddleware);
 
   function getPublicAccountService() {
@@ -109,6 +125,13 @@ function createPublicLotteryAccountingRouter({
       });
     }
     return publicOrganizationService;
+  }
+
+  function getPublicModelService() {
+    if (!publicModelService) {
+      publicModelService = createFoundationPublicModelService({ prisma });
+    }
+    return publicModelService;
   }
 
   async function activeMembership(userId, organizationId) {
@@ -138,6 +161,25 @@ function createPublicLotteryAccountingRouter({
       return sendAccountingError(res, error);
     }
   }
+
+  router.get("/model", async (_req, res) => {
+    try {
+      const model = await getPublicModelService().getPublishedAccountingModel();
+      res.setHeader(CACHE_CONTROL, NO_STORE);
+      if (!model) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            category: "foundation_model",
+            code: "ACCOUNTING_MODEL_NOT_PUBLISHED",
+          },
+        });
+      }
+      return res.json({ model });
+    } catch {
+      return sendPublicModelError(res);
+    }
+  });
 
   router.get("/organizations", async (req, res) => {
     try {
