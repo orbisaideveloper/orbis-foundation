@@ -8,6 +8,9 @@ const {
   createFoundationPublicAccountService,
 } = require("../foundation-public-account-service.cjs");
 
+const LOCAL_USER_ID = "foundation-local-user-1";
+const DISPLAY_ID = "ORB-U-ABCDEFGH";
+
 function repositoryMock() {
   const state = { account: null };
   return {
@@ -46,7 +49,7 @@ describe("Foundation public account linkage", () => {
       writePerson: vi.fn().mockResolvedValue({
         outcome: "create_provisional",
         orbisIdentityId: "0199f67a-1111-7000-8000-111111111111",
-        displayId: "ORB-U-ABCDEFGH",
+        displayId: DISPLAY_ID,
         lifecycle: "provisional",
         candidateOrbisIdentityIds: [],
         reason: "no_match",
@@ -56,19 +59,19 @@ describe("Foundation public account linkage", () => {
     const service = createFoundationPublicAccountService({
       repository,
       identityClient,
-      uuid: () => "foundation-local-user-1",
+      uuid: () => LOCAL_USER_ID,
     });
 
     const account = await service.ensureAccountAndIdentity(AUTH_USER, SIGNUP);
 
     expect(account).toMatchObject({
-      id: "foundation-local-user-1",
+      id: LOCAL_USER_ID,
       identityLinkStatus: "LINKED",
-      orbisDisplayId: "ORB-U-ABCDEFGH",
+      orbisDisplayId: DISPLAY_ID,
     });
     expect(identityClient.writePerson).toHaveBeenCalledWith(
       expect.objectContaining({
-        localUserId: "foundation-local-user-1",
+        localUserId: LOCAL_USER_ID,
         displayName: "Ajay Saha",
         email: SIGNUP.email,
         phone: SIGNUP.phone,
@@ -79,7 +82,7 @@ describe("Foundation public account linkage", () => {
   it("reuses the same local account for the same auth user", async () => {
     const repository = repositoryMock();
     repository.state.account = {
-      id: "foundation-local-user-1",
+      id: LOCAL_USER_ID,
       authUserId: AUTH_USER.id,
       firstName: "Ajay",
       lastName: "Saha",
@@ -89,7 +92,7 @@ describe("Foundation public account linkage", () => {
       status: "ACTIVE",
       identityLinkStatus: "LINKED",
       orbisIdentityId: "identity-1",
-      orbisDisplayId: "ORB-U-ABCDEFGH",
+      orbisDisplayId: DISPLAY_ID,
       orbisLifecycle: "active",
       identityLinkReason: "product_reference_match",
     };
@@ -101,7 +104,7 @@ describe("Foundation public account linkage", () => {
 
     const account = await service.ensureAccountAndIdentity(AUTH_USER, SIGNUP);
 
-    expect(account.id).toBe("foundation-local-user-1");
+    expect(account.id).toBe(LOCAL_USER_ID);
     expect(repository.create).not.toHaveBeenCalled();
     expect(identityClient.writePerson).not.toHaveBeenCalled();
   });
