@@ -1,0 +1,193 @@
+import React from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import "@testing-library/jest-dom";
+
+const authMocks = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  onAuthStateChange: vi.fn(),
+  signInWithPassword: vi.fn(),
+  signUp: vi.fn(),
+  signOut: vi.fn(),
+}));
+
+const apiMocks = vi.hoisted(() => ({
+  getPublicAccount: vi.fn(),
+  ensurePublicAccount: vi.fn(),
+  getPublishedAccountingModel: vi.fn(),
+  getPublicOrganizations: vi.fn(),
+}));
+
+vi.mock("../core/supabase/client", () => ({
+  isSupabaseConfigured: true,
+  supabase: { auth: authMocks },
+}));
+
+vi.mock("./publicAccountingApi", async () => {
+  const actual = await vi.importActual<typeof import("./publicAccountingApi")>(
+    "./publicAccountingApi",
+  );
+  return { ...actual, ...apiMocks };
+});
+
+import PublicAccountingApp from "./PublicAccountingApp";
+
+const session = {
+  access_token: "token-1",
+  user: {
+    id: "auth-user-1",
+    email: "ajay@example.com",
+    phone: null,
+    user_metadata: {
+      firstName: "Ajay",
+      lastName: "Saha",
+      phone: "+919999999999",
+    },
+  },
+} as any;
+
+const account = {
+  id: "account-1",
+  firstName: "Ajay",
+  lastName: "Saha",
+  email: "ajay@example.com",
+  phone: "+919999999999",
+  status: "ACTIVE",
+  identityLinkStatus: "LINKED",
+  orbisIdentityId: "identity-1",
+  orbisDisplayId: "ORB-U-12345678",
+  orbisLifecycle: "active",
+  identityLinkReason: null,
+};
+
+const organization = {
+  id: "org-1",
+  name: "Ajay Saha",
+  tdsRateBps: 200,
+  userLedgerStorage: "CLOUD",
+  status: "ACTIVE",
+};
+
+const model = {
+  slug: "orbis-accounting-ai",
+  displayName: "ORBiS Accounting AI",
+  category: "ACCOUNTING_AI",
+  status: "ACTIVE",
+  publishedVersion: {
+    sequence: 3,
+    lifecycle: "PUBLISHED" as const,
+    definition: {},
+    publishedAt: "2026-09-13T00:00:00.000Z",
+  },
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  authMocks.getSession.mockResolvedValue({
+    data: { session: null },
+    error: null,
+  });
+  authMocks.onAuthStateChange.mockReturnValue({
+    data: { subscription: { unsubscribe: vi.fn() } },
+  });
+  authMocks.signInWithPassword.mockResolvedValue({ error: null });
+  authMocks.signUp.mockResolvedValue({ data: { session: null }, error: null });
+  authMocks.signOut.mockResolvedValue({ error: null });
+  apiMocks.getPublicAccount.mockResolvedValue(account);
+  apiMocks.ensurePublicAccount.mockResolvedValue({ account, organization });
+  apiMocks.getPublishedAccountingModel.mockResolvedValue(model);
+  apiMocks.getPublicOrganizations.mockResolvedValue([organization]);
+});
+
+describe("PublicAccountingApp", () => {
+  it("shows public sign-in and the no-OTP create-account fields", async () => {
+    render(<PublicAccountingApp />);
+
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(screen.getByLabelText("First name")).toBeVisible();
+    expect(screen.getByLabelText("Last name")).toBeVisible();
+    expect(screen.getByLabelText("Phone")).toBeVisible();
+    expect(screen.getByLabelText("Confirm password")).toBeVisible();
+    expect(screen.getByText(/No OTP is required/i)).toBeVisible();
+  });
+
+  it("creates Supabase auth with durable profile metadata", async () => {
+    render(<PublicAccountingApp />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    fireEvent.change(screen.getByLabelText("First name"), {
+      target: { value: "Ajay" },
+    });
+    fireEvent.change(screen.getByLabelText("Last name"), {
+      target: { value: "Saha" },
+    });
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "ajay@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Phone"), {
+      target: { value: "+919999999999" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "password123" },
+    });
+    fireEvent.change(screen.getByLabelText("Confirm password"), {
+      target: { value: "password123" },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Create account" })[0]);
+
+    await waitFor(() => expect(authMocks.signUp).toHaveBeenCalledTimes(1));
+    expect(authMocks.signUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "ajay@example.com",
+        password: "password123",
+        options: expect.objectContaining({
+          data: {
+            firstName: "Ajay",
+            lastName: "Saha",
+            phone: "+919999999999",
+          },
+        }),
+      }),
+    );
+    expect(await screen.findByText(/Account created/i)).toBeVisible();
+  });
+
+  it("restores an authenticated session and loads only the public workspace", async () => {
+    authMocks.getSession.mockResolvedValue({
+      data: { session },
+      error: null,
+    });
+
+    render(<PublicAccountingApp />);
+
+    expect(await screen.findByText("ORB-U-12345678")).toBeVisible();
+    expect(screen.getByText("Ajay Saha")).toBeVisible();
+    expect(screen.getByText("ORBiS Accounting AI")).toBeVisible();
+    expect(screen.getByText("Published version 3")).toBeVisible();
+    expect(apiMocks.getPublicAccount).toHaveBeenCalledWith("token-1");
+    expect(apiMocks.getPublishedAccountingModel).toHaveBeenCalledWith("token-1");
+    expect(apiMocks.getPublicOrganizations).toHaveBeenCalledWith("token-1");
+  });
+
+  it("bootstraps a missing Foundation account from authenticated user metadata", async () => {
+    authMocks.getSession.mockResolvedValue({
+      data: { session },
+      error: null,
+    });
+    apiMocks.getPublicAccount.mockResolvedValue(null);
+
+    render(<PublicAccountingApp />);
+
+    expect(await screen.findByText("ORB-U-12345678")).toBeVisible();
+    expect(apiMocks.ensurePublicAccount).toHaveBeenCalledWith("token-1", {
+      firstName: "Ajay",
+      lastName: "Saha",
+      email: "ajay@example.com",
+      phone: "+919999999999",
+      phoneCountryCallingCode: null,
+    });
+  });
+});
