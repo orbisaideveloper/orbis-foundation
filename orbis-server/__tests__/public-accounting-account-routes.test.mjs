@@ -15,6 +15,7 @@ const EMAIL = "user@example.test";
 const PHONE = "+919876543210";
 const LOCAL_ACCOUNT_ID = "foundation-local-user-1";
 const ACCOUNT_ROUTE = "/lottery/account";
+const ORGANIZATION_NAME = "Ajay Books";
 
 function prismaMock() {
   return {
@@ -43,6 +44,16 @@ function identityServiceMock() {
   };
 }
 
+function organizationServiceMock() {
+  return {
+    ensureOwnerOrganization: vi.fn().mockResolvedValue({
+      id: "organization-1",
+      name: ORGANIZATION_NAME,
+      status: "ACTIVE",
+    }),
+  };
+}
+
 function authMiddleware(req, _res, next) {
   req.publicUser = { id: USER_ID, email: EMAIL };
   req.publicVerifiedContact = {
@@ -54,7 +65,11 @@ function authMiddleware(req, _res, next) {
   next();
 }
 
-function appWith(publicAccountService, middleware = authMiddleware) {
+function appWith(
+  publicAccountService,
+  middleware = authMiddleware,
+  publicOrganizationService = organizationServiceMock(),
+) {
   const app = express();
   app.use(express.json());
   app.use(
@@ -64,6 +79,7 @@ function appWith(publicAccountService, middleware = authMiddleware) {
       service: accountingServiceMock(),
       identityService: identityServiceMock(),
       publicAccountService,
+      publicOrganizationService,
       authMiddleware: middleware,
     }),
   );
@@ -92,14 +108,20 @@ describe("Foundation public account routes", () => {
       getAccount: vi.fn(),
       ensureAccountAndIdentity: vi.fn(),
     };
+    const publicOrganizationService = organizationServiceMock();
     const blocked = (_req, res) => res.status(401).json({ success: false });
-    const app = appWith(publicAccountService, blocked);
+    const app = appWith(
+      publicAccountService,
+      blocked,
+      publicOrganizationService,
+    );
 
     await request(app).get(ACCOUNT_ROUTE).expect(401);
     await request(app).post(ACCOUNT_ROUTE).send({}).expect(401);
 
     expect(publicAccountService.getAccount).not.toHaveBeenCalled();
     expect(publicAccountService.ensureAccountAndIdentity).not.toHaveBeenCalled();
+    expect(publicOrganizationService.ensureOwnerOrganization).not.toHaveBeenCalled();
   });
 
   it("returns the durable account for the authenticated user", async () => {
@@ -141,31 +163,80 @@ describe("Foundation public account routes", () => {
     });
   });
 
-  it("bootstraps account linkage with authenticated contact context", async () => {
+  it("bootstraps OWNER organization only after Central identity links", async () => {
     const account = linkedAccount();
     const publicAccountService = {
       getAccount: vi.fn(),
       ensureAccountAndIdentity: vi.fn().mockResolvedValue(account),
     };
+    const publicOrganizationService = organizationServiceMock();
     const signup = {
       firstName: "Ajay",
       lastName: "Saha",
       email: "spoof@example.test",
       phone: "+910000000000",
       phoneCountryCallingCode: "+91",
+      organizationName: ORGANIZATION_NAME,
     };
 
-    const response = await request(appWith(publicAccountService))
+    const response = await request(
+      appWith(
+        publicAccountService,
+        authMiddleware,
+        publicOrganizationService,
+      ),
+    )
       .post(ACCOUNT_ROUTE)
       .send(signup)
       .expect(200);
 
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.body.account).toEqual(account);
+    expect(response.body.organization).toEqual({
+      id: "organization-1",
+      name: ORGANIZATION_NAME,
+      status: "ACTIVE",
+    });
     expect(publicAccountService.ensureAccountAndIdentity).toHaveBeenCalledWith(
       { id: USER_ID, email: EMAIL, phone: PHONE },
       signup,
     );
+    expect(
+      publicOrganizationService.ensureOwnerOrganization,
+    ).toHaveBeenCalledWith({
+      authUserId: USER_ID,
+      account,
+      requestedName: ORGANIZATION_NAME,
+    });
+  });
+
+  it("does not create an organization while central identity needs review", async () => {
+    const account = {
+      ...linkedAccount(),
+      identityLinkStatus: "REVIEW_REQUIRED",
+      orbisIdentityId: null,
+      orbisDisplayId: null,
+    };
+    const publicAccountService = {
+      getAccount: vi.fn(),
+      ensureAccountAndIdentity: vi.fn().mockResolvedValue(account),
+    };
+    const publicOrganizationService = organizationServiceMock();
+
+    const response = await request(
+      appWith(
+        publicAccountService,
+        authMiddleware,
+        publicOrganizationService,
+      ),
+    )
+      .post(ACCOUNT_ROUTE)
+      .send({ firstName: "Ajay", lastName: "Saha" })
+      .expect(200);
+
+    expect(response.body.account.identityLinkStatus).toBe("REVIEW_REQUIRED");
+    expect(response.body.organization).toBeNull();
+    expect(publicOrganizationService.ensureOwnerOrganization).not.toHaveBeenCalled();
   });
 
   it("sanitizes validation and temporary account failures", async () => {
