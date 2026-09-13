@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+const ACCOUNTING_PATH = "/accounting";
+
 function read(relativePath: string): string {
   return fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
 }
@@ -15,9 +17,9 @@ describe("Accounting PWA assets", () => {
     expect(manifest).toMatchObject({
       name: "ORBIS Accounting",
       short_name: "ORBIS",
-      id: "/accounting",
-      start_url: "/accounting",
-      scope: "/accounting",
+      id: ACCOUNTING_PATH,
+      start_url: ACCOUNTING_PATH,
+      scope: ACCOUNTING_PATH,
       display: "standalone",
     });
     expect(manifest.icons).toEqual(
@@ -34,7 +36,7 @@ describe("Accounting PWA assets", () => {
     expect(worker).toContain('url.origin !== self.location.origin');
     expect(worker).toContain('url.pathname.startsWith("/api/")');
     expect(worker).toContain('request.method !== "GET"');
-    expect(worker).toContain('caches.match("/accounting")');
+    expect(worker).toContain(`caches.match("${ACCOUNTING_PATH}")`);
   });
 
   it("links the Accounting manifest from the app shell", () => {
