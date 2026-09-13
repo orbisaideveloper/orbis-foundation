@@ -14,6 +14,7 @@ const USER_ID = "auth-user-1";
 const EMAIL = "user@example.test";
 const PHONE = "+919876543210";
 const LOCAL_ACCOUNT_ID = "foundation-local-user-1";
+const ACCOUNT_ROUTE = "/lottery/account";
 
 function prismaMock() {
   return {
@@ -94,8 +95,8 @@ describe("Foundation public account routes", () => {
     const blocked = (_req, res) => res.status(401).json({ success: false });
     const app = appWith(publicAccountService, blocked);
 
-    await request(app).get("/lottery/account").expect(401);
-    await request(app).post("/lottery/account").send({}).expect(401);
+    await request(app).get(ACCOUNT_ROUTE).expect(401);
+    await request(app).post(ACCOUNT_ROUTE).send({}).expect(401);
 
     expect(publicAccountService.getAccount).not.toHaveBeenCalled();
     expect(publicAccountService.ensureAccountAndIdentity).not.toHaveBeenCalled();
@@ -109,7 +110,7 @@ describe("Foundation public account routes", () => {
     };
 
     const response = await request(appWith(publicAccountService))
-      .get("/lottery/account")
+      .get(ACCOUNT_ROUTE)
       .expect(200);
 
     expect(response.headers["cache-control"]).toBe("no-store");
@@ -128,7 +129,7 @@ describe("Foundation public account routes", () => {
     };
 
     const response = await request(appWith(publicAccountService))
-      .get("/lottery/account")
+      .get(ACCOUNT_ROUTE)
       .expect(404);
 
     expect(response.body).toEqual({
@@ -155,7 +156,7 @@ describe("Foundation public account routes", () => {
     };
 
     const response = await request(appWith(publicAccountService))
-      .post("/lottery/account")
+      .post(ACCOUNT_ROUTE)
       .send(signup)
       .expect(200);
 
@@ -185,11 +186,11 @@ describe("Foundation public account routes", () => {
     const app = appWith(publicAccountService);
 
     const validation = await request(app)
-      .post("/lottery/account")
+      .post(ACCOUNT_ROUTE)
       .send({})
       .expect(400);
     const unavailable = await request(app)
-      .post("/lottery/account")
+      .post(ACCOUNT_ROUTE)
       .send({})
       .expect(503);
 
