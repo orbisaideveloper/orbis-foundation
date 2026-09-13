@@ -8,6 +8,7 @@ const PHONE = "+919999999999";
 const DISPLAY_NAME = "Ajay Saha";
 const CREATE_ACCOUNT = "Create account";
 const ACCESS_TOKEN = "token-1";
+const ACTIVE = "ACTIVE";
 
 const authMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -58,7 +59,7 @@ const account = {
   lastName: "Saha",
   email: EMAIL,
   phone: PHONE,
-  status: "ACTIVE",
+  status: ACTIVE,
   identityLinkStatus: "LINKED",
   orbisIdentityId: "identity-1",
   orbisDisplayId: "ORB-U-12345678",
@@ -71,14 +72,14 @@ const organization = {
   name: DISPLAY_NAME,
   tdsRateBps: 200,
   userLedgerStorage: "CLOUD",
-  status: "ACTIVE",
+  status: ACTIVE,
 };
 
 const model = {
   slug: "orbis-accounting-ai",
   displayName: "ORBiS Accounting AI",
   category: "ACCOUNTING_AI",
-  status: "ACTIVE",
+  status: ACTIVE,
   publishedVersion: {
     sequence: 3,
     lifecycle: "PUBLISHED" as const,
