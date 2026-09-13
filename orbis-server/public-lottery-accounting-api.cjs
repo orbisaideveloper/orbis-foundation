@@ -6,6 +6,12 @@ const { sendAccountingError } = require("./lottery-accounting-api.cjs");
 const {
   createAccountingIdentityService,
 } = require("./accounting-identity-service.cjs");
+const {
+  createFoundationPublicAccountRepository,
+} = require("./foundation-public-account-repository.cjs");
+const {
+  createFoundationPublicAccountService,
+} = require("./foundation-public-account-service.cjs");
 
 const CACHE_CONTROL = "Cache-Control";
 const NO_STORE = "no-store";
@@ -42,11 +48,34 @@ function organizationIdFromQuery(req) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function publicAccountAuthUser(req) {
+  return {
+    id: req.publicUser.id,
+    email: req.publicVerifiedContact?.email || req.publicUser.email || null,
+    phone: req.publicVerifiedContact?.phone || null,
+  };
+}
+
+function sendPublicAccountError(res, error) {
+  const code = typeof error?.code === "string" ? error.code : "";
+  const validationError =
+    code.startsWith("FOUNDATION_ACCOUNT_") && code.endsWith("_REQUIRED");
+  res.setHeader(CACHE_CONTROL, NO_STORE);
+  return res.status(validationError ? 400 : 503).json({
+    success: false,
+    error: {
+      category: "foundation_account",
+      code: validationError ? code : "FOUNDATION_ACCOUNT_UNAVAILABLE",
+    },
+  });
+}
+
 function createPublicLotteryAccountingRouter({
   prisma,
   authMiddleware,
   service: suppliedService,
   identityService: suppliedIdentityService,
+  publicAccountService: suppliedPublicAccountService,
 }) {
   if (!prisma) throw new Error("A Prisma client is required.");
   if (typeof authMiddleware !== "function") {
@@ -57,7 +86,16 @@ function createPublicLotteryAccountingRouter({
   const service = suppliedService || createLotteryAccountingService({ prisma });
   const identityService =
     suppliedIdentityService || createAccountingIdentityService({ prisma });
+  let publicAccountService = suppliedPublicAccountService || null;
   router.use(authMiddleware);
+
+  function getPublicAccountService() {
+    if (!publicAccountService) {
+      const repository = createFoundationPublicAccountRepository({ prisma });
+      publicAccountService = createFoundationPublicAccountService({ repository });
+    }
+    return publicAccountService;
+  }
 
   async function activeMembership(userId, organizationId) {
     const membership =
@@ -143,6 +181,39 @@ function createPublicLotteryAccountingRouter({
     }),
   );
 
+  router.get("/account", async (req, res) => {
+    try {
+      const account = await getPublicAccountService().getAccount(
+        publicAccountAuthUser(req),
+      );
+      res.setHeader(CACHE_CONTROL, NO_STORE);
+      if (!account) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            category: "foundation_account",
+            code: "FOUNDATION_ACCOUNT_NOT_FOUND",
+          },
+        });
+      }
+      return res.json({ account });
+    } catch (error) {
+      return sendPublicAccountError(res, error);
+    }
+  });
+
+  router.post("/account", async (req, res) => {
+    try {
+      const account = await getPublicAccountService().ensureAccountAndIdentity(
+        publicAccountAuthUser(req),
+        req.body,
+      );
+      res.setHeader(CACHE_CONTROL, NO_STORE);
+      return res.json({ account });
+    } catch (error) {
+      return sendPublicAccountError(res, error);
+    }
+  });
 
   function publicIdentityContext(req) {
     return {
