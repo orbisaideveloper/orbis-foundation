@@ -60,6 +60,12 @@ function createFoundationPublicAccountService({
     throw new Error("updateIdentityLink repository method is required.");
   }
 
+  async function getAccount(authUser) {
+    const authUserId = requiredText(authUser?.id, "auth_user_id");
+    const account = await repository.findByAuthUserId(authUserId);
+    return account ? publicAccount(account) : null;
+  }
+
   async function ensureLocalAccount(authUser, input) {
     const authUserId = requiredText(authUser?.id, "auth_user_id");
     const existing = await repository.findByAuthUserId(authUserId);
@@ -70,8 +76,8 @@ function createFoundationPublicAccountService({
       authUserId,
       firstName: requiredText(input?.firstName, "first_name"),
       lastName: requiredText(input?.lastName, "last_name"),
-      email: requiredText(input?.email || authUser?.email, "email"),
-      phone: requiredText(input?.phone || authUser?.phone, "phone"),
+      email: requiredText(authUser?.email || input?.email, "email"),
+      phone: requiredText(authUser?.phone || input?.phone, "phone"),
       phoneCountryCallingCode: optionalText(input?.phoneCountryCallingCode),
       status: ACTIVE,
       identityLinkStatus: PENDING,
@@ -143,6 +149,7 @@ function createFoundationPublicAccountService({
   }
 
   return {
+    getAccount,
     ensureLocalAccount,
     linkCentralIdentity,
     ensureAccountAndIdentity,
