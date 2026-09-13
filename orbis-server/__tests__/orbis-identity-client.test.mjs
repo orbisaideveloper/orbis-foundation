@@ -9,11 +9,12 @@ const {
   OBSERVED_ASSURANCE,
 } = require("../orbis-identity-client.cjs");
 
+const PROJECT_ID = "orbis-foundation";
 const ENV = {
   ORBIS_IDENTITY_WRITE_URL:
     "https://example.supabase.co/functions/v1/orbis-identity-write",
   ORBIS_IDENTITY_SERVICE_KEY: "server-secret",
-  ORBIS_PROJECT_ID: "orbis-foundation",
+  ORBIS_PROJECT_ID: PROJECT_ID,
 };
 
 function response(status, payload) {
@@ -66,7 +67,7 @@ describe("Central ORBIS identity client", () => {
     });
 
     expect(JSON.parse(request.body)).toEqual({
-      sourceProjectId: "orbis-foundation",
+      sourceProjectId: PROJECT_ID,
       idempotencyKey: "foundation:user:foundation-user-1:identity-v1",
       actorReference: "foundation-signup",
       subjectKind: "person",
@@ -77,7 +78,7 @@ describe("Central ORBIS identity client", () => {
       phoneAssurance: OBSERVED_ASSURANCE,
       phoneCountryCallingCode: "+91",
       source: {
-        projectId: "orbis-foundation",
+        projectId: PROJECT_ID,
         localEntityType: "user",
         localEntityId: "foundation-user-1",
         roles: ["user"],
@@ -151,7 +152,7 @@ describe("Central ORBIS identity client", () => {
   it("fails closed when server identity configuration is missing", async () => {
     const fetchImpl = vi.fn();
     const client = createOrbisIdentityClient({
-      env: { ORBIS_PROJECT_ID: "orbis-foundation" },
+      env: { ORBIS_PROJECT_ID: PROJECT_ID },
       fetchImpl,
     });
 
