@@ -8,14 +8,20 @@ const {
   createFoundationPublicAccountRepository,
 } = require("../foundation-public-account-repository.cjs");
 
+const LOCAL_USER_ID = "foundation-local-user-1";
+const AUTH_USER_ID = "auth-user-1";
+const EMAIL = "ajay@example.com";
+const PHONE = "+919876543210";
+const NEW_LOCAL_ID = "new-local-id";
+
 function row(overrides = {}) {
   return {
-    id: "foundation-local-user-1",
-    authUserId: "auth-user-1",
+    id: LOCAL_USER_ID,
+    authUserId: AUTH_USER_ID,
     firstName: "Ajay",
     lastName: "Saha",
-    email: "ajay@example.com",
-    phone: "+919876543210",
+    email: EMAIL,
+    phone: PHONE,
     phoneCountryCallingCode: "+91",
     status: "ACTIVE",
     identityLinkStatus: "PENDING",
@@ -44,12 +50,12 @@ describe("Foundation public account repository", () => {
     const prisma = prismaMock([[row()]]);
     const repository = createFoundationPublicAccountRepository({ prisma });
 
-    const account = await repository.findByAuthUserId("auth-user-1");
+    const account = await repository.findByAuthUserId(AUTH_USER_ID);
 
-    expect(account?.id).toBe("foundation-local-user-1");
+    expect(account?.id).toBe(LOCAL_USER_ID);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
-    expect(prisma.calls[0].values).toContain("auth-user-1");
-    expect(prisma.calls[0].strings.join("?")).not.toContain("auth-user-1");
+    expect(prisma.calls[0].values).toContain(AUTH_USER_ID);
+    expect(prisma.calls[0].strings.join("?")).not.toContain(AUTH_USER_ID);
   });
 
   it("creates once and can return the concurrently existing auth mapping", async () => {
@@ -58,12 +64,12 @@ describe("Foundation public account repository", () => {
     const repository = createFoundationPublicAccountRepository({ prisma });
 
     const account = await repository.create({
-      id: "new-local-id",
-      authUserId: "auth-user-1",
+      id: NEW_LOCAL_ID,
+      authUserId: AUTH_USER_ID,
       firstName: "Ajay",
       lastName: "Saha",
-      email: "ajay@example.com",
-      phone: "+919876543210",
+      email: EMAIL,
+      phone: PHONE,
       phoneCountryCallingCode: "+91",
       status: "ACTIVE",
       identityLinkStatus: "PENDING",
@@ -74,9 +80,9 @@ describe("Foundation public account repository", () => {
     });
 
     expect(account.id).toBe(existing.id);
-    expect(prisma.calls[0].values).toContain("new-local-id");
-    expect(prisma.calls[0].values).toContain("auth-user-1");
-    expect(prisma.calls[0].strings.join("?")).not.toContain("new-local-id");
+    expect(prisma.calls[0].values).toContain(NEW_LOCAL_ID);
+    expect(prisma.calls[0].values).toContain(AUTH_USER_ID);
+    expect(prisma.calls[0].strings.join("?")).not.toContain(NEW_LOCAL_ID);
   });
 
   it("updates only identity-link fields through parameters", async () => {
@@ -115,12 +121,12 @@ describe("Foundation public account repository", () => {
 
     await expect(
       repository.create({
-        id: "foundation-local-user-1",
-        authUserId: "auth-user-1",
+        id: LOCAL_USER_ID,
+        authUserId: AUTH_USER_ID,
         firstName: "Ajay",
         lastName: "Saha",
-        email: "ajay@example.com",
-        phone: "+919876543210",
+        email: EMAIL,
+        phone: PHONE,
         phoneCountryCallingCode: null,
         status: "ACTIVE",
         identityLinkStatus: "PENDING",
