@@ -19,6 +19,21 @@ import {
 const AUTH_UNAVAILABLE = "Public Accounting authentication is unavailable.";
 const SESSION_UNAVAILABLE = "Unable to restore your session. Please try again.";
 const ACCOUNT_UNAVAILABLE = "Unable to load your Accounting account right now.";
+const ACCOUNTING_LABEL = "ORBIS Accounting";
+const SIGN_IN_LABEL = "Sign in";
+const CREATE_ACCOUNT_LABEL = "Create account";
+const SIGN_OUT_LABEL = "Sign out";
+const PAGE_CLASS = "min-h-screen bg-slate-50 px-4 py-6 text-slate-900";
+const CARD_CLASS =
+  "mx-auto w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
+const FIELD_CLASS = "mt-3 block text-sm font-medium text-slate-700";
+const INPUT_CLASS = "mt-1 w-full rounded-lg border border-slate-300 p-2";
+const PRIMARY_BUTTON_CLASS =
+  "mt-5 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-60";
+const SECONDARY_BUTTON_CLASS =
+  "mt-3 w-full rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 disabled:opacity-60";
+const SECTION_LABEL_CLASS =
+  "text-xs font-semibold uppercase tracking-wide text-slate-500";
 
 type AuthMode = "SIGN_IN" | "CREATE";
 
@@ -90,12 +105,12 @@ function PublishedWorkspace({
   onLogout: () => void;
 }) {
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900">
+    <main className={PAGE_CLASS}>
       <section className="mx-auto w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-              ORBIS Accounting
+              {ACCOUNTING_LABEL}
             </p>
             <h1 className="mt-1 text-2xl font-bold">
               {account.firstName} {account.lastName}
@@ -109,21 +124,17 @@ function PublishedWorkspace({
             onClick={onLogout}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700"
           >
-            Sign out
+            {SIGN_OUT_LABEL}
           </button>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Identity
-            </p>
+            <p className={SECTION_LABEL_CLASS}>Identity</p>
             <p className="mt-1 font-semibold">{account.identityLinkStatus}</p>
           </div>
           <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Organization
-            </p>
+            <p className={SECTION_LABEL_CLASS}>Organization</p>
             <p className="mt-1 font-semibold">
               {organizations[0]?.name || "Not available yet"}
             </p>
@@ -131,9 +142,7 @@ function PublishedWorkspace({
         </div>
 
         <div className="mt-4 rounded-xl border border-slate-200 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Published Accounting model
-          </p>
+          <p className={SECTION_LABEL_CLASS}>Published Accounting model</p>
           {model ? (
             <>
               <p className="mt-1 font-semibold">{model.displayName}</p>
@@ -173,16 +182,13 @@ function AuthForm({
 }) {
   const creating = mode === "CREATE";
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900">
-      <form
-        onSubmit={onSubmit}
-        className="mx-auto w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-      >
+    <main className={PAGE_CLASS}>
+      <form onSubmit={onSubmit} className={CARD_CLASS}>
         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-          ORBIS Accounting
+          {ACCOUNTING_LABEL}
         </p>
         <h1 className="mt-1 text-2xl font-bold">
-          {creating ? "Create account" : "Sign in"}
+          {creating ? CREATE_ACCOUNT_LABEL : SIGN_IN_LABEL}
         </h1>
         <p className="mt-2 text-sm text-slate-500">
           {creating
@@ -199,7 +205,7 @@ function AuthForm({
                 autoComplete="given-name"
                 value={form.firstName}
                 onChange={(event) => onChange("firstName", event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 p-2"
+                className={INPUT_CLASS}
               />
             </label>
             <label className="text-sm font-medium text-slate-700">
@@ -209,13 +215,13 @@ function AuthForm({
                 autoComplete="family-name"
                 value={form.lastName}
                 onChange={(event) => onChange("lastName", event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 p-2"
+                className={INPUT_CLASS}
               />
             </label>
           </div>
         )}
 
-        <label className="mt-3 block text-sm font-medium text-slate-700">
+        <label className={FIELD_CLASS}>
           Email
           <input
             required
@@ -223,12 +229,12 @@ function AuthForm({
             autoComplete="email"
             value={form.email}
             onChange={(event) => onChange("email", event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 p-2"
+            className={INPUT_CLASS}
           />
         </label>
 
         {creating && (
-          <label className="mt-3 block text-sm font-medium text-slate-700">
+          <label className={FIELD_CLASS}>
             Phone
             <input
               required
@@ -236,12 +242,12 @@ function AuthForm({
               autoComplete="tel"
               value={form.phone}
               onChange={(event) => onChange("phone", event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 p-2"
+              className={INPUT_CLASS}
             />
           </label>
         )}
 
-        <label className="mt-3 block text-sm font-medium text-slate-700">
+        <label className={FIELD_CLASS}>
           Password
           <input
             required
@@ -250,12 +256,12 @@ function AuthForm({
             autoComplete={creating ? "new-password" : "current-password"}
             value={form.password}
             onChange={(event) => onChange("password", event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 p-2"
+            className={INPUT_CLASS}
           />
         </label>
 
         {creating && (
-          <label className="mt-3 block text-sm font-medium text-slate-700">
+          <label className={FIELD_CLASS}>
             Confirm password
             <input
               required
@@ -266,7 +272,7 @@ function AuthForm({
               onChange={(event) =>
                 onChange("passwordConfirmation", event.target.value)
               }
-              className="mt-1 w-full rounded-lg border border-slate-300 p-2"
+              className={INPUT_CLASS}
             />
           </label>
         )}
@@ -285,17 +291,21 @@ function AuthForm({
         <button
           type="submit"
           disabled={busy}
-          className="mt-5 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-60"
+          className={PRIMARY_BUTTON_CLASS}
         >
-          {busy ? "Please wait…" : creating ? "Create account" : "Sign in"}
+          {busy
+            ? "Please wait…"
+            : creating
+              ? CREATE_ACCOUNT_LABEL
+              : SIGN_IN_LABEL}
         </button>
         <button
           type="button"
           disabled={busy}
           onClick={() => onModeChange(creating ? "SIGN_IN" : "CREATE")}
-          className="mt-3 w-full rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 disabled:opacity-60"
+          className={SECONDARY_BUTTON_CLASS}
         >
-          {creating ? "Back to sign in" : "Create account"}
+          {creating ? "Back to sign in" : CREATE_ACCOUNT_LABEL}
         </button>
       </form>
     </main>
@@ -328,9 +338,9 @@ function ProfileCompletion({
   const email = session.user.email || "";
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900">
+    <main className={PAGE_CLASS}>
       <form
-        className="mx-auto w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+        className={CARD_CLASS}
         onSubmit={(event) => {
           event.preventDefault();
           onComplete({ firstName, lastName, email, phone });
@@ -347,19 +357,19 @@ function ProfileCompletion({
             required
             value={firstName}
             onChange={(event) => setFirstName(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 p-2"
+            className={INPUT_CLASS}
           />
         </label>
-        <label className="mt-3 block text-sm font-medium text-slate-700">
+        <label className={FIELD_CLASS}>
           Last name
           <input
             required
             value={lastName}
             onChange={(event) => setLastName(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 p-2"
+            className={INPUT_CLASS}
           />
         </label>
-        <label className="mt-3 block text-sm font-medium text-slate-700">
+        <label className={FIELD_CLASS}>
           Email
           <input
             readOnly
@@ -368,14 +378,14 @@ function ProfileCompletion({
             className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-100 p-2 text-slate-600"
           />
         </label>
-        <label className="mt-3 block text-sm font-medium text-slate-700">
+        <label className={FIELD_CLASS}>
           Phone
           <input
             required
             type="tel"
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 p-2"
+            className={INPUT_CLASS}
           />
         </label>
         {error && (
@@ -386,7 +396,7 @@ function ProfileCompletion({
         <button
           type="submit"
           disabled={busy}
-          className="mt-5 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-60"
+          className={PRIMARY_BUTTON_CLASS}
         >
           {busy ? "Preparing account…" : "Continue"}
         </button>
@@ -394,9 +404,9 @@ function ProfileCompletion({
           type="button"
           disabled={busy}
           onClick={onLogout}
-          className="mt-3 w-full rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700"
+          className={SECONDARY_BUTTON_CLASS}
         >
-          Sign out
+          {SIGN_OUT_LABEL}
         </button>
       </form>
     </main>
@@ -579,16 +589,18 @@ export default function PublicAccountingApp() {
         setAuthError("Unable to create the account. Check the details and try again.");
         return;
       }
-      if (!data.session) {
-        setAuthMessage(
-          "Account created. If email confirmation is enabled, confirm the email and then sign in.",
-        );
-        setMode("SIGN_IN");
-        setForm((current) => ({
-          ...emptySignupForm,
-          email: current.email,
-        }));
+      if (data.session) {
+        setSession(data.session);
+        return;
       }
+      setAuthMessage(
+        "Account created. If email confirmation is enabled, confirm the email and then sign in.",
+      );
+      setMode("SIGN_IN");
+      setForm((current) => ({
+        ...emptySignupForm,
+        email: current.email,
+      }));
     } catch {
       setAuthError(AUTH_UNAVAILABLE);
     } finally {
@@ -648,7 +660,7 @@ export default function PublicAccountingApp() {
 
   if (portalError || !account) {
     return (
-      <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900">
+      <main className={PAGE_CLASS}>
         <section className="mx-auto w-full max-w-md rounded-2xl border border-red-200 bg-white p-5 shadow-sm">
           <h1 className="text-xl font-bold">Accounting unavailable</h1>
           <p role="alert" className="mt-3 text-sm text-red-700">
@@ -657,16 +669,16 @@ export default function PublicAccountingApp() {
           <button
             type="button"
             onClick={() => void loadPortal(session)}
-            className="mt-5 w-full rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700"
+            className={SECONDARY_BUTTON_CLASS}
           >
             Retry
           </button>
           <button
             type="button"
             onClick={logout}
-            className="mt-3 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white"
+            className={PRIMARY_BUTTON_CLASS}
           >
-            Sign out
+            {SIGN_OUT_LABEL}
           </button>
         </section>
       </main>
