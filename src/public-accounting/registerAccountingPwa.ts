@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 type ServiceWorkerRegistrar = Pick<ServiceWorkerContainer, "register">;
 
 type AccountingPwaEnvironment = {
