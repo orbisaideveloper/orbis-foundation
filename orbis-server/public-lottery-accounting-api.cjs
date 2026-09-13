@@ -12,6 +12,9 @@ const {
 const {
   createFoundationPublicAccountService,
 } = require("./foundation-public-account-service.cjs");
+const {
+  createFoundationPublicOrganizationService,
+} = require("./foundation-public-organization-service.cjs");
 
 const CACHE_CONTROL = "Cache-Control";
 const NO_STORE = "no-store";
@@ -76,6 +79,7 @@ function createPublicLotteryAccountingRouter({
   service: suppliedService,
   identityService: suppliedIdentityService,
   publicAccountService: suppliedPublicAccountService,
+  publicOrganizationService: suppliedPublicOrganizationService,
 }) {
   if (!prisma) throw new Error("A Prisma client is required.");
   if (typeof authMiddleware !== "function") {
@@ -87,6 +91,7 @@ function createPublicLotteryAccountingRouter({
   const identityService =
     suppliedIdentityService || createAccountingIdentityService({ prisma });
   let publicAccountService = suppliedPublicAccountService || null;
+  let publicOrganizationService = suppliedPublicOrganizationService || null;
   router.use(authMiddleware);
 
   function getPublicAccountService() {
@@ -95,6 +100,15 @@ function createPublicLotteryAccountingRouter({
       publicAccountService = createFoundationPublicAccountService({ repository });
     }
     return publicAccountService;
+  }
+
+  function getPublicOrganizationService() {
+    if (!publicOrganizationService) {
+      publicOrganizationService = createFoundationPublicOrganizationService({
+        prisma,
+      });
+    }
+    return publicOrganizationService;
   }
 
   async function activeMembership(userId, organizationId) {
@@ -204,12 +218,21 @@ function createPublicLotteryAccountingRouter({
 
   router.post("/account", async (req, res) => {
     try {
+      const authUser = publicAccountAuthUser(req);
       const account = await getPublicAccountService().ensureAccountAndIdentity(
-        publicAccountAuthUser(req),
+        authUser,
         req.body,
       );
+      const organization =
+        account.identityLinkStatus === "LINKED"
+          ? await getPublicOrganizationService().ensureOwnerOrganization({
+              authUserId: authUser.id,
+              account,
+              requestedName: req.body?.organizationName,
+            })
+          : null;
       res.setHeader(CACHE_CONTROL, NO_STORE);
-      return res.json({ account });
+      return res.json({ account, organization });
     } catch (error) {
       return sendPublicAccountError(res, error);
     }
