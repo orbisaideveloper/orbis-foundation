@@ -6,6 +6,7 @@ import "@testing-library/jest-dom";
 const EMAIL = "ajay@example.com";
 const PHONE = "+919999999999";
 const DISPLAY_NAME = "Ajay Saha";
+const DISPLAY_ID = "ORB-U-12345678";
 const CREATE_ACCOUNT = "Create account";
 const ACCESS_TOKEN = "token-1";
 const ACTIVE = "ACTIVE";
@@ -62,7 +63,7 @@ const account = {
   status: ACTIVE,
   identityLinkStatus: "LINKED",
   orbisIdentityId: "identity-1",
-  orbisDisplayId: "ORB-U-12345678",
+  orbisDisplayId: DISPLAY_ID,
   orbisLifecycle: "active",
   identityLinkReason: null,
 };
@@ -170,7 +171,7 @@ describe("PublicAccountingApp", () => {
 
     render(<PublicAccountingApp />);
 
-    expect(await screen.findByText("ORB-U-12345678")).toBeVisible();
+    expect(await screen.findByText(DISPLAY_ID)).toBeVisible();
     expect(screen.getAllByText(DISPLAY_NAME).length).toBeGreaterThan(0);
     expect(screen.getByText("ORBiS Accounting AI")).toBeVisible();
     expect(screen.getByText("Published version 3")).toBeVisible();
@@ -188,7 +189,7 @@ describe("PublicAccountingApp", () => {
 
     render(<PublicAccountingApp />);
 
-    expect(await screen.findByText("ORB-U-12345678")).toBeVisible();
+    expect(await screen.findByText(DISPLAY_ID)).toBeVisible();
     expect(apiMocks.ensurePublicAccount).toHaveBeenCalledWith(ACCESS_TOKEN, {
       firstName: "Ajay",
       lastName: "Saha",
