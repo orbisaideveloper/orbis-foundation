@@ -36,6 +36,7 @@ describe("App Component", () => {
       (await screen.findAllByText(/Orbis Foundation/i))[0],
     ).toBeInTheDocument();
   });
+
   it("serves the permanent read-only dashboard preview at /preview", async () => {
     window.history.replaceState({}, "", "/preview");
 
@@ -49,4 +50,15 @@ describe("App Component", () => {
     ).not.toBeInTheDocument();
   }, 15_000);
 
+  it("serves the public Accounting auth shell at /accounting", async () => {
+    window.history.replaceState({}, "", "/accounting");
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: /^Sign in$/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("ORBIS Accounting")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Admin email")).not.toBeInTheDocument();
+  });
 });
