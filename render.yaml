@@ -17,6 +17,12 @@ services:
         sync: false
       - key: ADMIN_EMAIL_ALLOWLIST
         sync: false
+      - key: ORBIS_IDENTITY_WRITE_URL
+        sync: false
+      - key: ORBIS_IDENTITY_SERVICE_KEY
+        sync: false
+      - key: ORBIS_PROJECT_ID
+        sync: false
       - key: VITE_SUPABASE_URL
         sync: false
       - key: VITE_SUPABASE_ANON_KEY
