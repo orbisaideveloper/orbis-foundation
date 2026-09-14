@@ -1,0 +1,26 @@
+{
+  "name": "ORBIS Accounting",
+  "short_name": "ORBIS",
+  "description": "Secure ORBIS Foundation accounting workspace.",
+  "id": "/accounting",
+  "start_url": "/accounting",
+  "scope": "/accounting",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/accounting-icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/accounting-icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

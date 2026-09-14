@@ -239,6 +239,26 @@ model FoundationAccountingUserIdentity {
   updatedAt DateTime @updatedAt
 }
 
+model FoundationPublicAccount {
+  id                          String   @id
+  authUserId                  String   @unique
+  firstName                   String
+  lastName                    String
+  email                       String
+  phone                       String
+  phoneCountryCallingCode     String?
+  status                      String   @default("ACTIVE")
+  identityLinkStatus          String   @default("PENDING")
+  orbisIdentityId             String?  @unique
+  orbisDisplayId              String?  @unique
+  orbisLifecycle              String?
+  identityLinkReason          String?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  @@index([identityLinkStatus, status])
+}
+
 model FoundationAccountingPartyClaim {
   id          String   @id @default(uuid())
   partyId     String   @unique
