@@ -4,6 +4,7 @@ import {
   Bot,
   CheckCircle2,
   ChevronRight,
+  Copy,
   Database,
   Eye,
   GitBranch,
@@ -69,6 +70,61 @@ function StatusBadge({ children }: Readonly<{ children: React.ReactNode }>) {
     <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[9px] font-bold text-emerald-700">
       {children}
     </span>
+  );
+}
+
+function publicAccountingUrl(): string {
+  if (typeof window === "undefined") return "/accounting";
+  return `${window.location.origin}/accounting`;
+}
+
+function ShareablePublicAppCard({
+  onCopyError,
+}: Readonly<{ onCopyError: (message: string) => void }>) {
+  const [copied, setCopied] = useState(false);
+  const url = publicAccountingUrl();
+
+  const copyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      onCopyError(
+        "Public Accounting URL could not be copied. Long-press the URL instead.",
+      );
+    }
+  };
+
+  return (
+    <div
+      className="rounded-[22px] border border-emerald-200 bg-emerald-50/60 p-4"
+      aria-label="Public Accounting app link"
+    >
+      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700">
+        Shareable public app
+      </p>
+      <p className="mt-1 break-all text-[10px] font-semibold text-slate-700">
+        {url}
+      </p>
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <a
+          href="/accounting"
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-xl bg-emerald-600 px-3 py-2.5 text-center text-[10px] font-bold text-white"
+        >
+          Open public app
+        </a>
+        <button
+          type="button"
+          onClick={() => void copyUrl()}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-[10px] font-bold text-emerald-800"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          {copied ? "Copied" : "Copy public URL"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -245,7 +301,7 @@ export function ManagedProductModels({
       return;
     const updatingLive = Boolean(model.publishedVersion);
     const approved = window.confirm(
-      `${updatingLive ? "Update Live to" : "Publish"} ${model.displayName} ${versionLabel(currentVersion.sequence)}? The reviewed draft becomes the public snapshot, the previous live snapshot is archived, and an identical next draft opens for upgrades.`,
+      `${updatingLive ? "Update the public app to" : "Publish"} ${versionLabel(currentVersion.sequence)}? After publishing, this version becomes public, the previous public version is archived, and ${versionLabel(currentVersion.sequence + 1)} opens automatically as the next draft.`,
     );
     if (!approved) return;
     setWorkingAction("publish");
@@ -364,10 +420,13 @@ export function ManagedProductModels({
             <StatusBadge>{model.status}</StatusBadge>
           </div>
           <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
-            Draft configuration is Admin-managed. Only a reviewed published
-            snapshot can be resolved by the future public app.
+            Simple release flow: review the next draft, publish it, then the
+            public app immediately resolves that published version.
           </p>
         </div>
+
+        <ShareablePublicAppCard onCopyError={setError} />
+
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <NavigationCard
             title={`Admin Current Accounting · ${lottery?.name || "Lottery Accounting"} · ${versionLabel(model.currentVersion?.sequence)}`}
@@ -379,27 +438,32 @@ export function ManagedProductModels({
             }}
           />
           <NavigationCard
-            title={`Publish Preview · ${versionLabel(model.currentVersion?.sequence)}`}
-            subtitle="Inspect the latest Current Draft with isolated Admin Demo data."
+            title={`Draft Preview · ${versionLabel(model.currentVersion?.sequence)}`}
+            subtitle="Preview the next draft before review and public release."
             icon={<Eye className="h-5 w-5" />}
             onClick={() => openPublicView("PREVIEW")}
           />
           <NavigationCard
-            title={`Published Live Inspection · ${versionLabel(model.publishedVersion?.sequence)}`}
+            title={`Published Preview · ${versionLabel(model.publishedVersion?.sequence)}`}
             subtitle={
               model.publishedVersion
-                ? "Inspect the published snapshot with the same isolated Admin Demo data."
-                : "No published snapshot yet. Publish a reviewed draft first."
+                ? "Inspect the exact version currently resolved by the public app."
+                : "No public version yet. Review and publish the next draft first."
             }
             icon={<Radio className="h-5 w-5" />}
             onClick={() => openPublicView("LIVE")}
             disabled={!model.publishedVersion}
           />
           <NavigationCard
-            title="Real Public User · Future"
-            subtitle="Future customer login uses its own authenticated tenant and never Admin or Demo data."
+            title={`Open Real Public App · ${versionLabel(model.publishedVersion?.sequence)}`}
+            subtitle={
+              model.publishedVersion
+                ? "Open the shareable signed-in public Accounting app with real user isolation."
+                : "Publish a reviewed draft before opening the public app."
+            }
             icon={<Database className="h-5 w-5" />}
-            disabled
+            onClick={() => window.open("/accounting", "_blank", "noopener,noreferrer")}
+            disabled={!model.publishedVersion}
           />
         </div>
         <button
@@ -635,19 +699,25 @@ function VersionsPanel({
   const canPublish = model.currentVersion?.reviewStatus === "PASSED";
   const updatingLive = Boolean(model.publishedVersion);
   return (
-    <WorkspacePanel title="Draft, published and upgrade versions">
+    <WorkspacePanel title="Public release versions">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <VersionCard label="Current / Draft" version={model.currentVersion} />
-        <VersionCard
-          label="Published / Public"
-          version={model.publishedVersion}
-        />
+        <VersionCard label="NEXT DRAFT" version={model.currentVersion} />
+        <VersionCard label="LIVE PUBLIC" version={model.publishedVersion} />
       </div>
-      <p className="mt-3 text-[9px] leading-relaxed text-slate-500">
-        Publish is unlocked only after the current draft passes Test & Review.
-        Publishing archives the previous public snapshot and opens an identical
-        next draft for upgrades.
-      </p>
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/35 p-2.5 text-[9px] text-slate-600">
+          <strong>1. Review</strong><br />
+          Test {versionLabel(model.currentVersion?.sequence)} until it passes.
+        </div>
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/35 p-2.5 text-[9px] text-slate-600">
+          <strong>2. Publish</strong><br />
+          Make the reviewed draft the public app version.
+        </div>
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/35 p-2.5 text-[9px] text-slate-600">
+          <strong>3. Continue</strong><br />
+          A new next draft opens automatically for future upgrades.
+        </div>
+      </div>
       <div className="mt-3 space-y-2" aria-label="Release history">
         {model.versionHistory.map((version) => (
           <div
@@ -672,8 +742,8 @@ function VersionsPanel({
         {isPublishing
           ? "Publishing…"
           : updatingLive
-            ? `Update Live to ${versionLabel(model.currentVersion?.sequence)}`
-            : `Publish ${versionLabel(model.currentVersion?.sequence)}`}
+            ? `Update Public App to ${versionLabel(model.currentVersion?.sequence)}`
+            : `Publish ${versionLabel(model.currentVersion?.sequence)} to Public`}
       </button>
       {!canPublish && (
         <p className="mt-2 text-[9px] text-orange-700">

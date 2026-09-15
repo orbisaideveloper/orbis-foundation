@@ -17,7 +17,6 @@ import type {
   LotteryAccountingReadClient,
 } from "../../models/lotteryAccountingClient";
 import { lotteryAccountingDemoClient } from "../../models/lotteryAccountingDemoClient";
-import type { ManagedProductModelVersion } from "../../models/types";
 import {
   LotteryAccountingWorkspace,
   type LotteryAccountingWorkspaceNavigationRequest,
@@ -47,12 +46,21 @@ const ADMIN_DEMO_LOCAL_SCOPE = {
   ownerId: "accounting-demo",
 } as const;
 
+type AccountingPublicVersion = Readonly<{ sequence: number }>;
+type AccountingPublicLocalScope = Readonly<{
+  ownerKind: "ADMIN_DEMO" | "PUBLIC_USER";
+  ownerId: string;
+}>;
+
 interface AccountingPublicViewProps {
   mode: AccountingPublicViewMode;
-  version: ManagedProductModelVersion | null;
+  version: AccountingPublicVersion | null;
   demoApi?: LotteryAccountingReadClient;
   onBack: () => void;
+  backLabel?: string;
   viewerName?: string | null;
+  localScope?: AccountingPublicLocalScope;
+  publicUserMode?: boolean;
 }
 
 function blockedMutation<T>(message: string): Promise<T> {
@@ -97,7 +105,7 @@ function createReadOnlyClient(
 }
 
 function versionLabel(
-  version: ManagedProductModelVersion | null,
+  version: AccountingPublicVersion | null,
   language: AccountingLanguage,
 ): string {
   return version
@@ -110,7 +118,10 @@ export function AccountingPublicView({
   version,
   demoApi = lotteryAccountingDemoClient,
   onBack,
+  backLabel = "Back to ORBIS Accounting",
   viewerName = null,
+  localScope = ADMIN_DEMO_LOCAL_SCOPE,
+  publicUserMode = false,
 }: Readonly<AccountingPublicViewProps>) {
   const [appearance, setAppearance] = useState<AccountingAppearance>(() =>
     readAccountingAppearance(),
@@ -134,9 +145,11 @@ export function AccountingPublicView({
     [demoApi, language],
   );
   const isPreview = mode === "PREVIEW";
-  const inspectionLabel = isPreview
-    ? "Publish Preview"
-    : "Published Live Inspection";
+  const inspectionLabel = publicUserMode
+    ? "Public Accounting"
+    : isPreview
+      ? "Publish Preview"
+      : "Published Live Inspection";
   const isClassic = appearance === "CLASSIC";
 
   const selectAppearance = (next: AccountingAppearance) => {
@@ -207,11 +220,11 @@ export function AccountingPublicView({
         <button
           type="button"
           onClick={onBack}
-          aria-label="Back to ORBIS Accounting"
+          aria-label={backLabel}
           className="inline-flex items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-[10px] font-bold text-slate-600"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Back to ORBIS Accounting
+          {backLabel}
         </button>
         <div className="rounded-[22px] border border-orange-100 bg-orange-50/70 p-4 text-xs leading-relaxed text-orange-800">
           {accountingText(language, "public.liveUnavailableMessage")}
@@ -243,11 +256,11 @@ export function AccountingPublicView({
           <button
             type="button"
             onClick={onBack}
-            aria-label="Back to ORBIS Accounting"
+            aria-label={backLabel}
             className="inline-flex items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-[10px] font-bold text-slate-600"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Back to ORBIS Accounting
+            {backLabel}
           </button>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <AccountingLanguageSelector
@@ -267,7 +280,7 @@ export function AccountingPublicView({
             <LotteryAccountingWorkspace
               api={readOnlyApi}
               dashboardGreeting={dashboardGreeting}
-              localScope={ADMIN_DEMO_LOCAL_SCOPE}
+              localScope={localScope}
             />
           </div>
         </div>
@@ -283,7 +296,7 @@ export function AccountingPublicView({
                 <button
                   type="button"
                   className="orbis-public-icon-button"
-                  aria-label="Back to ORBIS Accounting"
+                  aria-label={backLabel}
                   onClick={onBack}
                 >
                   <ArrowLeft className="h-4 w-4" />
@@ -340,7 +353,7 @@ export function AccountingPublicView({
             <LotteryAccountingWorkspace
               api={readOnlyApi}
               navigationRequest={navigationRequest}
-              localScope={ADMIN_DEMO_LOCAL_SCOPE}
+              localScope={localScope}
             />
           </div>
 

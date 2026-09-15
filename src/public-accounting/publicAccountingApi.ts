@@ -1,3 +1,6 @@
+import type { LotteryAccountingReadClient } from "../admin/models/lotteryAccountingClient";
+import type { LotteryWorkspace } from "../admin/models/lotteryAccountingTypes";
+
 export interface FoundationPublicAccount {
   id: string;
   firstName: string;
@@ -16,8 +19,10 @@ export interface FoundationPublicOrganization {
   id: string;
   name: string;
   tdsRateBps: number;
-  userLedgerStorage: string;
+  userLedgerStorage: "CLOUD" | "DEVICE";
   status: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface FoundationPublishedModel {
@@ -147,4 +152,20 @@ export async function getPublicOrganizations(
     organizations: FoundationPublicOrganization[];
   }>(accessToken, "/organizations");
   return result.organizations;
+}
+
+
+export function createPublicLotteryAccountingReadClient(
+  accessToken: string,
+): LotteryAccountingReadClient {
+  return {
+    listOrganizations: () => getPublicOrganizations(accessToken),
+    async loadWorkspace(organizationId: string) {
+      const result = await requestJson<{ workspace: LotteryWorkspace }>(
+        accessToken,
+        `/workspace?organizationId=${encodeURIComponent(organizationId)}`,
+      );
+      return result.workspace;
+    },
+  };
 }

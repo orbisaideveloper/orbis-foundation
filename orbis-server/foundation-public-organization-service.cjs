@@ -65,11 +65,11 @@ function createFoundationPublicOrganizationService({ prisma } = {}) {
     const name = organizationName(account, requestedName);
 
     return prisma.$transaction(async (client) => {
-      if (typeof client.$queryRaw !== "function") {
-        throw new Error("Transaction client with $queryRaw is required.");
+      if (typeof client.$executeRaw !== "function") {
+        throw new Error("Transaction client with $executeRaw is required.");
       }
 
-      await client.$queryRaw`
+      await client.$executeRaw`
         SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))
       `;
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createPublicLotteryAccountingReadClient,
   ensurePublicAccount,
   getPublishedAccountingModel,
   getPublicAccount,
@@ -85,6 +86,45 @@ describe("public Accounting API client", () => {
     await expect(getPublicOrganizations(ACCESS_TOKEN)).resolves.toEqual([
       expect.objectContaining({ id: "org-1", name: "Ajay Saha" }),
     ]);
+  });
+
+
+  it("creates a bearer-authenticated read client for the real public workspace", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          organizations: [
+            {
+              id: "org-1",
+              name: "Ajay Saha",
+              tdsRateBps: 200,
+              userLedgerStorage: "CLOUD",
+              status: "ACTIVE",
+              createdAt: "2026-09-14T00:00:00.000Z",
+              updatedAt: "2026-09-14T00:00:00.000Z",
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, { workspace: { organizations: [] } }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createPublicLotteryAccountingReadClient(ACCESS_TOKEN);
+    await expect(client.listOrganizations()).resolves.toEqual([
+      expect.objectContaining({ id: "org-1" }),
+    ]);
+    await expect(client.loadWorkspace("org-1")).resolves.toEqual({
+      organizations: [],
+    });
+
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "/api/accounting/lottery/workspace?organizationId=org-1",
+    );
+    const headers = fetchMock.mock.calls[1][1].headers as Headers;
+    expect(headers.get("Authorization")).toBe(`Bearer ${ACCESS_TOKEN}`);
   });
 
   it("preserves sanitized server error codes for the UI", async () => {

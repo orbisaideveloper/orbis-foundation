@@ -192,18 +192,18 @@ describe("ManagedProductModels", () => {
 
     expect(
       await screen.findByText(
-        "No published snapshot yet. Publish a reviewed draft first.",
+        "No public version yet. Review and publish the next draft first.",
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Published Live Inspection/i }),
+      screen.getByRole("button", { name: /Published Preview/i }),
     ).toBeDisabled();
 
     fireEvent.click(
       screen.getByRole("button", { name: /Admin Current Accounting/i }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Versions" }));
-    expect(screen.getByRole("button", { name: "Publish v1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Publish v1 to Public" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Test & Review" }));
     fireEvent.click(
@@ -215,7 +215,7 @@ describe("ManagedProductModels", () => {
     expect(await screen.findByText("schema version")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Versions" }));
-    fireEvent.click(screen.getByRole("button", { name: "Publish v1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Publish v1 to Public" }));
     await waitFor(() =>
       expect(publishModel).toHaveBeenCalledWith(ACCOUNTING_MODEL_SLUG),
     );
@@ -275,15 +275,19 @@ describe("ManagedProductModels", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: /Published Live Inspection · v1/i,
+        name: /Published Preview · v1/i,
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Real Public User · Future/i }),
-    ).toBeDisabled();
+      screen.getByRole("button", { name: /Open Real Public App · v1/i }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("link", { name: "Open public app" }),
+    ).toHaveAttribute("href", "/accounting");
+    expect(screen.getByText(/\/accounting$/i)).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Publish Preview · v2/i }),
+      screen.getByRole("button", { name: /Draft Preview · v2/i }),
     );
 
     expect(
@@ -344,14 +348,14 @@ describe("ManagedProductModels", () => {
       screen.getByRole("button", { name: /Release history · Draft v2/i }),
     );
     expect(
-      screen.getByText("Draft, published and upgrade versions"),
+      screen.getByText("Public release versions"),
     ).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "Accounting model" }),
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Published Live Inspection · v1/i }),
+      screen.getByRole("button", { name: /Published Preview · v1/i }),
     );
     expect(
       await screen.findByRole("region", {

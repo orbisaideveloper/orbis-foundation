@@ -65,4 +65,33 @@ describe("AccountingPublicView local data scope", () => {
       ).toBeInTheDocument();
     },
   );
+  it("uses a PUBLIC_USER local partition for the real signed-in public app", async () => {
+    const publicApi: LotteryAccountingReadClient = {
+      listOrganizations: vi.fn().mockResolvedValue([]),
+      loadWorkspace: vi.fn(),
+    };
+
+    render(
+      <AccountingPublicView
+        mode="LIVE"
+        version={version}
+        demoApi={publicApi}
+        onBack={vi.fn()}
+        backLabel="Sign out"
+        localScope={{ ownerKind: "PUBLIC_USER", ownerId: "account-1" }}
+        publicUserMode
+      />,
+    );
+
+    expect(screen.getByTestId("captured-local-scope")).toHaveTextContent(
+      "PUBLIC_USER:account-1",
+    );
+    expect(
+      screen.getByRole("region", { name: "Public Accounting" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Sign out" }),
+    ).toBeInTheDocument();
+  });
+
 });

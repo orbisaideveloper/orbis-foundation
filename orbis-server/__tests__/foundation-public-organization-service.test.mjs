@@ -38,7 +38,7 @@ function organizationRow(overrides = {}) {
 function prismaMock({ existingMembership = null } = {}) {
   const organization = organizationRow();
   const client = {
-    $queryRaw: vi.fn().mockResolvedValue([{ pg_advisory_xact_lock: null }]),
+    $executeRaw: vi.fn().mockResolvedValue(1),
     foundationAccountingOrganizationMembership: {
       findFirst: vi.fn().mockResolvedValue(existingMembership),
       create: vi.fn().mockResolvedValue({ id: "membership-1" }),
@@ -72,7 +72,7 @@ describe("Foundation public OWNER organization bootstrap", () => {
       name: ORGANIZATION_NAME,
       status: "ACTIVE",
     });
-    expect(client.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(client.$executeRaw).toHaveBeenCalledTimes(1);
     expect(
       client.foundationAccountingOrganizationMembership.findFirst,
     ).toHaveBeenCalledWith({
@@ -135,7 +135,7 @@ describe("Foundation public OWNER organization bootstrap", () => {
     });
 
     expect(result.name).toBe("Existing Org");
-    expect(client.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(client.$executeRaw).toHaveBeenCalledTimes(1);
     expect(client.foundationAccountingOrganization.create).not.toHaveBeenCalled();
     expect(
       client.foundationAccountingOrganizationMembership.create,
