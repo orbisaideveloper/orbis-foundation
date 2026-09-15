@@ -1,10 +1,12 @@
 import React from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { AccountingPublicView } from "../admin/dashboard/sections/AccountingPublicView";
 import {
   isSupabaseConfigured,
   supabase,
 } from "../core/supabase/client";
 import {
+  createPublicLotteryAccountingReadClient,
   ensurePublicAccount,
   getPublishedAccountingModel,
   getPublicAccount,
@@ -455,10 +457,28 @@ export default function PublicAccountingApp() {
         currentAccount = created.account;
       }
 
-      const [publishedModel, ownedOrganizations] = await Promise.all([
+      const [publishedModel, initialOrganizations] = await Promise.all([
         getPublishedAccountingModel(activeSession.access_token),
         getPublicOrganizations(activeSession.access_token),
       ]);
+      let ownedOrganizations = initialOrganizations;
+
+      if (
+        currentAccount.identityLinkStatus === "LINKED" &&
+        ownedOrganizations.length === 0
+      ) {
+        const healed = await ensurePublicAccount(activeSession.access_token, {
+          firstName: currentAccount.firstName,
+          lastName: currentAccount.lastName,
+          email: currentAccount.email,
+          phone: currentAccount.phone,
+        });
+        currentAccount = healed.account;
+        ownedOrganizations = healed.organization
+          ? [healed.organization]
+          : await getPublicOrganizations(activeSession.access_token);
+      }
+
       setAccount(currentAccount);
       setModel(publishedModel);
       setOrganizations(ownedOrganizations);
@@ -682,6 +702,25 @@ export default function PublicAccountingApp() {
           </button>
         </section>
       </main>
+    );
+  }
+
+  if (
+    account.identityLinkStatus === "LINKED" &&
+    organizations.length > 0 &&
+    model
+  ) {
+    return (
+      <AccountingPublicView
+        mode="LIVE"
+        version={model.publishedVersion}
+        demoApi={createPublicLotteryAccountingReadClient(session.access_token)}
+        onBack={logout}
+        backLabel={SIGN_OUT_LABEL}
+        viewerName={`${account.firstName} ${account.lastName}`.trim()}
+        localScope={{ ownerKind: "PUBLIC_USER", ownerId: account.id }}
+        publicUserMode
+      />
     );
   }
 

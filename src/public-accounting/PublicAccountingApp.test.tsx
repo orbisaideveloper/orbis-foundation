@@ -10,6 +10,7 @@ const DISPLAY_ID = "ORB-U-12345678";
 const CREATE_ACCOUNT = "Create account";
 const ACCESS_TOKEN = "token-1";
 const ACTIVE = "ACTIVE";
+const REAL_PUBLIC_WORKSPACE = "real-public-accounting-workspace";
 
 const authMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -20,6 +21,7 @@ const authMocks = vi.hoisted(() => ({
 }));
 
 const apiMocks = vi.hoisted(() => ({
+  createPublicLotteryAccountingReadClient: vi.fn(),
   getPublicAccount: vi.fn(),
   ensurePublicAccount: vi.fn(),
   getPublishedAccountingModel: vi.fn(),
@@ -29,6 +31,22 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock("../core/supabase/client", () => ({
   isSupabaseConfigured: true,
   supabase: { auth: authMocks },
+}));
+
+vi.mock("../admin/dashboard/sections/AccountingPublicView", () => ({
+  AccountingPublicView: ({
+    version,
+    viewerName,
+    publicUserMode,
+  }: {
+    version: { sequence: number };
+    viewerName: string;
+    publicUserMode: boolean;
+  }) => (
+    <div data-testid={REAL_PUBLIC_WORKSPACE}>
+      {viewerName} · Public v{version.sequence} · {publicUserMode ? "REAL" : "DEMO"}
+    </div>
+  ),
 }));
 
 vi.mock("./publicAccountingApi", async () => {
@@ -101,6 +119,10 @@ beforeEach(() => {
   authMocks.signInWithPassword.mockResolvedValue({ error: null });
   authMocks.signUp.mockResolvedValue({ data: { session: null }, error: null });
   authMocks.signOut.mockResolvedValue({ error: null });
+  apiMocks.createPublicLotteryAccountingReadClient.mockReturnValue({
+    listOrganizations: vi.fn(),
+    loadWorkspace: vi.fn(),
+  });
   apiMocks.getPublicAccount.mockResolvedValue(account);
   apiMocks.ensurePublicAccount.mockResolvedValue({ account, organization });
   apiMocks.getPublishedAccountingModel.mockResolvedValue(model);
@@ -171,13 +193,33 @@ describe("PublicAccountingApp", () => {
 
     render(<PublicAccountingApp />);
 
-    expect(await screen.findByText(DISPLAY_ID)).toBeVisible();
-    expect(screen.getAllByText(DISPLAY_NAME).length).toBeGreaterThan(0);
-    expect(screen.getByText("ORBiS Accounting AI")).toBeVisible();
-    expect(screen.getByText("Published version 3")).toBeVisible();
+    expect(
+      await screen.findByTestId(REAL_PUBLIC_WORKSPACE),
+    ).toHaveTextContent(`${DISPLAY_NAME} · Public v3 · REAL`);
     expect(apiMocks.getPublicAccount).toHaveBeenCalledWith(ACCESS_TOKEN);
     expect(apiMocks.getPublishedAccountingModel).toHaveBeenCalledWith(ACCESS_TOKEN);
     expect(apiMocks.getPublicOrganizations).toHaveBeenCalledWith(ACCESS_TOKEN);
+  });
+
+
+  it("self-heals a linked account with no owner organization before opening the public app", async () => {
+    authMocks.getSession.mockResolvedValue({
+      data: { session },
+      error: null,
+    });
+    apiMocks.getPublicOrganizations.mockResolvedValueOnce([]);
+
+    render(<PublicAccountingApp />);
+
+    expect(
+      await screen.findByTestId(REAL_PUBLIC_WORKSPACE),
+    ).toBeVisible();
+    expect(apiMocks.ensurePublicAccount).toHaveBeenCalledWith(ACCESS_TOKEN, {
+      firstName: "Ajay",
+      lastName: "Saha",
+      email: EMAIL,
+      phone: PHONE,
+    });
   });
 
   it("bootstraps a missing Foundation account from authenticated user metadata", async () => {
@@ -189,7 +231,9 @@ describe("PublicAccountingApp", () => {
 
     render(<PublicAccountingApp />);
 
-    expect(await screen.findByText(DISPLAY_ID)).toBeVisible();
+    expect(
+      await screen.findByTestId(REAL_PUBLIC_WORKSPACE),
+    ).toBeVisible();
     expect(apiMocks.ensurePublicAccount).toHaveBeenCalledWith(ACCESS_TOKEN, {
       firstName: "Ajay",
       lastName: "Saha",
