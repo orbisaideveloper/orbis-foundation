@@ -6,7 +6,7 @@ import {
   supabase,
 } from "../core/supabase/client";
 import {
-  createPublicLotteryAccountingReadClient,
+  createPublicLotteryAccountingClient,
   ensurePublicAccount,
   getPublishedAccountingModel,
   getPublicAccount,
@@ -461,27 +461,9 @@ export default function PublicAccountingApp() {
         getPublishedAccountingModel(activeSession.access_token),
         getPublicOrganizations(activeSession.access_token),
       ]);
-      let ownedOrganizations = initialOrganizations;
-
-      if (
-        currentAccount.identityLinkStatus === "LINKED" &&
-        ownedOrganizations.length === 0
-      ) {
-        const healed = await ensurePublicAccount(activeSession.access_token, {
-          firstName: currentAccount.firstName,
-          lastName: currentAccount.lastName,
-          email: currentAccount.email,
-          phone: currentAccount.phone,
-        });
-        currentAccount = healed.account;
-        ownedOrganizations = healed.organization
-          ? [healed.organization]
-          : await getPublicOrganizations(activeSession.access_token);
-      }
-
       setAccount(currentAccount);
       setModel(publishedModel);
-      setOrganizations(ownedOrganizations);
+      setOrganizations(initialOrganizations);
     } catch (error) {
       setPortalError(publicErrorMessage(error));
     } finally {
@@ -705,16 +687,12 @@ export default function PublicAccountingApp() {
     );
   }
 
-  if (
-    account.identityLinkStatus === "LINKED" &&
-    organizations.length > 0 &&
-    model
-  ) {
+  if (account.identityLinkStatus === "LINKED" && model) {
     return (
       <AccountingPublicView
         mode="LIVE"
         version={model.publishedVersion}
-        demoApi={createPublicLotteryAccountingReadClient(session.access_token)}
+        publicApi={createPublicLotteryAccountingClient(session.access_token)}
         onBack={logout}
         backLabel={SIGN_OUT_LABEL}
         viewerName={`${account.firstName} ${account.lastName}`.trim()}

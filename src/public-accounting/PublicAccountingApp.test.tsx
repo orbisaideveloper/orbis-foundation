@@ -21,7 +21,7 @@ const authMocks = vi.hoisted(() => ({
 }));
 
 const apiMocks = vi.hoisted(() => ({
-  createPublicLotteryAccountingReadClient: vi.fn(),
+  createPublicLotteryAccountingClient: vi.fn(),
   getPublicAccount: vi.fn(),
   ensurePublicAccount: vi.fn(),
   getPublishedAccountingModel: vi.fn(),
@@ -119,7 +119,7 @@ beforeEach(() => {
   authMocks.signInWithPassword.mockResolvedValue({ error: null });
   authMocks.signUp.mockResolvedValue({ data: { session: null }, error: null });
   authMocks.signOut.mockResolvedValue({ error: null });
-  apiMocks.createPublicLotteryAccountingReadClient.mockReturnValue({
+  apiMocks.createPublicLotteryAccountingClient.mockReturnValue({
     listOrganizations: vi.fn(),
     loadWorkspace: vi.fn(),
   });
@@ -202,7 +202,7 @@ describe("PublicAccountingApp", () => {
   });
 
 
-  it("self-heals a linked account with no owner organization before opening the public app", async () => {
+  it("opens the real public workspace without silently creating an organization", async () => {
     authMocks.getSession.mockResolvedValue({
       data: { session },
       error: null,
@@ -214,12 +214,10 @@ describe("PublicAccountingApp", () => {
     expect(
       await screen.findByTestId(REAL_PUBLIC_WORKSPACE),
     ).toBeVisible();
-    expect(apiMocks.ensurePublicAccount).toHaveBeenCalledWith(ACCESS_TOKEN, {
-      firstName: "Ajay",
-      lastName: "Saha",
-      email: EMAIL,
-      phone: PHONE,
-    });
+    expect(apiMocks.ensurePublicAccount).not.toHaveBeenCalled();
+    expect(apiMocks.createPublicLotteryAccountingClient).toHaveBeenCalledWith(
+      ACCESS_TOKEN,
+    );
   });
 
   it("bootstraps a missing Foundation account from authenticated user metadata", async () => {

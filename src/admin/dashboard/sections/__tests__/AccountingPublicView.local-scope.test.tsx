@@ -65,17 +65,23 @@ describe("AccountingPublicView local data scope", () => {
       ).toBeInTheDocument();
     },
   );
-  it("uses a PUBLIC_USER local partition for the real signed-in public app", async () => {
-    const publicApi: LotteryAccountingReadClient = {
+  it("uses a PUBLIC_USER local partition and the writable authenticated public client", async () => {
+    const publicReadApi: LotteryAccountingReadClient = {
       listOrganizations: vi.fn().mockResolvedValue([]),
       loadWorkspace: vi.fn(),
     };
+    const createParty = vi.fn().mockResolvedValue(undefined);
+    const publicApi = {
+      ...publicReadApi,
+      createParty,
+    } as unknown as LotteryAccountingClient;
 
     render(
       <AccountingPublicView
         mode="LIVE"
         version={version}
-        demoApi={publicApi}
+        demoApi={publicReadApi}
+        publicApi={publicApi}
         onBack={vi.fn()}
         backLabel="Sign out"
         localScope={{ ownerKind: "PUBLIC_USER", ownerId: "account-1" }}
@@ -92,6 +98,13 @@ describe("AccountingPublicView local data scope", () => {
     expect(
       screen.getByRole("button", { name: "Sign out" }),
     ).toBeInTheDocument();
+
+    await capturedWorkspace.api!.createParty({
+      organizationId: "org-1",
+      partyType: "SELLER",
+      name: "Seller One",
+    });
+    expect(createParty).toHaveBeenCalledTimes(1);
   });
 
 });

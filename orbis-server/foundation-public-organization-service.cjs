@@ -19,14 +19,16 @@ function requiredText(value, field) {
   return value.trim();
 }
 
-function organizationName(account, requestedName) {
-  if (typeof requestedName === "string" && requestedName.trim()) {
-    return requestedName.trim();
-  }
-  return `${requiredText(account?.firstName, "first_name")} ${requiredText(
-    account?.lastName,
-    "last_name",
-  )}`.trim();
+function organizationName(requestedName) {
+  return requiredText(requestedName, "name");
+}
+
+function legacyAccountOrganizationName(account) {
+  const firstName =
+    typeof account?.firstName === "string" ? account.firstName.trim() : "";
+  const lastName =
+    typeof account?.lastName === "string" ? account.lastName.trim() : "";
+  return `${firstName} ${lastName}`.trim();
 }
 
 function publicOrganization(organization) {
@@ -62,7 +64,6 @@ function createFoundationPublicOrganizationService({ prisma } = {}) {
       account?.orbisIdentityId,
       "orbis_identity_id",
     );
-    const name = organizationName(account, requestedName);
 
     return prisma.$transaction(async (client) => {
       if (typeof client.$executeRaw !== "function") {
@@ -86,9 +87,45 @@ function createFoundationPublicOrganizationService({ prisma } = {}) {
         });
 
       if (existing?.organization) {
+        const requested =
+          typeof requestedName === "string" ? requestedName.trim() : "";
+        const legacyName = legacyAccountOrganizationName(account);
+
+        if (
+          requested &&
+          legacyName &&
+          requested !== legacyName &&
+          existing.organization.name === legacyName
+        ) {
+          const organization =
+            await client.foundationAccountingOrganization.update({
+              where: { id: existing.organization.id },
+              data: { name: requested },
+            });
+
+          await client.foundationLotteryAuditEvent.create({
+            data: {
+              organizationId: organization.id,
+              eventType: "PUBLIC_ORGANIZATION_RENAMED",
+              entityType: "ORGANIZATION",
+              entityId: organization.id,
+              actorAdminId: `PUBLIC_ACCOUNT:${localAccountId}`,
+              metadata: {
+                source: "PUBLIC_WORKSPACE_SETUP",
+                publicAccountId: localAccountId,
+                orbisIdentityId,
+                previousName: legacyName,
+              },
+            },
+          });
+
+          return publicOrganization(organization);
+        }
+
         return publicOrganization(existing.organization);
       }
 
+      const name = organizationName(requestedName);
       const organization =
         await client.foundationAccountingOrganization.create({
           data: {
@@ -116,7 +153,7 @@ function createFoundationPublicOrganizationService({ prisma } = {}) {
           entityId: organization.id,
           actorAdminId: `PUBLIC_ACCOUNT:${localAccountId}`,
           metadata: {
-            source: "PUBLIC_SIGNUP",
+            source: "PUBLIC_WORKSPACE_SETUP",
             publicAccountId: localAccountId,
             orbisIdentityId,
           },

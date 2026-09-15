@@ -163,7 +163,7 @@ describe("Foundation public account routes", () => {
     });
   });
 
-  it("bootstraps OWNER organization only after Central identity links", async () => {
+  it("bootstraps the Foundation account without silently creating a business organization", async () => {
     const account = linkedAccount();
     const publicAccountService = {
       getAccount: vi.fn(),
@@ -192,18 +192,40 @@ describe("Foundation public account routes", () => {
 
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.body.account).toEqual(account);
-    expect(response.body.organization).toEqual({
-      id: "organization-1",
-      name: ORGANIZATION_NAME,
-      status: "ACTIVE",
-    });
+    expect(response.body.organization).toBeNull();
     expect(publicAccountService.ensureAccountAndIdentity).toHaveBeenCalledWith(
       { id: USER_ID, email: EMAIL, phone: PHONE },
       signup,
     );
     expect(
       publicOrganizationService.ensureOwnerOrganization,
-    ).toHaveBeenCalledWith({
+    ).not.toHaveBeenCalled();
+  });
+
+  it("creates the first business organization only from the explicit authenticated route", async () => {
+    const account = linkedAccount();
+    const publicAccountService = {
+      getAccount: vi.fn().mockResolvedValue(account),
+      ensureAccountAndIdentity: vi.fn(),
+    };
+    const publicOrganizationService = organizationServiceMock();
+
+    const response = await request(
+      appWith(
+        publicAccountService,
+        authMiddleware,
+        publicOrganizationService,
+      ),
+    )
+      .post("/lottery/organizations")
+      .send({ name: ORGANIZATION_NAME })
+      .expect(201);
+
+    expect(response.body.organization).toMatchObject({
+      id: "organization-1",
+      name: ORGANIZATION_NAME,
+    });
+    expect(publicOrganizationService.ensureOwnerOrganization).toHaveBeenCalledWith({
       authUserId: USER_ID,
       account,
       requestedName: ORGANIZATION_NAME,

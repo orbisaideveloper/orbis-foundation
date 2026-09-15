@@ -45,6 +45,10 @@ function prismaMock({ existingMembership = null } = {}) {
     },
     foundationAccountingOrganization: {
       create: vi.fn().mockResolvedValue(organization),
+      update: vi.fn().mockImplementation(async ({ data }) => ({
+        ...organization,
+        ...data,
+      })),
     },
     foundationLotteryAuditEvent: {
       create: vi.fn().mockResolvedValue({ id: "audit-1" }),
@@ -111,7 +115,7 @@ describe("Foundation public OWNER organization bootstrap", () => {
         entityId: ORGANIZATION_ID,
         actorAdminId: `PUBLIC_ACCOUNT:${LOCAL_ACCOUNT_ID}`,
         metadata: {
-          source: "PUBLIC_SIGNUP",
+          source: "PUBLIC_WORKSPACE_SETUP",
           publicAccountId: LOCAL_ACCOUNT_ID,
           orbisIdentityId: ORBIS_IDENTITY_ID,
         },
@@ -143,17 +147,53 @@ describe("Foundation public OWNER organization bootstrap", () => {
     expect(client.foundationLotteryAuditEvent.create).not.toHaveBeenCalled();
   });
 
-  it("uses the account display name when no organization name is supplied", async () => {
+  it("requires an explicit business name before creating a new organization", async () => {
     const { prisma, client } = prismaMock();
     const service = createFoundationPublicOrganizationService({ prisma });
 
-    await service.ensureOwnerOrganization({
-      authUserId: AUTH_USER_ID,
-      account: LINKED_ACCOUNT,
+    await expect(
+      service.ensureOwnerOrganization({
+        authUserId: AUTH_USER_ID,
+        account: LINKED_ACCOUNT,
+      }),
+    ).rejects.toMatchObject({
+      code: "FOUNDATION_ORGANIZATION_NAME_REQUIRED",
     });
 
-    expect(client.foundationAccountingOrganization.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ name: "Ajay Saha" }),
+    expect(client.foundationAccountingOrganization.create).not.toHaveBeenCalled();
+  });
+
+  it("renames only the legacy personal-name owner organization on explicit workspace setup", async () => {
+    const existingOrganization = organizationRow({ name: "Ajay Saha" });
+    const { prisma, client } = prismaMock({
+      existingMembership: {
+        id: "membership-existing",
+        organization: existingOrganization,
+      },
+    });
+    const service = createFoundationPublicOrganizationService({ prisma });
+
+    const result = await service.ensureOwnerOrganization({
+      authUserId: AUTH_USER_ID,
+      account: LINKED_ACCOUNT,
+      requestedName: ORGANIZATION_NAME,
+    });
+
+    expect(client.foundationAccountingOrganization.update).toHaveBeenCalledWith({
+      where: { id: ORGANIZATION_ID },
+      data: { name: ORGANIZATION_NAME },
+    });
+    expect(result.name).toBe(ORGANIZATION_NAME);
+    expect(client.foundationLotteryAuditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organizationId: ORGANIZATION_ID,
+        eventType: "PUBLIC_ORGANIZATION_RENAMED",
+        actorAdminId: `PUBLIC_ACCOUNT:${LOCAL_ACCOUNT_ID}`,
+        metadata: expect.objectContaining({
+          source: "PUBLIC_WORKSPACE_SETUP",
+          previousName: "Ajay Saha",
+        }),
+      }),
     });
   });
 

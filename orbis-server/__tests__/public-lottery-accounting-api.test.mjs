@@ -34,6 +34,12 @@ function serviceMock() {
       summary: { verified: true, organizationId: "org-1" },
       insights: [],
     }),
+    createParty: vi.fn().mockResolvedValue({
+      id: "party-1",
+      organizationId: "org-1",
+      name: "Seller One",
+      createdByAdminId: INTERNAL_ADMIN_ID,
+    }),
   };
 }
 
@@ -93,6 +99,10 @@ describe("Lottery Accounting Public tenant API", () => {
       .expect(401);
     await request(app)
       .get("/lottery/analysis?organizationId=org-1")
+      .expect(401);
+    await request(app)
+      .post("/lottery/parties")
+      .send({ organizationId: "org-1", name: "Seller One" })
       .expect(401);
 
     expect(
@@ -184,13 +194,49 @@ describe("Lottery Accounting Public tenant API", () => {
     });
   });
 
-  it("does not expose public Accounting mutation routes", async () => {
+  it("fails closed before a public mutation when membership is missing", async () => {
     const prisma = prismaMock();
     const service = serviceMock();
 
-    await request(appWith(prisma, service))
-      .post("/lottery/sales")
-      .send({ organizationId: "org-1" })
+    const response = await request(appWith(prisma, service))
+      .post("/lottery/parties")
+      .send({
+        organizationId: "other-org",
+        partyType: "SELLER",
+        name: "Seller One",
+      })
       .expect(404);
+
+    expect(response.body.error.code).toBe("ORGANIZATION_NOT_FOUND");
+    expect(service.createParty).not.toHaveBeenCalled();
+  });
+
+  it("allows a tenant-scoped public mutation and derives the actor server-side", async () => {
+    const prisma = prismaMock();
+    const service = serviceMock();
+    prisma.foundationAccountingOrganizationMembership.findFirst.mockResolvedValue(
+      membership("org-1"),
+    );
+
+    const response = await request(appWith(prisma, service))
+      .post("/lottery/parties")
+      .send({
+        organizationId: "org-1",
+        partyType: "SELLER",
+        name: "Seller One",
+        createdByAdminId: "spoofed-browser-actor",
+      })
+      .expect(201);
+
+    expect(service.createParty).toHaveBeenCalledWith(
+      {
+        organizationId: "org-1",
+        partyType: "SELLER",
+        name: "Seller One",
+      },
+      "PUBLIC_USER:user-1",
+    );
+    expect(JSON.stringify(response.body)).not.toContain(INTERNAL_ADMIN_ID);
+    expect(JSON.stringify(response.body)).not.toContain("spoofed-browser-actor");
   });
 });

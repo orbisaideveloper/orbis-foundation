@@ -43,6 +43,7 @@ function sanitizePublicAccountingValue(value) {
 }
 
 function publicScopeError(res, code, status) {
+  res.setHeader(CACHE_CONTROL, NO_STORE);
   return res.status(status).json({
     success: false,
     error: { category: "lottery_accounting", code },
@@ -52,6 +53,17 @@ function publicScopeError(res, code, status) {
 function organizationIdFromQuery(req) {
   const value = req.query?.organizationId;
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function organizationIdFromBody(req) {
+  const value = req.body?.organizationId;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function publicMutationPayload(body, organizationId) {
+  const payload = body && typeof body === "object" ? { ...body } : {};
+  for (const field of INTERNAL_ACTOR_FIELDS) delete payload[field];
+  return { ...payload, organizationId };
 }
 
 function publicAccountAuthUser(req) {
@@ -72,6 +84,28 @@ function sendPublicAccountError(res, error) {
     error: {
       category: "foundation_account",
       code: validationError ? code : "FOUNDATION_ACCOUNT_UNAVAILABLE",
+    },
+  });
+}
+
+function sendPublicOrganizationError(res, error) {
+  const code = typeof error?.code === "string" ? error.code : "";
+  const required =
+    code.startsWith("FOUNDATION_ORGANIZATION_") &&
+    code.endsWith("_REQUIRED");
+  const identityNotLinked =
+    code === "FOUNDATION_ORGANIZATION_IDENTITY_NOT_LINKED";
+  const status = required ? 400 : identityNotLinked ? 409 : 503;
+  const publicCode =
+    required || identityNotLinked
+      ? code
+      : "FOUNDATION_ORGANIZATION_UNAVAILABLE";
+  res.setHeader(CACHE_CONTROL, NO_STORE);
+  return res.status(status).json({
+    success: false,
+    error: {
+      category: "foundation_organization",
+      code: publicCode,
     },
   });
 }
@@ -143,23 +177,58 @@ function createPublicLotteryAccountingRouter({
     return membership?.organization?.status === "ACTIVE" ? membership : null;
   }
 
-  async function scopedRead(req, res, reader) {
-    const organizationId = organizationIdFromQuery(req);
-    if (!organizationId) {
-      return publicScopeError(res, "REQUIRED_FIELD", 400);
-    }
+  async function withAccountingError(res, action) {
     try {
-      const membership = await activeMembership(
-        req.publicUser.id,
-        organizationId,
-      );
-      if (!membership) {
-        return publicScopeError(res, "ORGANIZATION_NOT_FOUND", 404);
-      }
-      return await reader(organizationId);
+      return await action();
     } catch (error) {
       return sendAccountingError(res, error);
     }
+  }
+
+  async function requireActiveOrganization(req, res, organizationId) {
+    if (!organizationId) {
+      publicScopeError(res, "REQUIRED_FIELD", 400);
+      return null;
+    }
+    const membership = await activeMembership(
+      req.publicUser.id,
+      organizationId,
+    );
+    if (!membership) {
+      publicScopeError(res, "ORGANIZATION_NOT_FOUND", 404);
+      return null;
+    }
+    return organizationId;
+  }
+
+  function scopedRead(req, res, reader) {
+    return withAccountingError(res, async () => {
+      const organizationId = await requireActiveOrganization(
+        req,
+        res,
+        organizationIdFromQuery(req),
+      );
+      if (!organizationId) return undefined;
+      return reader(organizationId);
+    });
+  }
+
+  function scopedMutation(req, res, action, successStatus = 200) {
+    return withAccountingError(res, async () => {
+      const organizationId = await requireActiveOrganization(
+        req,
+        res,
+        organizationIdFromBody(req),
+      );
+      if (!organizationId) return undefined;
+      const payload = publicMutationPayload(req.body, organizationId);
+      const actorId = `PUBLIC_USER:${req.publicUser.id}`;
+      const body = await action(payload, actorId);
+      res.setHeader(CACHE_CONTROL, NO_STORE);
+      return res
+        .status(successStatus)
+        .json(sanitizePublicAccountingValue(body));
+    });
   }
 
   router.get("/model", async (_req, res) => {
@@ -181,8 +250,8 @@ function createPublicLotteryAccountingRouter({
     }
   });
 
-  router.get("/organizations", async (req, res) => {
-    try {
+  router.get("/organizations", (req, res) =>
+    withAccountingError(res, async () => {
       const memberships =
         await prisma.foundationAccountingOrganizationMembership.findMany({
           where: { userId: req.publicUser.id, status: "ACTIVE" },
@@ -195,10 +264,290 @@ function createPublicLotteryAccountingRouter({
         .map(sanitizePublicAccountingValue);
       res.setHeader(CACHE_CONTROL, NO_STORE);
       return res.json({ organizations });
+    }),
+  );
+
+  router.post("/organizations", async (req, res) => {
+    try {
+      const authUser = publicAccountAuthUser(req);
+      const account = await getPublicAccountService().getAccount(authUser);
+      if (!account) {
+        res.setHeader(CACHE_CONTROL, NO_STORE);
+        return res.status(404).json({
+          success: false,
+          error: {
+            category: "foundation_account",
+            code: "FOUNDATION_ACCOUNT_NOT_FOUND",
+          },
+        });
+      }
+      const organization =
+        await getPublicOrganizationService().ensureOwnerOrganization({
+          authUserId: authUser.id,
+          account,
+          requestedName: req.body?.name,
+        });
+      res.setHeader(CACHE_CONTROL, NO_STORE);
+      return res
+        .status(201)
+        .json({ organization: sanitizePublicAccountingValue(organization) });
     } catch (error) {
-      return sendAccountingError(res, error);
+      return sendPublicOrganizationError(res, error);
     }
   });
+
+  router.post("/parties", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      async (payload, actorId) => ({
+        party: await service.createParty(payload, actorId),
+      }),
+      201,
+    ),
+  );
+
+  router.patch("/parties/:partyId/profile", (req, res) =>
+    scopedMutation(req, res, async (payload, actorId) => ({
+      party: await service.updatePartyProfile(
+        { ...payload, partyId: req.params.partyId },
+        actorId,
+      ),
+    })),
+  );
+
+  router.patch("/settings/tds-rate", (req, res) =>
+    scopedMutation(req, res, async (payload, actorId) => ({
+      organization: await service.updateOrganizationTdsRate(payload, actorId),
+    })),
+  );
+
+  router.patch("/settings/user-ledger-storage", (req, res) =>
+    scopedMutation(req, res, async (payload, actorId) => ({
+      organization: await service.updateUserLedgerStorage(payload, actorId),
+    })),
+  );
+
+  router.post("/periods", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      async (payload, actorId) => ({
+        period: await service.createPeriod(payload, actorId),
+      }),
+      201,
+    ),
+  );
+
+  router.post("/periods/financial-year", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      async (payload, actorId) => ({
+        period: await service.createFinancialYearPeriod(payload, actorId),
+      }),
+      201,
+    ),
+  );
+
+  router.post("/stock-movements", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      async (payload, actorId) => ({
+        movement: await service.recordStockMovement(payload, actorId),
+      }),
+      201,
+    ),
+  );
+
+  router.post("/daily-stockist-entries", (req, res) =>
+    scopedMutation(req, res, async (payload, actorId) => ({
+      entry: await service.saveDailyStockistEntry(payload, actorId),
+    })),
+  );
+
+  router.post("/daily-entry-clearances", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      async (payload, actorId) => ({
+        clearance: await service.clearDailyEntries(payload, actorId),
+      }),
+      201,
+    ),
+  );
+
+  router.post("/sales", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      (payload, actorId) => service.recordSale(payload, actorId),
+      201,
+    ),
+  );
+
+  router.post("/daily-seller-drafts", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      (payload, actorId) => service.createDailySellerDraft(payload, actorId),
+      201,
+    ),
+  );
+
+  router.patch("/daily-seller-drafts/:saleId", (req, res) =>
+    scopedMutation(req, res, (payload, actorId) =>
+      service.updateDailySellerDraft(
+        { ...payload, saleId: req.params.saleId },
+        actorId,
+      ),
+    ),
+  );
+
+  router.delete("/daily-seller-drafts/:saleId", (req, res) =>
+    scopedMutation(req, res, (payload, actorId) =>
+      service.deleteDailySellerDraft(
+        { ...payload, saleId: req.params.saleId },
+        actorId,
+      ),
+    ),
+  );
+
+  router.post("/daily-seller-drafts/:saleId/post", (req, res) =>
+    scopedMutation(req, res, (payload, actorId) =>
+      service.postDailySellerDraft(
+        { ...payload, saleId: req.params.saleId },
+        actorId,
+      ),
+    ),
+  );
+
+  router.post("/sales/:saleId/correct", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      (payload, actorId) =>
+        service.correctPostedSale(
+          { ...payload, saleId: req.params.saleId },
+          actorId,
+        ),
+      201,
+    ),
+  );
+
+  router.post("/sales/preview", (req, res) =>
+    scopedMutation(req, res, (payload) => service.previewSale(payload)),
+  );
+
+  router.post("/expenses/categories", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      async (payload, actorId) => ({
+        category: await service.createExpenseCategory(payload, actorId),
+      }),
+      201,
+    ),
+  );
+
+  router.patch("/expenses/categories/:categoryId", (req, res) =>
+    scopedMutation(req, res, async (payload, actorId) => ({
+      category: await service.updateExpenseCategory(
+        { ...payload, categoryId: req.params.categoryId },
+        actorId,
+      ),
+    })),
+  );
+
+  router.post("/expenses/profiles", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      async (payload, actorId) => ({
+        profile: await service.createExpenseProfile(payload, actorId),
+      }),
+      201,
+    ),
+  );
+
+  router.patch("/expenses/profiles/:profileId", (req, res) =>
+    scopedMutation(req, res, async (payload, actorId) => ({
+      profile: await service.updateExpenseProfile(
+        { ...payload, profileId: req.params.profileId },
+        actorId,
+      ),
+    })),
+  );
+
+  router.post("/expenses/bills", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      async (payload, actorId) => ({
+        bill: await service.recordExpenseBill(payload, actorId),
+      }),
+      201,
+    ),
+  );
+
+  router.post("/expenses/payments", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      async (payload, actorId) => ({
+        payment: await service.recordExpensePayment(payload, actorId),
+      }),
+      201,
+    ),
+  );
+
+  router.post("/customer-bills", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      (payload, actorId) => service.recordCustomerBill(payload, actorId),
+      201,
+    ),
+  );
+
+  router.post("/corrections/:entityType/:entityId", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      async (payload, actorId) => ({
+        correction: await service.correctAccountingTransaction(
+          {
+            ...payload,
+            entityType: req.params.entityType,
+            entityId: req.params.entityId,
+          },
+          actorId,
+        ),
+      }),
+      201,
+    ),
+  );
+
+  router.post("/payments", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      (payload, actorId) => service.recordPayment(payload, actorId),
+      201,
+    ),
+  );
+
+  router.post("/settlements", (req, res) =>
+    scopedMutation(
+      req,
+      res,
+      async (payload, actorId) => ({
+        settlement: await service.recordSettlement(payload, actorId),
+      }),
+      201,
+    ),
+  );
 
   router.get("/workspace", (req, res) =>
     scopedRead(req, res, async (organizationId) => {
@@ -265,16 +614,8 @@ function createPublicLotteryAccountingRouter({
         authUser,
         req.body,
       );
-      const organization =
-        account.identityLinkStatus === "LINKED"
-          ? await getPublicOrganizationService().ensureOwnerOrganization({
-              authUserId: authUser.id,
-              account,
-              requestedName: req.body?.organizationName,
-            })
-          : null;
       res.setHeader(CACHE_CONTROL, NO_STORE);
-      return res.json({ account, organization });
+      return res.json({ account, organization: null });
     } catch (error) {
       return sendPublicAccountError(res, error);
     }

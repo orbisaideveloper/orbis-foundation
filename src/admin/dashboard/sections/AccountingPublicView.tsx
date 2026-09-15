@@ -56,6 +56,7 @@ interface AccountingPublicViewProps {
   mode: AccountingPublicViewMode;
   version: AccountingPublicVersion | null;
   demoApi?: LotteryAccountingReadClient;
+  publicApi?: LotteryAccountingClient;
   onBack: () => void;
   backLabel?: string;
   viewerName?: string | null;
@@ -117,6 +118,7 @@ export function AccountingPublicView({
   mode,
   version,
   demoApi = lotteryAccountingDemoClient,
+  publicApi,
   onBack,
   backLabel = "Back to ORBIS Accounting",
   viewerName = null,
@@ -144,6 +146,8 @@ export function AccountingPublicView({
       ),
     [demoApi, language],
   );
+  const workspaceApi =
+    publicUserMode && publicApi ? publicApi : readOnlyApi;
   const isPreview = mode === "PREVIEW";
   const inspectionLabel = publicUserMode
     ? "Public Accounting"
@@ -278,7 +282,7 @@ export function AccountingPublicView({
             data-accounting-appearance={appearance}
           >
             <LotteryAccountingWorkspace
-              api={readOnlyApi}
+              api={workspaceApi}
               dashboardGreeting={dashboardGreeting}
               localScope={localScope}
             />
@@ -351,7 +355,7 @@ export function AccountingPublicView({
 
           <div className="orbis-signature-workspace">
             <LotteryAccountingWorkspace
-              api={readOnlyApi}
+              api={workspaceApi}
               navigationRequest={navigationRequest}
               localScope={localScope}
             />
