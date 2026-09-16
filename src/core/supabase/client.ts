@@ -11,7 +11,13 @@ export const REQUIRED_ADMIN_EMAIL = "orbisaideveloper@gmail.com";
 export const adminEmail =
   configuredAdminEmail === REQUIRED_ADMIN_EMAIL ? REQUIRED_ADMIN_EMAIL : null;
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
 export const isSupabaseConfigured = Boolean(
   configuredSupabaseUrl && configuredSupabaseKey,
 );

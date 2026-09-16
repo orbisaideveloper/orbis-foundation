@@ -74,6 +74,8 @@ const CORS_ALLOWED_ORIGINS = new Set([
   "http://127.0.0.1:4173",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
+  "http://localhost:3400",
+  "http://127.0.0.1:3400",
   ...(process.env.CORS_ALLOWED_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim())
@@ -121,10 +123,20 @@ function getCorsOptions(req, callback) {
 // already have their own try/catch around every Prisma call for the same
 // reason.
 // ---------------------------------------------------------------------------
-const telemetryConnectionString = process.env.DATABASE_URL;
+function normalizePostgresConnectionString(connectionString) {
+  if (!connectionString) return connectionString;
+
+  const parsed = new URL(connectionString);
+  parsed.searchParams.delete("sslmode");
+  return parsed.toString();
+}
+
+const telemetryConnectionString = normalizePostgresConnectionString(
+  process.env.DATABASE_URL,
+);
 const telemetryPool = new Pool({
   connectionString: telemetryConnectionString,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: true },
 });
 const telemetryAdapter = new PrismaPg(telemetryPool);
 const prisma = new PrismaClient({ adapter: telemetryAdapter });

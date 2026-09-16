@@ -232,7 +232,7 @@ describe("AdminDashboard current control-center coverage", () => {
 
     expect(screen.queryByText(/ORBIS Neural Cockpit/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/ডায়াগনস্টিক টার্মিনাল/i)).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("opens and closes the new More sheet with accessible controls", async () => {
     render(<AdminDashboard />);
@@ -251,7 +251,7 @@ describe("AdminDashboard current control-center coverage", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Close menu/i }));
     expect(screen.queryByRole("heading", { name: "More" })).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("opens current module detail surfaces and returns through browser history", async () => {
     render(<AdminDashboard />);

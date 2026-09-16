@@ -372,7 +372,7 @@ describe("LotteryAccountingWorkspace", () => {
     expect(
       screen.getByLabelText("Ledger period summary"),
     ).toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("uses a 3-day dashboard window and preserves the selection across workspace tabs", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });

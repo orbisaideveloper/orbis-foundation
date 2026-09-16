@@ -95,11 +95,19 @@ function sendPublicOrganizationError(res, error) {
     code.endsWith("_REQUIRED");
   const identityNotLinked =
     code === "FOUNDATION_ORGANIZATION_IDENTITY_NOT_LINKED";
+
+  if (!required && !identityNotLinked) {
+    console.error(
+      `[PUBLIC_ORGANIZATION] create failed: ${code || error?.name || "UNKNOWN"}`,
+    );
+  }
+
   const status = required ? 400 : identityNotLinked ? 409 : 503;
   const publicCode =
     required || identityNotLinked
       ? code
       : "FOUNDATION_ORGANIZATION_UNAVAILABLE";
+
   res.setHeader(CACHE_CONTROL, NO_STORE);
   return res.status(status).json({
     success: false,

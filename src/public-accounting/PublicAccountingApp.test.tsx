@@ -12,6 +12,31 @@ const ACCESS_TOKEN = "token-1";
 const ACTIVE = "ACTIVE";
 const REAL_PUBLIC_WORKSPACE = "real-public-accounting-workspace";
 
+function createMemoryStorage(): Storage {
+  const values = new Map<string, string>();
+
+  return {
+    get length() {
+      return values.size;
+    },
+    clear() {
+      values.clear();
+    },
+    getItem(key: string) {
+      return values.get(String(key)) ?? null;
+    },
+    key(index: number) {
+      return Array.from(values.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      values.delete(String(key));
+    },
+    setItem(key: string, value: string) {
+      values.set(String(key), String(value));
+    },
+  };
+}
+
 const authMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   onAuthStateChange: vi.fn(),
@@ -38,13 +63,32 @@ vi.mock("../admin/dashboard/sections/AccountingPublicView", () => ({
     version,
     viewerName,
     publicUserMode,
+    requireSignInOnOpen,
+    onRequireSignInOnOpenChange,
   }: {
     version: { sequence: number };
     viewerName: string;
     publicUserMode: boolean;
+    requireSignInOnOpen?: boolean;
+    onRequireSignInOnOpenChange?: (enabled: boolean) => void;
   }) => (
-    <div data-testid={REAL_PUBLIC_WORKSPACE}>
-      {viewerName} · Public v{version.sequence} · {publicUserMode ? "REAL" : "DEMO"}
+    <div>
+      <div data-testid={REAL_PUBLIC_WORKSPACE}>
+        {viewerName} · Public v{version.sequence} · {publicUserMode ? "REAL" : "DEMO"}
+      </div>
+      {publicUserMode && onRequireSignInOnOpenChange && (
+        <label>
+          Require sign-in when app reopens
+          <input
+            type="checkbox"
+            aria-label="Require sign-in when app reopens"
+            checked={Boolean(requireSignInOnOpen)}
+            onChange={(event) =>
+              onRequireSignInOnOpenChange(event.target.checked)
+            }
+          />
+        </label>
+      )}
     </div>
   ),
 }));
@@ -109,6 +153,15 @@ const model = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: createMemoryStorage(),
+  });
+  Object.defineProperty(window, "sessionStorage", {
+    configurable: true,
+    value: createMemoryStorage(),
+  });
   authMocks.getSession.mockResolvedValue({
     data: { session: null },
     error: null,
@@ -199,8 +252,79 @@ describe("PublicAccountingApp", () => {
     expect(apiMocks.getPublicAccount).toHaveBeenCalledWith(ACCESS_TOKEN);
     expect(apiMocks.getPublishedAccountingModel).toHaveBeenCalledWith(ACCESS_TOKEN);
     expect(apiMocks.getPublicOrganizations).toHaveBeenCalledWith(ACCESS_TOKEN);
+    expect(authMocks.signOut).not.toHaveBeenCalled();
   });
 
+  it("locks a reopened app without destroying the persisted Supabase session", async () => {
+    window.localStorage.setItem(
+      "orbis.publicAccounting.requireSignInOnOpen",
+      "1",
+    );
+    authMocks.getSession.mockResolvedValue({
+      data: { session },
+      error: null,
+    });
+
+    render(<PublicAccountingApp />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Unlock Accounting" }),
+    ).toBeVisible();
+
+    expect(authMocks.getSession).toHaveBeenCalledTimes(1);
+    expect(authMocks.signOut).not.toHaveBeenCalled();
+    expect(apiMocks.getPublicAccount).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "password123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+
+    await waitFor(() =>
+      expect(authMocks.signInWithPassword).toHaveBeenCalledWith({
+        email: EMAIL,
+        password: "password123",
+      }),
+    );
+
+    expect(
+      window.sessionStorage.getItem(
+        "orbis.publicAccounting.sessionUnlocked",
+      ),
+    ).toBe("1");
+
+    expect(
+      await screen.findByTestId(REAL_PUBLIC_WORKSPACE),
+    ).toBeVisible();
+  });
+
+  it("stores the optional app-lock preference without interrupting the current session", async () => {
+    authMocks.getSession.mockResolvedValue({
+      data: { session },
+      error: null,
+    });
+
+    render(<PublicAccountingApp />);
+
+    expect(
+      await screen.findByTestId(REAL_PUBLIC_WORKSPACE),
+    ).toBeVisible();
+
+    fireEvent.click(
+      screen.getByLabelText("Require sign-in when app reopens"),
+    );
+
+    expect(
+      window.localStorage.getItem(
+        "orbis.publicAccounting.requireSignInOnOpen",
+      ),
+    ).toBe("1");
+    expect(
+      window.sessionStorage.getItem(
+        "orbis.publicAccounting.sessionUnlocked",
+      ),
+    ).toBe("1");
+  });
 
   it("opens the real public workspace without silently creating an organization", async () => {
     authMocks.getSession.mockResolvedValue({

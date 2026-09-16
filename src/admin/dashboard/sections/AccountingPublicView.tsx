@@ -60,8 +60,11 @@ interface AccountingPublicViewProps {
   onBack: () => void;
   backLabel?: string;
   viewerName?: string | null;
+  viewerOrbisId?: string | null;
   localScope?: AccountingPublicLocalScope;
   publicUserMode?: boolean;
+  requireSignInOnOpen?: boolean;
+  onRequireSignInOnOpenChange?: (enabled: boolean) => void;
 }
 
 function blockedMutation<T>(message: string): Promise<T> {
@@ -114,6 +117,35 @@ function versionLabel(
     : accountingText(language, "version.notPublished");
 }
 
+function SessionSecurityControl({
+  enabled,
+  onChange,
+}: Readonly<{
+  enabled: boolean;
+  onChange: (enabled: boolean) => void;
+}>) {
+  return (
+    <label className="flex min-h-11 cursor-pointer items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
+      <span className="min-w-0">
+        <span className="block text-[10px] font-black text-slate-900">
+          Require sign-in when app reopens
+        </span>
+        <span className="mt-1 block text-[8px] leading-relaxed text-slate-500">
+          Off keeps this device signed in. Turn it on only when you want a
+          login lock after fully closing and reopening the app.
+        </span>
+      </span>
+      <input
+        type="checkbox"
+        aria-label="Require sign-in when app reopens"
+        checked={enabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-0.5 h-5 w-5 shrink-0 accent-emerald-700"
+      />
+    </label>
+  );
+}
+
 export function AccountingPublicView({
   mode,
   version,
@@ -122,8 +154,11 @@ export function AccountingPublicView({
   onBack,
   backLabel = "Back to ORBIS Accounting",
   viewerName = null,
+  viewerOrbisId = null,
   localScope = ADMIN_DEMO_LOCAL_SCOPE,
   publicUserMode = false,
+  requireSignInOnOpen = false,
+  onRequireSignInOnOpenChange,
 }: Readonly<AccountingPublicViewProps>) {
   const [appearance, setAppearance] = useState<AccountingAppearance>(() =>
     readAccountingAppearance(),
@@ -277,6 +312,12 @@ export function AccountingPublicView({
               language={language}
             />
           </div>
+          {publicUserMode && onRequireSignInOnOpenChange && (
+            <SessionSecurityControl
+              enabled={requireSignInOnOpen}
+              onChange={onRequireSignInOnOpenChange}
+            />
+          )}
           <div
             data-testid="accounting-public-shell"
             data-accounting-appearance={appearance}
@@ -419,6 +460,16 @@ export function AccountingPublicView({
                         ? "Signed-in profile details stay connected to the ORBiS account."
                         : "User profile"}
                     </p>
+                    {viewerOrbisId && (
+                      <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50/70 px-2.5 py-2">
+                        <p className="text-[7px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                          Permanent ORBIS User ID
+                        </p>
+                        <p className="mt-1 break-all font-mono text-[8px] font-semibold text-slate-700">
+                          {viewerOrbisId}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </section>
 
@@ -472,6 +523,12 @@ export function AccountingPublicView({
                       onChange={selectAppearance}
                       language={language}
                     />
+                    {publicUserMode && onRequireSignInOnOpenChange && (
+                      <SessionSecurityControl
+                        enabled={requireSignInOnOpen}
+                        onChange={onRequireSignInOnOpenChange}
+                      />
+                    )}
                   </div>
                 </section>
 

@@ -7,7 +7,7 @@ let chatService;
 
 const originalListen = http.Server.prototype.listen;
 
-function request(method, path, body) {
+function request(method, path, body, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? "" : JSON.stringify(body);
 
@@ -17,13 +17,15 @@ function request(method, path, body) {
         port: activeServer.address().port,
         path,
         method,
-        headers:
-          body === undefined
+        headers: {
+          ...(body === undefined
             ? {}
             : {
                 "Content-Type": "application/json",
                 "Content-Length": Buffer.byteLength(payload),
-              },
+              }),
+          ...extraHeaders,
+        },
       },
       (res) => {
         const chunks = [];
@@ -104,6 +106,27 @@ describe("ORBiS Server Bridge API", () => {
     }
 
     vi.restoreAllMocks();
+  });
+
+  it("allows the ORBIS local Accounting origin on port 3400", async () => {
+    const origin = "http://127.0.0.1:3400";
+    const res = await request("OPTIONS", "/api/system-stats", undefined, {
+      Origin: origin,
+      "Access-Control-Request-Method": "GET",
+    });
+
+    expect(res.status).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe(origin);
+  });
+
+  it("still rejects an untrusted cross-origin request", async () => {
+    const res = await request("OPTIONS", "/api/system-stats", undefined, {
+      Origin: "https://untrusted.example",
+      "Access-Control-Request-Method": "GET",
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.json.error).toBe("CORS_ORIGIN_NOT_ALLOWED");
   });
 
   it("GET /api/system-stats returns system metrics", async () => {
