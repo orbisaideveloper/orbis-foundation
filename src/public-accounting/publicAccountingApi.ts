@@ -93,15 +93,32 @@ async function requestJson<T>(
     headers,
   });
   const payload = (await response.json().catch(() => ({}))) as {
-    error?: { code?: string; currentVersion?: number };
+    code?: string;
+    error?:
+      | string
+      | {
+          code?: string;
+          currentVersion?: number;
+        };
   };
 
   if (!response.ok) {
+    const nestedError =
+      typeof payload.error === "object" && payload.error !== null
+        ? payload.error
+        : null;
+
+    const responseCode =
+      nestedError?.code ||
+      (typeof payload.code === "string" ? payload.code : null) ||
+      (typeof payload.error === "string" ? payload.error : null) ||
+      `PUBLIC_ACCOUNTING_HTTP_${response.status}`;
+
     throw new PublicAccountingApiError(
       response.status,
-      payload.error?.code || "PUBLIC_ACCOUNTING_REQUEST_FAILED",
-      Number.isSafeInteger(payload.error?.currentVersion)
-        ? payload.error?.currentVersion
+      responseCode,
+      Number.isSafeInteger(nestedError?.currentVersion)
+        ? nestedError?.currentVersion
         : undefined,
     );
   }

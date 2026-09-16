@@ -36,6 +36,44 @@ const SECONDARY_BUTTON_CLASS =
   "mt-3 w-full rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 disabled:opacity-60";
 const SECTION_LABEL_CLASS =
   "text-xs font-semibold uppercase tracking-wide text-slate-500";
+const REQUIRE_SIGN_IN_ON_OPEN_KEY =
+  "orbis.publicAccounting.requireSignInOnOpen";
+const SESSION_UNLOCKED_KEY =
+  "orbis.publicAccounting.sessionUnlocked";
+
+type BrowserStorageKind = "local" | "session";
+
+function browserStorage(kind: BrowserStorageKind): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return kind === "local" ? window.localStorage : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function readStorageFlag(kind: BrowserStorageKind, key: string): boolean {
+  try {
+    return browserStorage(kind)?.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeStorageFlag(
+  kind: BrowserStorageKind,
+  key: string,
+  enabled: boolean,
+): void {
+  try {
+    const storage = browserStorage(kind);
+    if (!storage) return;
+    if (enabled) storage.setItem(key, "1");
+    else storage.removeItem(key);
+  } catch {
+    // Storage restrictions must not block Accounting access.
+  }
+}
 
 type AuthMode = "SIGN_IN" | "CREATE";
 
@@ -415,6 +453,88 @@ function ProfileCompletion({
   );
 }
 
+
+function SessionUnlock({
+  email,
+  busy,
+  error,
+  onUnlock,
+  onSignOut,
+}: {
+  email: string;
+  busy: boolean;
+  error: string | null;
+  onUnlock: (password: string) => void;
+  onSignOut: () => void;
+}) {
+  const [password, setPassword] = React.useState("");
+
+  return (
+    <main className={PAGE_CLASS}>
+      <form
+        className={CARD_CLASS}
+        onSubmit={(event) => {
+          event.preventDefault();
+          onUnlock(password);
+        }}
+      >
+        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+          {ACCOUNTING_LABEL}
+        </p>
+        <h1 className="mt-1 text-2xl font-bold">Unlock Accounting</h1>
+        <p className="mt-2 text-sm text-slate-500">
+          This device is still signed in. Enter your password to unlock the app.
+        </p>
+
+        <label className={FIELD_CLASS}>
+          Email
+          <input
+            readOnly
+            aria-readonly="true"
+            value={email}
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-100 p-2 text-slate-600"
+          />
+        </label>
+
+        <label className={FIELD_CLASS}>
+          Password
+          <input
+            required
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className={INPUT_CLASS}
+          />
+        </label>
+
+        {error && (
+          <p role="alert" className="mt-3 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={busy}
+          className={PRIMARY_BUTTON_CLASS}
+        >
+          {busy ? "Unlocking…" : "Unlock"}
+        </button>
+
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onSignOut}
+          className={SECONDARY_BUTTON_CLASS}
+        >
+          {SIGN_OUT_LABEL}
+        </button>
+      </form>
+    </main>
+  );
+}
+
 export default function PublicAccountingApp() {
   const [session, setSession] = React.useState<Session | null | undefined>(
     undefined,
@@ -434,6 +554,10 @@ export default function PublicAccountingApp() {
   const [portalLoading, setPortalLoading] = React.useState(false);
   const [portalError, setPortalError] = React.useState<string | null>(null);
   const [profileRequired, setProfileRequired] = React.useState(false);
+  const [requireSignInOnOpen, setRequireSignInOnOpen] = React.useState(() =>
+    readStorageFlag("local", REQUIRE_SIGN_IN_ON_OPEN_KEY),
+  );
+  const [appLocked, setAppLocked] = React.useState(false);
 
   const loadPortal = React.useCallback(async (activeSession: Session) => {
     setPortalLoading(true);
@@ -473,6 +597,8 @@ export default function PublicAccountingApp() {
 
   React.useEffect(() => {
     let active = true;
+    let restored = false;
+
     if (!isSupabaseConfigured) {
       setSession(null);
       setAuthError(AUTH_UNAVAILABLE);
@@ -481,26 +607,50 @@ export default function PublicAccountingApp() {
       };
     }
 
-    void supabase.auth
-      .getSession()
-      .then(({ data, error }) => {
+    const restoreSession = async () => {
+      try {
+        const lockEnabled = readStorageFlag(
+          "local",
+          REQUIRE_SIGN_IN_ON_OPEN_KEY,
+        );
+        const unlockedThisSession = readStorageFlag(
+          "session",
+          SESSION_UNLOCKED_KEY,
+        );
+
+        const { data, error } = await supabase.auth.getSession();
         if (!active) return;
+
         if (error) {
           setAuthError(SESSION_UNAVAILABLE);
           setSession(null);
+          setAppLocked(false);
+          restored = true;
           return;
         }
+
         setSession(data.session);
-      })
-      .catch(() => {
+        setAppLocked(
+          Boolean(data.session && lockEnabled && !unlockedThisSession),
+        );
+        restored = true;
+      } catch {
         if (!active) return;
         setAuthError(SESSION_UNAVAILABLE);
         setSession(null);
-      });
+        setAppLocked(false);
+        restored = true;
+      }
+    };
+
+    void restoreSession();
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
-      if (active) setSession(next);
+      if (!active || !restored) return;
+      setSession(next);
+      if (!next) setAppLocked(false);
     });
+
     return () => {
       active = false;
       listener.subscription.unsubscribe();
@@ -515,13 +665,60 @@ export default function PublicAccountingApp() {
       setProfileRequired(false);
       return;
     }
+    if (appLocked) return;
     void loadPortal(session);
-  }, [loadPortal, session]);
+  }, [appLocked, loadPortal, session]);
 
   const logout = React.useCallback(() => {
     setPortalError(null);
+    setAppLocked(false);
+    writeStorageFlag("session", SESSION_UNLOCKED_KEY, false);
     void supabase.auth.signOut();
   }, []);
+
+  const updateRequireSignInOnOpen = React.useCallback((enabled: boolean) => {
+    setRequireSignInOnOpen(enabled);
+    writeStorageFlag("local", REQUIRE_SIGN_IN_ON_OPEN_KEY, enabled);
+
+    // Enabling the lock never interrupts the current session.
+    // A newly opened browser/app session will require authentication.
+    writeStorageFlag("session", SESSION_UNLOCKED_KEY, enabled);
+    setAppLocked(false);
+  }, []);
+
+  const unlockSession = React.useCallback(
+    async (password: string) => {
+      const email = session?.user.email?.trim();
+      if (!email || !password) {
+        setAuthError("Password is required.");
+        return;
+      }
+
+      setBusy(true);
+      setAuthError(null);
+
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) {
+          setAuthError("Unable to unlock with that password.");
+          return;
+        }
+
+        writeStorageFlag("session", SESSION_UNLOCKED_KEY, true);
+        if (data?.session) setSession(data.session);
+        setAppLocked(false);
+      } catch {
+        setAuthError(AUTH_UNAVAILABLE);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [session],
+  );
 
   const completeProfile = React.useCallback(
     async (profile: PublicAccountProfileInput) => {
@@ -554,11 +751,16 @@ export default function PublicAccountingApp() {
     setBusy(true);
     try {
       if (mode === "SIGN_IN") {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password: form.password,
         });
-        if (error) setAuthError("Unable to sign in with those credentials.");
+        if (error) {
+          setAuthError("Unable to sign in with those credentials.");
+          return;
+        }
+        writeStorageFlag("session", SESSION_UNLOCKED_KEY, true);
+        if (data?.session) setSession(data.session);
         return;
       }
 
@@ -592,6 +794,7 @@ export default function PublicAccountingApp() {
         return;
       }
       if (data.session) {
+        writeStorageFlag("session", SESSION_UNLOCKED_KEY, true);
         setSession(data.session);
         return;
       }
@@ -615,6 +818,18 @@ export default function PublicAccountingApp() {
       <main className="min-h-screen bg-slate-50 p-6 text-slate-600">
         Checking your Accounting session…
       </main>
+    );
+  }
+
+  if (appLocked && session) {
+    return (
+      <SessionUnlock
+        email={session.user.email || ""}
+        busy={busy}
+        error={authError}
+        onUnlock={(password) => void unlockSession(password)}
+        onSignOut={logout}
+      />
     );
   }
 
@@ -696,8 +911,11 @@ export default function PublicAccountingApp() {
         onBack={logout}
         backLabel={SIGN_OUT_LABEL}
         viewerName={`${account.firstName} ${account.lastName}`.trim()}
+        viewerOrbisId={account.orbisIdentityId || account.orbisDisplayId}
         localScope={{ ownerKind: "PUBLIC_USER", ownerId: account.id }}
         publicUserMode
+        requireSignInOnOpen={requireSignInOnOpen}
+        onRequireSignInOnOpenChange={updateRequireSignInOnOpen}
       />
     );
   }

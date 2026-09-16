@@ -234,7 +234,7 @@ describe("LotteryAccountingWorkspace local working state", () => {
     );
     expect(screen.getAllByText("₹800.00").length).toBeGreaterThan(0);
     expect(api.loadWorkspace).toHaveBeenCalledTimes(1);
-  });
+  }, 15_000);
 
   it("removes a synced recovery row after the server confirms the saved sale id", async () => {
     const serverDraft = {

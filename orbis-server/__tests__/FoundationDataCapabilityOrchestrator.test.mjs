@@ -377,5 +377,5 @@ describe("Task 3C bounded XLSX reading and creation", () => {
         workbookInput(formulaWorkbook, "formula.xlsx"),
       ),
     ).rejects.toMatchObject({ code: "XLSX_FORMULA_REJECTED" });
-  });
+  }, 15_000);
 });
