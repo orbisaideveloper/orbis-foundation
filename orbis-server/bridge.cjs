@@ -136,7 +136,16 @@ const telemetryConnectionString = normalizePostgresConnectionString(
 );
 const telemetryPool = new Pool({
   connectionString: telemetryConnectionString,
-  ssl: { rejectUnauthorized: true },
+  ssl: {
+    rejectUnauthorized: true,
+    ca: [
+      ...require("node:tls").rootCertificates,
+      fs.readFileSync(
+        path.join(__dirname, "certs", "supabase-root-2021.crt"),
+        "utf8",
+      ),
+    ],
+  },
 });
 const telemetryAdapter = new PrismaPg(telemetryPool);
 const prisma = new PrismaClient({ adapter: telemetryAdapter });
