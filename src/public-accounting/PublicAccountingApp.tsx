@@ -902,7 +902,7 @@ export default function PublicAccountingApp() {
     );
   }
 
-  if (account.identityLinkStatus === "LINKED" && model) {
+  if (model) {
     return (
       <AccountingPublicView
         mode="LIVE"

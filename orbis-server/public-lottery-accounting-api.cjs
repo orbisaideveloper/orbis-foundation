@@ -78,6 +78,13 @@ function sendPublicAccountError(res, error) {
   const code = typeof error?.code === "string" ? error.code : "";
   const validationError =
     code.startsWith("FOUNDATION_ACCOUNT_") && code.endsWith("_REQUIRED");
+
+  if (!validationError) {
+    console.error(
+      `[FOUNDATION_ACCOUNT] prepare failed: ${code || error?.name || "UNKNOWN"}`,
+    );
+  }
+
   res.setHeader(CACHE_CONTROL, NO_STORE);
   return res.status(validationError ? 400 : 503).json({
     success: false,

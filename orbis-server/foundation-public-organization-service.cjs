@@ -56,14 +56,14 @@ function createFoundationPublicOrganizationService({ prisma } = {}) {
     const userId = requiredText(authUserId, "auth_user_id");
     const localAccountId = requiredText(account?.id, "local_account_id");
 
-    if (account?.identityLinkStatus !== LINKED) {
-      throw organizationServiceError("FOUNDATION_ORGANIZATION_IDENTITY_NOT_LINKED");
-    }
-
-    const orbisIdentityId = requiredText(
-      account?.orbisIdentityId,
-      "orbis_identity_id",
-    );
+    // Organization authorization is based on the authenticated Supabase
+    // user and OWNER membership. Central ORBIS identity links independently
+    // and must not block a durable Accounting workspace during retry.
+    const orbisIdentityId =
+      typeof account?.orbisIdentityId === "string" &&
+      account.orbisIdentityId.trim()
+        ? account.orbisIdentityId.trim()
+        : null;
 
     return prisma.$transaction(async (client) => {
       if (typeof client.$executeRaw !== "function") {

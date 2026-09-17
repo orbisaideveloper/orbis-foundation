@@ -134,6 +134,11 @@ function createFoundationPublicAccountService({
       const linked = await linkCentralIdentity(account);
       return publicAccount(linked);
     } catch (error) {
+      // Keep the durable local account usable when Central Identity is
+      // temporarily unavailable. A later authenticated load retries the
+      // same idempotent identity observation.
+      if (error?.retryable === true) return publicAccount(account);
+
       if (error?.retryable === false) {
         const failed = await repository.updateIdentityLink(account.id, {
           identityLinkStatus: FAILED,

@@ -197,7 +197,7 @@ describe("Foundation public account linkage", () => {
     });
   });
 
-  it("marks non-retryable central failures but lets temporary failures retry", async () => {
+  it("marks non-retryable central failures and keeps temporary linkage pending", async () => {
     const repository = repositoryMock();
     const rejected = Object.assign(new Error("rejected"), {
       code: "ORBIS_IDENTITY_REQUEST_REJECTED",
@@ -223,8 +223,10 @@ describe("Foundation public account linkage", () => {
       Object.assign(new Error("temporary"), { retryable: true }),
     );
 
-    await expect(
-      service.ensureAccountAndIdentity(AUTH_USER, SIGNUP),
-    ).rejects.toMatchObject({ retryable: true });
+    const updateCallCount = repository.updateIdentityLink.mock.calls.length;
+    const pending = await service.ensureAccountAndIdentity(AUTH_USER, SIGNUP);
+
+    expect(pending).toMatchObject({ identityLinkStatus: "PENDING" });
+    expect(repository.updateIdentityLink).toHaveBeenCalledTimes(updateCallCount);
   });
 });

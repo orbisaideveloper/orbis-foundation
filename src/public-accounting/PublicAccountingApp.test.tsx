@@ -255,6 +255,27 @@ describe("PublicAccountingApp", () => {
     expect(authMocks.signOut).not.toHaveBeenCalled();
   });
 
+  it("opens the Accounting workspace while Central Identity is pending", async () => {
+    authMocks.getSession.mockResolvedValue({
+      data: { session },
+      error: null,
+    });
+    apiMocks.getPublicAccount.mockResolvedValue({
+      ...account,
+      identityLinkStatus: "PENDING",
+      orbisIdentityId: null,
+      orbisDisplayId: null,
+      orbisLifecycle: null,
+    });
+    apiMocks.getPublicOrganizations.mockResolvedValue([]);
+
+    render(<PublicAccountingApp />);
+
+    expect(
+      await screen.findByTestId(REAL_PUBLIC_WORKSPACE),
+    ).toHaveTextContent("Ajay Saha · Public v3 · REAL");
+  });
+
   it("locks a reopened app without destroying the persisted Supabase session", async () => {
     window.localStorage.setItem(
       "orbis.publicAccounting.requireSignInOnOpen",

@@ -197,23 +197,43 @@ describe("Foundation public OWNER organization bootstrap", () => {
     });
   });
 
-  it("does not create an organization until Central ORBIS identity is linked", async () => {
-    const { prisma } = prismaMock();
+  it("creates an organization while Central ORBIS identity linkage is pending", async () => {
+    const { prisma, client } = prismaMock();
     const service = createFoundationPublicOrganizationService({ prisma });
 
-    await expect(
-      service.ensureOwnerOrganization({
-        authUserId: AUTH_USER_ID,
-        account: {
-          ...LINKED_ACCOUNT,
-          identityLinkStatus: "REVIEW_REQUIRED",
-          orbisIdentityId: null,
-        },
-      }),
-    ).rejects.toMatchObject({
-      code: "FOUNDATION_ORGANIZATION_IDENTITY_NOT_LINKED",
+    const result = await service.ensureOwnerOrganization({
+      authUserId: AUTH_USER_ID,
+      account: {
+        ...LINKED_ACCOUNT,
+        identityLinkStatus: "PENDING",
+        orbisIdentityId: null,
+      },
+      requestedName: ORGANIZATION_NAME,
     });
 
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      id: ORGANIZATION_ID,
+      name: ORGANIZATION_NAME,
+      status: "ACTIVE",
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(
+      client.foundationAccountingOrganizationMembership.create,
+    ).toHaveBeenCalledWith({
+      data: {
+        organizationId: ORGANIZATION_ID,
+        userId: AUTH_USER_ID,
+        role: "OWNER",
+        status: "ACTIVE",
+      },
+    });
+    expect(client.foundationLotteryAuditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventType: "PUBLIC_ORGANIZATION_CREATED",
+        metadata: expect.objectContaining({
+          orbisIdentityId: null,
+        }),
+      }),
+    });
   });
 });
