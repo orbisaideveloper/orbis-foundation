@@ -67,6 +67,26 @@ export class TermuxRuntimeService {
           enabled: true,
           runtime: name,
         },
+        {
+          id: "termux.repository.patch",
+          name: "Patch Repository Source",
+          description:
+            "Apply bounded exact-text edits to an existing allow-listed repository source file.",
+          riskLevel: "SENSITIVE",
+          requiresApproval: true,
+          enabled: true,
+          runtime: name,
+        },
+        {
+          id: "termux.repository.verify",
+          name: "Verify Repository Tests",
+          description:
+            "Run a bounded set of exact existing Vitest test files using the local controlled test runner.",
+          riskLevel: "SENSITIVE",
+          requiresApproval: true,
+          enabled: true,
+          runtime: name,
+        },
       ]);
 
       this.lifecycle.register(

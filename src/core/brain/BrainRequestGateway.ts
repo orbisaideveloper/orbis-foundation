@@ -127,6 +127,8 @@ function isValidOptions(
 const CAPABILITY_REQUIRED_CONTEXT: Readonly<Record<string, readonly string[]>> =
   {
     "termux.file.read": ["path"],
+    "termux.repository.patch": ["path", "edits"],
+    "termux.repository.verify": ["targets"],
   };
 
 function isMissingValue(value: unknown): boolean {

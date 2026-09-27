@@ -6,6 +6,9 @@ let providerManager;
 let tavilySearch;
 let brainRuntime;
 
+const CAP_SYSTEM_INFO = "termux.system.info";
+const PACKAGE_JSON = "package.json";
+
 beforeEach(() => {
   vi.resetModules();
 
@@ -66,11 +69,34 @@ describe("TASK-013: AIChatService Brain capability routing (STEP 1.5)", () => {
     ]);
 
     expect(submitSpy).toHaveBeenCalledWith({
-      capabilityId: "termux.system.info",
+      capabilityId: CAP_SYSTEM_INFO,
       input: {},
     });
     expect(result.provider.type).toBe("BRAIN_CAPABILITY");
     expect(result.message.content).toContain("Platform: LINUX");
+    expect(result.executionTrace).toMatchObject({
+      orchestrator: {
+        name: "ORBIS Brain",
+        role: "orchestrator",
+      },
+      route: {
+        id: "foundation-capability",
+        capabilityId: CAP_SYSTEM_INFO,
+      },
+      finalStatus: "completed",
+    });
+    expect(result.executionTrace.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "capability",
+          capabilityId: CAP_SYSTEM_INFO,
+          requestId: "req-1",
+          runtime: "TermuxRuntime",
+          status: "success",
+          durationMs: 5,
+        }),
+      ]),
+    );
   });
 
   it("reports a DENY decision in plain language and does not fall through to Ollama", async () => {
@@ -160,7 +186,7 @@ describe("TASK-013: AIChatService Brain capability routing (STEP 1.5)", () => {
     ]);
 
     expect(submitSpy).toHaveBeenCalledWith({
-      capabilityId: "termux.system.info",
+      capabilityId: CAP_SYSTEM_INFO,
       input: {},
     });
   });
@@ -188,7 +214,7 @@ describe("TASK-019: generic termux.file.read phrase asks which file instead of a
     expect(submitSpy).not.toHaveBeenCalled();
     expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
     expect(result.provider.type).toBe("BRAIN_CAPABILITY");
-    expect(result.message.content.toLowerCase()).toContain("package.json");
+    expect(result.message.content.toLowerCase()).toContain(PACKAGE_JSON);
     expect(result.message.content.toLowerCase()).toContain("readme.md");
   });
 
@@ -200,7 +226,7 @@ describe("TASK-019: generic termux.file.read phrase asks which file instead of a
     ]);
 
     expect(submitSpy).not.toHaveBeenCalled();
-    expect(result.message.content).toContain("package.json");
+    expect(result.message.content).toContain(PACKAGE_JSON);
   });
 
   it("still submits to the Brain gateway once a specific allow-listed file is named", async () => {
@@ -222,7 +248,7 @@ describe("TASK-019: generic termux.file.read phrase asks which file instead of a
 
     expect(submitSpy).toHaveBeenCalledWith({
       capabilityId: "termux.file.read",
-      input: { path: "package.json" },
+      input: { path: PACKAGE_JSON },
     });
     expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
     expect(result.message.content.toLowerCase()).toContain("approval");

@@ -1,4 +1,6 @@
-const providerManager = require("./AIProviderManager.cjs");
+const {
+  repositoryAgentLoop,
+} = require("./agent/RepositoryAgentLoop.cjs");
 const tavilySearch = require("./tools/TavilySearch.cjs");
 const capabilityIntentMatcher = require("./brain/ChatCapabilityIntentMatcher.cjs");
 const {
@@ -19,6 +21,15 @@ const {
   TIME_SENSITIVE_EVIDENCE_POLICY,
   hasVerifiedEvidence,
 } = require("./learning/FoundationLearningPolicyEngine.cjs");
+
+const ORBIS_BRAIN_NAME = "ORBIS Brain";
+const ORBIS_BRAIN_WEB_NAME = "ORBIS Brain (Web)";
+
+const CAPABILITY_REPOSITORY_PATCH =
+  "termux.repository.patch";
+const CAPABILITY_REPOSITORY_VERIFY =
+  "termux.repository.verify";
+const MAX_PENDING_REPOSITORY_VERIFICATIONS = 32;
 
 function learningDecisionMetadata(decision) {
   return {
@@ -134,26 +145,34 @@ function formatApprovalRequiredReply(token, bn) {
     : "This request requires approval, so it was not executed yet.";
 }
 
+function errorIncludesAny(error, codes) {
+  return codes.some((code) => error.includes(code));
+}
+
 function formatBrainErrorAsChatReply(error, approvalToken, bn) {
   if (error.includes("REQUIRE_APPROVAL")) {
     return formatApprovalRequiredReply(approvalToken, bn);
   }
-  if (error.includes("DENY") || error.includes("NOT_AUTHORIZED")) {
+  if (errorIncludesAny(error, ["DENY", "NOT_AUTHORIZED"])) {
     return bn
       ? "এই অনুরোধটি অনুমোদিত নয়, তাই প্রত্যাখ্যান করা হয়েছে।"
       : "This request is not authorized, so it was denied.";
   }
   if (
-    error.includes("DISCOVERY_UNAVAILABLE") ||
-    error.includes("BRIDGE_UNREACHABLE")
+    errorIncludesAny(error, [
+      "DISCOVERY_UNAVAILABLE",
+      "BRIDGE_UNREACHABLE",
+    ])
   ) {
     return bn
       ? "এই মুহূর্তে সিস্টেমের সাথে সংযোগ পাওয়া যাচ্ছে না, তাই অনুরোধটি সম্পন্ন করা যায়নি।"
       : "The system bridge isn't reachable right now, so the request could not be completed.";
   }
   if (
-    error.includes("CAPABILITY_NOT_DISCOVERABLE") ||
-    error.includes("CAPABILITY_NOT_FOUND")
+    errorIncludesAny(error, [
+      "CAPABILITY_NOT_DISCOVERABLE",
+      "CAPABILITY_NOT_FOUND",
+    ])
   ) {
     return bn
       ? "অনুরোধ করা ফিচারটি এই মুহূর্তে উপলব্ধ নয়।"
@@ -219,17 +238,92 @@ function formatApprovalResultAsChatReply(result, lang) {
     : "The approval flow did not complete safely.";
 }
 
+
+function summarizeBrainExecution(capabilityId, result) {
+  const rawDuration = Number(result?.durationMs);
+  const errorCode =
+    typeof result?.error === "string"
+      ? result.error.split(":")[0].trim().slice(0, 120)
+      : null;
+
+  return {
+    kind: "capability",
+    capabilityId,
+    requestId:
+      typeof result?.requestId === "string"
+        ? result.requestId
+        : null,
+    runtime:
+      typeof result?.runtime === "string"
+        ? result.runtime
+        : null,
+    success: result?.success === true,
+    durationMs:
+      Number.isFinite(rawDuration) && rawDuration >= 0
+        ? rawDuration
+        : 0,
+    approvalRequired: result?.approvalRequired === true,
+    errorCode,
+  };
+}
+
 class AIChatService {
   constructor({
     orchestrator = foundationChatOrchestrator,
     learningPolicyEngine,
+    agentLoop = repositoryAgentLoop,
+    brainGatewayLoader = loadBrainRequestGateway,
   } = {}) {
     this.orchestrator = orchestrator;
     this.learningPolicyEngine = learningPolicyEngine || null;
+    this.agentLoop = agentLoop;
+    this.brainGatewayLoader = brainGatewayLoader;
+    this.pendingRepositoryVerifications = new Map();
   }
 
   setLearningPolicyEngine(learningPolicyEngine) {
     this.learningPolicyEngine = learningPolicyEngine || null;
+  }
+
+  rememberRepositoryVerification(
+    approvalToken,
+    targets,
+  ) {
+    if (
+      typeof approvalToken !== "string" ||
+      !approvalToken ||
+      !Array.isArray(targets) ||
+      targets.length < 1
+    ) {
+      return;
+    }
+
+    while (
+      this.pendingRepositoryVerifications.size >=
+      MAX_PENDING_REPOSITORY_VERIFICATIONS
+    ) {
+      const oldest =
+        this.pendingRepositoryVerifications.keys().next();
+
+      if (oldest.done) break;
+
+      this.pendingRepositoryVerifications.delete(
+        oldest.value,
+      );
+    }
+
+    this.pendingRepositoryVerifications.set(
+      approvalToken,
+      {
+        targets: [...targets],
+      },
+    );
+  }
+
+  clearRepositoryVerification(approvalToken) {
+    this.pendingRepositoryVerifications.delete(
+      approvalToken,
+    );
   }
 
   async learningPolicyFor(decision) {
@@ -302,7 +396,7 @@ class AIChatService {
       capabilityIntentMatcher.matchApprovalDecision(lastUserMessage);
     if (!approvalDecision) return null;
 
-    const approvalGateway = loadBrainRequestGateway();
+    const approvalGateway = this.brainGatewayLoader();
     const lang = capabilityIntentMatcher.detectLanguage(lastUserMessage);
     if (
       !approvalGateway ||
@@ -316,25 +410,117 @@ class AIChatService {
               ? "অনুমোদন সিস্টেম এই মুহূর্তে উপলব্ধ নয়।"
               : "The approval system is unavailable right now.",
         },
-        provider: { name: "ORBIS Brain", type: "BRAIN_APPROVAL" },
+        provider: { name: ORBIS_BRAIN_NAME, type: "BRAIN_APPROVAL" },
       };
     }
 
-    const approvalResult = await approvalGateway.submitApproval(
+    const pendingVerification =
+      this.pendingRepositoryVerifications.get(
+        approvalDecision.token,
+      ) || null;
+
+    const approvalResult =
+      await approvalGateway.submitApproval(
+        approvalDecision.token,
+        approvalDecision.decision,
+      );
+
+    if (!approvalResult?.success) {
+      const error =
+        typeof approvalResult?.error === "string"
+          ? approvalResult.error
+          : "";
+
+      if (!error.includes("BRIDGE_UNREACHABLE")) {
+        this.clearRepositoryVerification(
+          approvalDecision.token,
+        );
+      }
+
+      return {
+        message: {
+          role: "assistant",
+          content: formatApprovalResultAsChatReply(
+            approvalResult,
+            lang,
+          ),
+        },
+        provider: {
+          name: ORBIS_BRAIN_NAME,
+          type: "BRAIN_APPROVAL",
+        },
+      };
+    }
+
+    const approvedCapabilityId =
+      approvalResult?.metadata?.capabilityId;
+
+    if (
+      approvedCapabilityId ===
+        CAPABILITY_REPOSITORY_PATCH &&
+      pendingVerification
+    ) {
+      this.clearRepositoryVerification(
+        approvalDecision.token,
+      );
+
+      const verificationResult =
+        await approvalGateway.submit({
+          capabilityId:
+            CAPABILITY_REPOSITORY_VERIFY,
+          input: {
+            targets:
+              pendingVerification.targets,
+          },
+        });
+
+      return {
+        message: {
+          role: "assistant",
+          content:
+            formatApprovalResultAsChatReply(
+              approvalResult,
+              lang,
+            ) +
+            "\n\n" +
+            formatBrainResultAsChatReply(
+              CAPABILITY_REPOSITORY_VERIFY,
+              verificationResult,
+              lang,
+            ),
+        },
+        provider: {
+          name: ORBIS_BRAIN_NAME,
+          type: "BRAIN_APPROVAL",
+        },
+        execution: summarizeBrainExecution(
+          CAPABILITY_REPOSITORY_VERIFY,
+          verificationResult,
+        ),
+      };
+    }
+
+    this.clearRepositoryVerification(
       approvalDecision.token,
-      approvalDecision.decision,
     );
+
     return {
       message: {
         role: "assistant",
-        content: formatApprovalResultAsChatReply(approvalResult, lang),
+        content: formatApprovalResultAsChatReply(
+          approvalResult,
+          lang,
+        ),
       },
-      provider: { name: "ORBIS Brain", type: "BRAIN_APPROVAL" },
+      provider: {
+        name: ORBIS_BRAIN_NAME,
+        type: "BRAIN_APPROVAL",
+      },
     };
   }
 
   async executeCapabilityRequest(capabilityRequest, lastUserMessage) {
-    const brainRequestGateway = loadBrainRequestGateway();
+    const brainRequestGateway = this.brainGatewayLoader();
     const lang = capabilityIntentMatcher.detectLanguage(lastUserMessage);
     const { capabilityId } = capabilityRequest;
 
@@ -347,7 +533,7 @@ class AIChatService {
               ? "কোন allow-listed ফাইলটি পড়ব বলুন: package.json অথবা README.md।"
               : "Which allow-listed file should I read: package.json or README.md?",
         },
-        provider: { name: "ORBIS Brain", type: "BRAIN_CAPABILITY" },
+        provider: { name: ORBIS_BRAIN_NAME, type: "BRAIN_CAPABILITY" },
         clarificationRequired: true,
       };
     }
@@ -362,7 +548,7 @@ class AIChatService {
             lang,
           ),
         },
-        provider: { name: "ORBIS Brain", type: "BRAIN_CAPABILITY" },
+        provider: { name: ORBIS_BRAIN_NAME, type: "BRAIN_CAPABILITY" },
       };
     }
 
@@ -373,9 +559,25 @@ class AIChatService {
     return {
       message: {
         role: "assistant",
-        content: formatBrainResultAsChatReply(capabilityId, brainResult, lang),
+        content: formatBrainResultAsChatReply(
+          capabilityId,
+          brainResult,
+          lang,
+        ),
       },
-      provider: { name: "ORBIS Brain", type: "BRAIN_CAPABILITY" },
+      provider: {
+        name: ORBIS_BRAIN_NAME,
+        type: "BRAIN_CAPABILITY",
+      },
+      execution: summarizeBrainExecution(
+        capabilityId,
+        brainResult,
+      ),
+      approvalToken:
+        brainResult?.approvalRequired === true &&
+        typeof brainResult?.approvalToken === "string"
+          ? brainResult.approvalToken
+          : null,
     };
   }
 
@@ -385,7 +587,7 @@ class AIChatService {
       if (content) {
         return {
           message: { role: "assistant", content },
-          provider: { name: "ORBIS Brain", type: "BRAIN_DIRECT" },
+          provider: { name: ORBIS_BRAIN_NAME, type: "BRAIN_DIRECT" },
         };
       }
     }
@@ -407,6 +609,7 @@ class AIChatService {
     return this.executeProviderFallback(
       formattedMessages,
       routeDecision?.conversationPlan,
+      lastUserMessage,
     );
   }
 
@@ -428,7 +631,7 @@ class AIChatService {
               : "Which location's weather would you like? Let me know the place name and I'll look it up.",
         },
         provider: {
-          name: "ORBIS Brain (Web)",
+          name: ORBIS_BRAIN_WEB_NAME,
           type: "WEB_SEARCH_CLARIFICATION",
         },
       };
@@ -444,7 +647,7 @@ class AIChatService {
               ? "লাইভ সার্চ এখন কনফিগার করা নেই। পরে আবার চেষ্টা করুন বা একটি সাধারণ প্রশ্ন করুন।"
               : "Live search is not configured right now. Try again later or ask a non-live question.",
         },
-        provider: { name: "ORBIS Brain (Web)", type: "WEB_UNAVAILABLE" },
+        provider: { name: ORBIS_BRAIN_WEB_NAME, type: "WEB_UNAVAILABLE" },
       };
     }
 
@@ -471,7 +674,7 @@ class AIChatService {
             searchLang,
           ),
         },
-        provider: { name: "ORBIS Brain (Web)", type: "WEB_SEARCH" },
+        provider: { name: ORBIS_BRAIN_WEB_NAME, type: "WEB_SEARCH" },
         evidence: verifiedResult.evidence,
       };
     }
@@ -486,11 +689,15 @@ class AIChatService {
             ? "লাইভ সার্চ থেকে এখন যাচাইযোগ্য current result পাওয়া যায়নি। কোনো পুরোনো ফল বর্তমান তথ্য হিসেবে দেখানো হয়নি।"
             : "Live search did not return a verifiable current result. No stale result was shown as current.",
       },
-      provider: { name: "ORBIS Brain (Web)", type: "WEB_UNAVAILABLE" },
+      provider: { name: ORBIS_BRAIN_WEB_NAME, type: "WEB_UNAVAILABLE" },
     };
   }
 
-  async executeProviderFallback(formattedMessages, conversationPlan) {
+  async executeProviderFallback(
+    formattedMessages,
+    conversationPlan,
+    lastUserMessage,
+  ) {
     const aiMessages = [...formattedMessages];
     aiMessages.unshift({
       role: "system",
@@ -514,10 +721,67 @@ class AIChatService {
         "matching integrated capability actually succeeded in this exchange.",
     });
 
-    const providerResponse = await providerManager.generateChat(aiMessages);
+    const providerResponse =
+      await this.agentLoop.run(aiMessages);
+
+    const requestedCapability =
+      providerResponse?.capabilityRequest;
+
+    if (
+      requestedCapability &&
+      typeof requestedCapability.capabilityId ===
+        "string" &&
+      requestedCapability.input &&
+      typeof requestedCapability.input ===
+        "object"
+    ) {
+      const capabilityResponse =
+        await this.executeCapabilityRequest(
+          {
+            capabilityId:
+              requestedCapability.capabilityId,
+            input: requestedCapability.input,
+          },
+          lastUserMessage,
+        );
+
+      if (
+        requestedCapability.capabilityId ===
+          CAPABILITY_REPOSITORY_PATCH &&
+        typeof capabilityResponse.approvalToken ===
+          "string" &&
+        Array.isArray(
+          requestedCapability
+            .followUpVerification?.targets,
+        )
+      ) {
+        this.rememberRepositoryVerification(
+          capabilityResponse.approvalToken,
+          requestedCapability
+            .followUpVerification.targets,
+        );
+      }
+
+      const safeCapabilityResponse = {
+        ...capabilityResponse,
+      };
+
+      delete safeCapabilityResponse.approvalToken;
+
+      return {
+        ...safeCapabilityResponse,
+        provider: providerResponse.provider,
+        agent: providerResponse.agent || null,
+      };
+    }
+
     return {
-      message: { role: "assistant", content: providerResponse.content },
+      message: {
+        role: "assistant",
+        content: providerResponse.content,
+      },
       provider: providerResponse.provider,
+      agent: providerResponse.agent || null,
     };
   }
 }

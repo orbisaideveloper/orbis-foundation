@@ -9,6 +9,12 @@ services:
     envVars:
       - key: SOURCE_EXPLORER_ENABLED
         sync: false
+      - key: HF_TOKEN
+        sync: false
+      - key: HF_MODEL
+        sync: false
+      - key: HF_CHAT_COMPLETIONS_URL
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY

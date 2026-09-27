@@ -130,9 +130,20 @@ export class TermuxRuntime implements IExecutionRuntime {
     }
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      const internalToken =
+        process.env.ORBIS_INTERNAL_TERMUX_RUNTIME_TOKEN;
+
+      if (internalToken) {
+        headers["X-Orbis-Runtime-Token"] = internalToken;
+      }
+
       const response = await fetch(this.executeUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           capability: request.capability,
           input: request.input || {},

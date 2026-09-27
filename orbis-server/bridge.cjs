@@ -4,6 +4,7 @@ const cors = require("cors");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const crypto = require("node:crypto");
 const { Pool } = require("pg");
 const { PrismaPg } = require("@prisma/adapter-pg");
 const { PrismaClient } = require("@prisma/client");
@@ -42,6 +43,25 @@ const {
   listFoundationTableRows,
 } = require("./admin-diagnostic-export.cjs");
 const { chatCapabilityRegistry } = require("./ai/ChatCapabilityRegistry.cjs");
+const {
+  CAPABILITY_REPOSITORY_PATCH,
+  ERR_AMBIGUOUS: REPOSITORY_PATCH_AMBIGUOUS,
+  ERR_CONFLICT: REPOSITORY_PATCH_CONFLICT,
+  ERR_DISABLED: REPOSITORY_PATCH_DISABLED,
+  ERR_INPUT_INVALID: REPOSITORY_PATCH_INPUT_INVALID,
+  ERR_PATH_NOT_ALLOWED: REPOSITORY_PATCH_PATH_NOT_ALLOWED,
+  isRepositoryPatchEnabled,
+  repositoryPatchTool,
+} = require("./ai/tools/RepositoryPatchTool.cjs");
+const {
+  CAPABILITY_REPOSITORY_VERIFY,
+  ERR_DISABLED: REPOSITORY_VERIFY_DISABLED,
+  ERR_INPUT_INVALID: REPOSITORY_VERIFY_INPUT_INVALID,
+  ERR_PATH_NOT_ALLOWED: REPOSITORY_VERIFY_PATH_NOT_ALLOWED,
+  ERR_TARGET_UNAVAILABLE: REPOSITORY_VERIFY_TARGET_UNAVAILABLE,
+  isRepositoryVerifyEnabled,
+  repositoryVerificationTool,
+} = require("./ai/tools/RepositoryVerificationTool.cjs");
 const {
   FoundationDataCapabilityOrchestrator,
 } = require("./ai/FoundationDataCapabilityOrchestrator.cjs");
@@ -85,6 +105,28 @@ const FILE_READ_ALLOW_LIST = Object.freeze({
   "package.json": path.join(__dirname, "..", "package.json"),
   "README.md": path.join(__dirname, "..", "README.md"),
 });
+
+const INTERNAL_TERMUX_RUNTIME_TOKEN =
+  crypto.randomBytes(32).toString("hex");
+
+process.env.ORBIS_INTERNAL_TERMUX_RUNTIME_TOKEN =
+  INTERNAL_TERMUX_RUNTIME_TOKEN;
+
+function isInternalRuntimeRequest(req) {
+  const supplied = req.get("X-Orbis-Runtime-Token");
+
+  if (
+    typeof supplied !== "string" ||
+    supplied.length !== INTERNAL_TERMUX_RUNTIME_TOKEN.length
+  ) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(
+    Buffer.from(supplied, "utf8"),
+    Buffer.from(INTERNAL_TERMUX_RUNTIME_TOKEN, "utf8"),
+  );
+}
 
 function logSanitizedError(context) {
   console.error(context);
@@ -347,12 +389,182 @@ app.get("/api/termux/handshake", (req, res) => {
         riskLevel: "SENSITIVE",
         enabled: true,
       },
+      ...(isRepositoryPatchEnabled()
+        ? [
+            {
+              id: CAPABILITY_REPOSITORY_PATCH,
+              name: "Patch Repository Source",
+              riskLevel: "SENSITIVE",
+              enabled: true,
+            },
+          ]
+        : []),
+      ...(isRepositoryVerifyEnabled()
+        ? [
+            {
+              id: CAPABILITY_REPOSITORY_VERIFY,
+              name: "Verify Repository Tests",
+              riskLevel: "SENSITIVE",
+              enabled: true,
+            },
+          ]
+        : []),
     ],
     status: "CAPABILITIES_VERIFIED",
   });
 });
 
+function getRepositoryPatchHttpStatus(code) {
+  if (
+    code === REPOSITORY_PATCH_DISABLED ||
+    code === REPOSITORY_PATCH_PATH_NOT_ALLOWED
+  ) {
+    return 403;
+  }
+
+  if (code === REPOSITORY_PATCH_INPUT_INVALID) {
+    return 400;
+  }
+
+  if (
+    code === REPOSITORY_PATCH_CONFLICT ||
+    code === REPOSITORY_PATCH_AMBIGUOUS
+  ) {
+    return 409;
+  }
+
+  return 500;
+}
+
+function handleRepositoryPatchCapability(req, res) {
+  if (!isInternalRuntimeRequest(req)) {
+    return res.status(403).json({
+      success: false,
+      error: "CAPABILITY_NOT_AUTHORIZED",
+      message: "Repository patch execution is internal-runtime only.",
+    });
+  }
+
+  try {
+    const data = repositoryPatchTool.applyPatch(
+      req.body.input || {},
+    );
+
+    return res.json({
+      success: true,
+      capability: CAPABILITY_REPOSITORY_PATCH,
+      runtime: "TermuxRuntime",
+      data,
+    });
+  } catch (error) {
+    const code =
+      typeof error?.code === "string"
+        ? error.code
+        : "REPOSITORY_PATCH_FAILED";
+
+    const status = getRepositoryPatchHttpStatus(code);
+
+    if (status === 500) {
+      logSanitizedError(
+        "[REPOSITORY_PATCH] Controlled patch failed",
+      );
+    }
+
+    return res.status(status).json({
+      success: false,
+      error: code,
+      message: "Repository patch was not applied.",
+    });
+  }
+}
+
+function routeRepositoryPatchCapability(req, res, next) {
+  if (req.body?.capability !== CAPABILITY_REPOSITORY_PATCH) {
+    return next();
+  }
+
+  return handleRepositoryPatchCapability(req, res);
+}
+
+function getRepositoryVerifyHttpStatus(code) {
+  if (
+    code === REPOSITORY_VERIFY_DISABLED ||
+    code === REPOSITORY_VERIFY_PATH_NOT_ALLOWED ||
+    code === REPOSITORY_VERIFY_TARGET_UNAVAILABLE
+  ) {
+    return 403;
+  }
+
+  if (code === REPOSITORY_VERIFY_INPUT_INVALID) {
+    return 400;
+  }
+
+  return 500;
+}
+
+function handleRepositoryVerifyCapability(req, res) {
+  if (!isInternalRuntimeRequest(req)) {
+    return res.status(403).json({
+      success: false,
+      error: "CAPABILITY_NOT_AUTHORIZED",
+      message:
+        "Repository verification execution is internal-runtime only.",
+    });
+  }
+
+  try {
+    const data = repositoryVerificationTool.run(
+      req.body.input || {},
+    );
+
+    return res.json({
+      success: true,
+      capability: CAPABILITY_REPOSITORY_VERIFY,
+      runtime: "TermuxRuntime",
+      data,
+    });
+  } catch (error) {
+    const code =
+      typeof error?.code === "string"
+        ? error.code
+        : "REPOSITORY_VERIFY_FAILED";
+
+    const status = getRepositoryVerifyHttpStatus(code);
+
+    if (status === 500) {
+      logSanitizedError(
+        "[REPOSITORY_VERIFY] Controlled verification failed",
+      );
+    }
+
+    return res.status(status).json({
+      success: false,
+      error: code,
+      message:
+        "Repository verification was not executed.",
+    });
+  }
+}
+
+function routeRepositoryVerifyCapability(req, res, next) {
+  if (req.body?.capability !== CAPABILITY_REPOSITORY_VERIFY) {
+    return next();
+  }
+
+  return handleRepositoryVerifyCapability(req, res);
+}
+
 // TASK-007: Controlled Capability Execution Endpoint
+app.post(
+  "/api/termux/capability",
+  routeRepositoryPatchCapability,
+);
+
+app.post(
+  "/api/termux/capability",
+  routeRepositoryVerifyCapability,
+);
+
 app.post("/api/termux/capability", (req, res) => {
   const { capability } = req.body || {};
 

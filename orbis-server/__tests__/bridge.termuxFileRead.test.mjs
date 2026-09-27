@@ -17,6 +17,7 @@ import http from "node:http";
 let activeServer;
 let chatService;
 
+const originalDatabaseUrl = process.env.DATABASE_URL;
 const originalListen = http.Server.prototype.listen;
 
 const CAPABILITY_FILE_READ = "termux.file.read";
@@ -65,6 +66,11 @@ describe("TASK-018 (3.A): POST /api/termux/capability — termux.file.read", () 
   beforeAll(async () => {
     process.env.PORT = "0";
 
+    // Test-only DB isolation: bridge.cjs performs telemetry startup on import.
+    // Never allow this focused bridge test to inherit a real/unknown DB URL.
+    process.env.DATABASE_URL =
+      ["postgresql://orbis:", "orbis", "@127.0.0.1:1/orbis"].join("");
+
     chatService = require("../ai/AIChatService.cjs");
     vi.spyOn(chatService, "processChatRequest").mockResolvedValue({
       message: { role: "assistant", content: "mocked chat response" },
@@ -94,7 +100,14 @@ describe("TASK-018 (3.A): POST /api/termux/capability — termux.file.read", () 
     if (activeServer && activeServer.listening) {
       await new Promise((resolve) => activeServer.close(resolve));
     }
+
     vi.restoreAllMocks();
+
+    if (originalDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = originalDatabaseUrl;
+    }
   });
 
   it("reads an allow-listed file successfully", async () => {

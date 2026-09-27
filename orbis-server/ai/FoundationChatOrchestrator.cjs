@@ -5,7 +5,11 @@ const {
   decisionTrace,
   invalidDecisionTrace,
 } = require("./brain/BrainDecisionContract.cjs");
+const {
+  buildExecutionTrace,
+} = require("./trace/ExecutionTrace.cjs");
 
+const PENDING_WEATHER_LOCATION = "weather-location";
 const MAX_MESSAGES = 20;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_CLARIFICATION_AGE_MS = 10 * 60 * 1000;
@@ -38,7 +42,7 @@ function normalizeMessages(rawMessages) {
 function normalizePending(rawPending) {
   if (!rawPending || typeof rawPending !== "object") return null;
   if (
-    !["weather-location", "capability-input"].includes(rawPending.kind) ||
+    ![PENDING_WEATHER_LOCATION, "capability-input"].includes(rawPending.kind) ||
     typeof rawPending.originalRequest !== "string" ||
     rawPending.originalRequest.trim().length === 0 ||
     rawPending.originalRequest.length > MAX_MESSAGE_CHARS ||
@@ -78,23 +82,25 @@ function clarificationFollowUp(message, pending, now) {
     return { message, state: "replaced" };
   }
 
-  if (pending.kind === "weather-location") {
-    if (!weatherRequest) {
-      const location =
-        capabilityIntentMatcher.matchWeatherLocationReply(message);
-      if (location) {
-        return {
-          message: `${pending.originalRequest} ${message}`.trim(),
-          state: "resolved",
-          location,
-        };
-      }
+  if (
+    pending.kind === PENDING_WEATHER_LOCATION &&
+    !weatherRequest
+  ) {
+    const location =
+      capabilityIntentMatcher.matchWeatherLocationReply(message);
+
+    if (location) {
+      return {
+        message: `${pending.originalRequest} ${message}`.trim(),
+        state: "resolved",
+        location,
+      };
     }
   }
 
   if (looksClearlyNew) return { message, state: "replaced" };
 
-  if (pending.kind === "weather-location") {
+  if (pending.kind === PENDING_WEATHER_LOCATION) {
     return { message: pending.originalRequest, state: "awaiting" };
   }
 
@@ -116,7 +122,7 @@ function pendingFromResponse(
       return priorPending;
     }
     return {
-      kind: "weather-location",
+      kind: PENDING_WEATHER_LOCATION,
       originalRequest,
       createdAt: now,
       expiresAt: now + MAX_CLARIFICATION_AGE_MS,
@@ -208,7 +214,7 @@ class FoundationChatOrchestrator {
       ...decision,
       configured: capability?.configured !== false,
       weatherLocationResolved:
-        pending?.kind === "weather-location" &&
+        pending?.kind === PENDING_WEATHER_LOCATION &&
         clarification.state === "resolved",
       weatherLocation: clarification.location || null,
     });
@@ -229,6 +235,11 @@ class FoundationChatOrchestrator {
       routingDurationMs,
       evidence: response.evidence || null,
       learningPolicy: response.learningPolicy || null,
+      executionTrace: buildExecutionTrace({
+        decision,
+        response,
+        routingDurationMs,
+      }),
       clarification: {
         state: nextPending ? "pending" : clarification.state,
         pending: nextPending,

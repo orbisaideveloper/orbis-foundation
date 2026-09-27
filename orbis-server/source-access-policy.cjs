@@ -258,6 +258,17 @@ function isAllowedDirectorySegments(segments) {
   );
 }
 
+function isStrictlyContainedPath(root, candidate) {
+  const relative = path.relative(root, candidate);
+
+  return (
+    relative !== "" &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
 function isAllowedSourcePath(value) {
   const segments = parseRelativeSourcePath(value);
   return segments !== null && isAllowedSourceSegments(segments);
@@ -299,5 +310,6 @@ module.exports = {
   isAllowedSourceSegments,
   isRestrictedSegment,
   isSafeTextContent,
+  isStrictlyContainedPath,
   parseRelativeSourcePath,
 };

@@ -28,6 +28,11 @@ import { FullscreenChatView } from "../../features/orbis-ai-chatbot/components/F
 import { BrainChatTestLog } from "../../features/orbis-ai-chatbot/components/BrainChatTestLog";
 import { LearningReviewPanel } from "./sections/LearningReviewPanel";
 import { ManagedProductModels } from "./sections/ManagedProductModels";
+import {
+  RuntimeModelRegistry,
+  type RuntimeRegistryModel,
+  type RuntimeRoutingSnapshot,
+} from "./sections/RuntimeModelRegistry";
 import { FoundationTableViewerRow } from "./FoundationTableViewer";
 
 type DashboardView =
@@ -35,6 +40,7 @@ type DashboardView =
   | "market"
   | "modules"
   | "accounting"
+  | "models"
   | "runtime"
   | "brain"
   | "diagnostics"
@@ -91,6 +97,11 @@ interface ProviderMetadata {
 interface ProviderStatus {
   activeProvider: ProviderMetadata | null;
   allProviders: ProviderMetadata[];
+  modelRouting?: {
+    mode?: string;
+    registeredModels?: RuntimeRegistryModel[];
+    lastRouting?: RuntimeRoutingSnapshot | null;
+  };
 }
 
 interface DiagnosticCapability {
@@ -217,6 +228,7 @@ const VIEW_TITLES: Record<DashboardView, string> = {
   market: "Market Intelligence",
   modules: "Modules",
   accounting: "ORBiS Accounting AI",
+  models: "Models",
   runtime: "Runtime",
   brain: "Brain",
   diagnostics: "Diagnostics",
@@ -767,14 +779,48 @@ export function AdminDashboard({
         <HomeCard
           eyebrow="04"
           title="ORBiS Accounting AI"
-          subtitle="Lottery Accounting model, review gate and version workspace."
+          subtitle={
+            previewMode
+              ? "Open the published ORBIS Accounting application."
+              : "Lottery Accounting model, review gate and version workspace."
+          }
           icon={<Bot className="h-5 w-5" />}
-          onClick={() => openView("accounting")}
+          onClick={() => {
+            if (previewMode) {
+              window.location.assign("/accounting");
+              return;
+            }
+
+            openView("accounting");
+          }}
           className="col-span-2 md:col-span-2"
-          status={<StatusPill state="AVAILABLE" label="Draft model" />}
+          status={
+            <StatusPill
+              state="AVAILABLE"
+              label={previewMode ? "Public app" : "Draft model"}
+            />
+          }
         />
         <HomeCard
           eyebrow="05"
+          title="Models"
+          subtitle="AI providers, registered workers and latest routing evidence."
+          icon={<Server className="h-5 w-5" />}
+          onClick={() => openView("models")}
+          className="col-span-2 md:col-span-2"
+          status={
+            <StatusPill
+              state={
+                (providerStatus.modelRouting?.registeredModels?.length || 0) > 0
+                  ? "AVAILABLE"
+                  : "UNKNOWN"
+              }
+              label={`${providerStatus.modelRouting?.registeredModels?.length || 0} workers`}
+            />
+          }
+        />
+        <HomeCard
+          eyebrow="06"
           title="Runtime"
           subtitle={`${systemStats.platform} · ${systemStats.arch} · ${systemStats.cpuCores} cores`}
           icon={<Cpu className="h-5 w-5" />}
@@ -783,7 +829,7 @@ export function AdminDashboard({
           status={<StatusPill state={systemAvailability} label={systemStats.uptime} />}
         />
         <HomeCard
-          eyebrow="06"
+          eyebrow="07"
           title="Brain"
           subtitle="Gateway artifact, provider health and authorization surface."
           icon={<Brain className="h-5 w-5" />}
@@ -792,7 +838,7 @@ export function AdminDashboard({
           status={<StatusPill state={brainAvailability} />}
         />
         <HomeCard
-          eyebrow="07"
+          eyebrow="08"
           title="Diagnostics"
           subtitle={`${diagnosticExport?.telemetry.summary.records ?? 0} redacted recent telemetry records.`}
           icon={<Activity className="h-5 w-5" />}
@@ -801,7 +847,7 @@ export function AdminDashboard({
           status={<StatusPill state={normalizeAvailability(diagnosticExport?.telemetry.status)} label={diagnosticExport?.telemetry.status || "Unknown"} />}
         />
         <HomeCard
-          eyebrow="08"
+          eyebrow="09"
           title="Data & Privacy"
           subtitle="Foundation table counts, storage state and redaction policy."
           icon={<Database className="h-5 w-5" />}
@@ -810,7 +856,7 @@ export function AdminDashboard({
           status={<StatusPill state={databaseAvailability} label={diagnosticExport?.database.state || "Unknown"} />}
         />
         <HomeCard
-          eyebrow="09"
+          eyebrow="10"
           title="Releases"
           subtitle={`Commit ${diagnosticExport?.version.commit || "Unavailable"}`}
           icon={<GitBranch className="h-5 w-5" />}
@@ -870,7 +916,26 @@ export function AdminDashboard({
   );
 
   const renderAccounting = () => (
-    <ManagedProductModels previewMode={previewMode} initialScreen="model" />
+    <ManagedProductModels
+      previewMode={previewMode}
+      initialScreen="model"
+    />
+  );
+
+  const renderModels = () => (
+    <RuntimeModelRegistry
+      mode={providerStatus.modelRouting?.mode}
+      providers={providerStatus.allProviders}
+      activeProviderName={
+        providerStatus.activeProvider?.name
+      }
+      models={
+        providerStatus.modelRouting?.registeredModels
+      }
+      lastRouting={
+        providerStatus.modelRouting?.lastRouting
+      }
+    />
   );
 
   const renderRuntime = () => (
@@ -1130,6 +1195,8 @@ export function AdminDashboard({
         return renderModules();
       case "accounting":
         return renderAccounting();
+      case "models":
+        return renderModels();
       case "runtime":
         return renderRuntime();
       case "brain":
@@ -1192,7 +1259,9 @@ export function AdminDashboard({
         <button type="button" onClick={openOverview} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "overview" && !chatOpen ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Home className="mx-auto mb-1 h-5 w-5" />Home</button>
         <button type="button" onClick={openChat} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${chatOpen ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><MessageCircle className="mx-auto mb-1 h-5 w-5" />Chat</button>
         <button type="button" onClick={() => openView("market")} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "market" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><TrendingUp className="mx-auto mb-1 h-5 w-5" />Market</button>
-        <button type="button" onClick={() => openView("modules")} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "modules" || activeView === "accounting" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Boxes className="mx-auto mb-1 h-5 w-5" />Modules</button>
+        <button type="button" onClick={() => openView("modules")} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${activeView === "modules" ||
+          activeView === "accounting" ||
+          activeView === "models" ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><Boxes className="mx-auto mb-1 h-5 w-5" />Modules</button>
         <button type="button" onClick={() => setMoreOpen(true)} className={`min-h-[44px] rounded-2xl text-[10px] font-semibold md:text-[9px] ${moreIsActive ? ACTIVE_NAV_STATE_CLASS : INACTIVE_NAV_STATE_CLASS}`}><MoreHorizontal className="mx-auto mb-1 h-5 w-5" />More</button>
       </nav>
 
