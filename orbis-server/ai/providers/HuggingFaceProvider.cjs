@@ -4,6 +4,25 @@ const DEFAULT_ENDPOINT =
   "https://router.huggingface.co/v1/chat/completions";
 const DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct:fastest";
 
+function normalizeProviderErrorCode(error) {
+  if (error?.name === "AbortError") {
+    return "PROVIDER_TIMEOUT";
+  }
+
+  if (error?.code === "PROVIDER_AUTH_FAILED") {
+    return "PROVIDER_AUTH_FAILED";
+  }
+
+  if (
+    typeof error?.code === "string" &&
+    /^PROVIDER_UNAVAILABLE_\d{3}$/u.test(error.code)
+  ) {
+    return error.code;
+  }
+
+  return "PROVIDER_UNAVAILABLE";
+}
+
 class HuggingFaceProvider extends AIProvider {
   constructor() {
     const token = process.env.HF_TOKEN || null;
@@ -56,7 +75,11 @@ class HuggingFaceProvider extends AIProvider {
           throw error;
         }
 
-        throw new Error(`PROVIDER_UNAVAILABLE_${response.status}`);
+        const error = new Error(
+          `PROVIDER_UNAVAILABLE_${response.status}`,
+        );
+        error.code = error.message;
+        throw error;
       }
 
       const data = await response.json();
@@ -81,13 +104,8 @@ class HuggingFaceProvider extends AIProvider {
       console.error(`[${this.name}_PROVIDER] Request failed`);
 
       const normalized = new Error(
-        error?.name === "AbortError"
-          ? "PROVIDER_TIMEOUT"
-          : error?.code === "PROVIDER_AUTH_FAILED"
-            ? "PROVIDER_AUTH_FAILED"
-            : "PROVIDER_UNAVAILABLE",
+        normalizeProviderErrorCode(error),
       );
-
       normalized.code = normalized.message;
       throw normalized;
     } finally {

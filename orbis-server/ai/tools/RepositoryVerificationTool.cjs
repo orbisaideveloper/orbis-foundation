@@ -88,6 +88,15 @@ function safeTargetPath(value) {
   return segments;
 }
 
+function isolatedDatabaseUrl() {
+  const databaseUrl = new URL(
+    "postgresql://127.0.0.1:1/orbis",
+  );
+  databaseUrl.username = "orbis";
+  databaseUrl.password = "orbis";
+  return databaseUrl.toString();
+}
+
 function isolatedChildEnvironment(sandboxRoot) {
   return {
     PATH: process.env.PATH || "",
@@ -101,8 +110,7 @@ function isolatedChildEnvironment(sandboxRoot) {
     CI: "1",
     NO_COLOR: "1",
     ORBIS_VERIFY_WORKER_SANDBOX: "1",
-    DATABASE_URL:
-      "postgresql://orbis:orbis@127.0.0.1:1/orbis",
+    DATABASE_URL: isolatedDatabaseUrl(),
   };
 }
 
@@ -191,7 +199,7 @@ for (const key of Object.keys(process.env)) {
 }
 
 process.env.DATABASE_URL =
-  "postgresql://orbis:orbis@127.0.0.1:1/orbis";
+  ${JSON.stringify(isolatedDatabaseUrl())};
 `,
     {
       encoding: "utf8",
