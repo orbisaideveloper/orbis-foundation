@@ -39,6 +39,7 @@ import {
 } from "../utils/messageActions";
 import {
   getSpeechRecognitionConstructor,
+  normalizeVoiceTranscript,
   readVoiceResult,
   VOICE_LANGUAGES,
   VoiceLanguage,
@@ -323,6 +324,8 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const voiceTranscriptRef = useRef("");
+  const voiceBaseTranscriptRef = useRef("");
+  const voiceContinueRef = useRef(false);
   const initialized = useRef(false);
   const profileIdRef = useRef("");
   const conversationIdRef = useRef("");
@@ -796,10 +799,14 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
 
   const toggleVoiceInput = () => {
     if (isListening && recognitionRef.current) {
+      voiceContinueRef.current = false;
       recognitionRef.current.stop();
       return;
     }
-    const SpeechRecognition = getSpeechRecognitionConstructor();
+
+    const SpeechRecognition =
+      getSpeechRecognitionConstructor();
+
     if (!SpeechRecognition) {
       setMessages((current) => [
         ...current,
@@ -812,36 +819,101 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       ]);
       return;
     }
-    const recognition = new SpeechRecognition();
-    recognition.lang = voiceLanguage;
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 3;
-    voiceTranscriptRef.current = "";
-    recognition.onresult = (event: any) => {
-      const result = readVoiceResult(event);
-      voiceTranscriptRef.current = result.transcript;
-      setInputText(result.transcript);
-      if (result.transcript) {
-        setVoiceStatus("Transcript দেখে Send চাপুন।");
-      }
+
+    voiceContinueRef.current = true;
+    voiceBaseTranscriptRef.current =
+      inputText.trim();
+    voiceTranscriptRef.current =
+      inputText.trim();
+
+    const startRecognitionSession = () => {
+      const recognition =
+        new SpeechRecognition();
+
+      recognition.lang = voiceLanguage;
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 3;
+
+      recognition.onresult = (event: any) => {
+        const result =
+          readVoiceResult(event);
+
+        const transcript =
+          normalizeVoiceTranscript(
+            [
+              voiceBaseTranscriptRef.current,
+              result.transcript,
+            ]
+              .filter(Boolean)
+              .join(" "),
+          );
+
+        voiceTranscriptRef.current =
+          transcript;
+        setInputText(transcript);
+
+        if (transcript) {
+          setVoiceStatus(
+            "শুনছি… কথা শেষ হলে Mic বন্ধ করে Send চাপুন।",
+          );
+        }
+      };
+
+      recognition.onend = () => {
+        recognitionRef.current = null;
+
+        const transcript =
+          voiceTranscriptRef.current.trim();
+
+        if (voiceContinueRef.current) {
+          voiceBaseTranscriptRef.current =
+            transcript;
+
+          setVoiceStatus("শুনছি…");
+          startRecognitionSession();
+          return;
+        }
+
+        setIsListening(false);
+
+        if (transcript) {
+          setVoiceStatus(
+            "Transcript দেখে Send চাপুন।",
+          );
+        } else {
+          setVoiceStatus(
+            "কোনো কথা শোনা যায়নি। আবার চেষ্টা করুন।",
+          );
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        recognitionRef.current = null;
+
+        if (
+          event?.error === "no-speech" &&
+          voiceContinueRef.current
+        ) {
+          setVoiceStatus("শুনছি…");
+          return;
+        }
+
+        voiceContinueRef.current = false;
+        setIsListening(false);
+        setVoiceStatus(
+          voiceErrorMessage(event?.error),
+        );
+      };
+
+      recognitionRef.current =
+        recognition;
+      recognition.start();
     };
-    recognition.onend = () => {
-      const transcript = voiceTranscriptRef.current.trim();
-      setIsListening(false);
-      recognitionRef.current = null;
-      if (!transcript)
-        setVoiceStatus("কোনো কথা শোনা যায়নি। আবার চেষ্টা করুন।");
-    };
-    recognition.onerror = (event: any) => {
-      setIsListening(false);
-      recognitionRef.current = null;
-      setVoiceStatus(voiceErrorMessage(event?.error));
-    };
-    recognitionRef.current = recognition;
+
     setIsListening(true);
     setVoiceStatus("শুনছি…");
-    recognition.start();
+    startRecognitionSession();
   };
 
   const healthLabel = providerHealthLabel(providerHealth);

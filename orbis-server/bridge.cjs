@@ -1,4 +1,10 @@
 require("dotenv").config();
+const {
+  loadLocalProviderEnv,
+} = require("./config/LocalProviderEnv.cjs");
+
+loadLocalProviderEnv();
+
 const express = require("express");
 const cors = require("cors");
 const fs = require("node:fs");
@@ -351,6 +357,13 @@ app.use(
   }),
 );
 
+const TERMUX_PLATFORM = "android-termux";
+const CAPABILITY_SYSTEM_INFO = "termux.system.info";
+const CAPABILITY_FILE_READ = "termux.file.read";
+const TERMUX_CAPABILITY_ROUTE = "/api/termux/capability";
+const CACHE_CONTROL_HEADER = "Cache-Control";
+const ORBIS_CORE_IMPLEMENTER = "Orbis Core";
+
 // ============================================================
 // TASK-006 & TASK-007: REAL TERMUX RUNTIME BRIDGE & CAPABILITY EXECUTION
 // ============================================================
@@ -358,7 +371,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     runtime: "TermuxRuntime",
-    platform: "android-termux",
+    platform: TERMUX_PLATFORM,
     version: "0.1.0",
     status: "BRIDGE_REACHABLE",
     timestamp: Date.now(),
@@ -369,7 +382,7 @@ app.get("/api/termux/handshake", (req, res) => {
   res.json({
     ok: true,
     runtime: "TermuxRuntime",
-    platform: "android-termux",
+    platform: TERMUX_PLATFORM,
     version: "0.1.0",
     identity: {
       valid: true,
@@ -378,13 +391,13 @@ app.get("/api/termux/handshake", (req, res) => {
     },
     capabilities: [
       {
-        id: "termux.system.info",
+        id: CAPABILITY_SYSTEM_INFO,
         name: "System Info",
         riskLevel: "SAFE",
         enabled: true,
       },
       {
-        id: "termux.file.read",
+        id: CAPABILITY_FILE_READ,
         name: "Read Local Storage",
         riskLevel: "SENSITIVE",
         enabled: true,
@@ -556,123 +569,192 @@ function routeRepositoryVerifyCapability(req, res, next) {
 
 // TASK-007: Controlled Capability Execution Endpoint
 app.post(
-  "/api/termux/capability",
+  TERMUX_CAPABILITY_ROUTE,
   routeRepositoryPatchCapability,
 );
 
 app.post(
-  "/api/termux/capability",
+  TERMUX_CAPABILITY_ROUTE,
   routeRepositoryVerifyCapability,
 );
 
-app.post("/api/termux/capability", (req, res) => {
-  const { capability } = req.body || {};
+function hasForbiddenCapabilityCommand(body) {
+  return Boolean(
+    body.command ||
+      body.exec ||
+      body.shell ||
+      body.args,
+  );
+}
 
-  if (!capability || typeof capability !== "string") {
+function buildTermuxSystemInfoResponse() {
+  return {
+    success: true,
+    capability: CAPABILITY_SYSTEM_INFO,
+    runtime: "TermuxRuntime",
+    platform: TERMUX_PLATFORM,
+    data: {
+      platform: os.platform().toUpperCase(),
+      architecture: os.arch(),
+      nodeVersion: process.version,
+      termuxVersion: "0.118.0",
+      runtimeId: "termux-local-01",
+      cpuCores: os.cpus().length,
+      memoryFreeGB: (
+        os.freemem() /
+        (1024 * 1024 * 1024)
+      ).toFixed(2),
+      memoryTotalGB: (
+        os.totalmem() /
+        (1024 * 1024 * 1024)
+      ).toFixed(2),
+    },
+  };
+}
+
+function isForbiddenFileReadPath(rawKey) {
+  return (
+    rawKey.includes("..") ||
+    rawKey.includes("/") ||
+    rawKey.includes("\\") ||
+    path.isAbsolute(rawKey)
+  );
+}
+
+function handleTermuxFileReadCapability(req, res) {
+  const rawKey =
+    req.body.input?.path ??
+    req.body.path ??
+    null;
+
+  if (
+    typeof rawKey !== "string" ||
+    rawKey.length === 0
+  ) {
+    return res.status(400).json({
+      success: false,
+      error: "PATH_REQUIRED",
+      message:
+        "A 'path' identifying an allow-listed file is required.",
+    });
+  }
+
+  if (isForbiddenFileReadPath(rawKey)) {
+    return res.status(403).json({
+      success: false,
+      error: "PATH_NOT_ALLOWED",
+      message:
+        "Arbitrary or traversal-style file paths are strictly forbidden.",
+    });
+  }
+
+  if (!Object.hasOwn(FILE_READ_ALLOW_LIST, rawKey)) {
+    return res.status(403).json({
+      success: false,
+      error: "PATH_NOT_ALLOWED",
+      message:
+        "Requested file is not in the allow-list.",
+    });
+  }
+
+  const absolutePath =
+    FILE_READ_ALLOW_LIST[rawKey];
+
+  try {
+    const content =
+      fs.readFileSync(
+        absolutePath,
+        "utf8",
+      );
+
+    return res.json({
+      success: true,
+      capability: CAPABILITY_FILE_READ,
+      runtime: "TermuxRuntime",
+      data: {
+        path: rawKey,
+        content,
+        sizeBytes:
+          Buffer.byteLength(
+            content,
+            "utf8",
+          ),
+      },
+    });
+  } catch {
+    logSanitizedError(
+      "[FILE_READ] Failed to read allow-listed file",
+    );
+
+    return res.status(500).json({
+      success: false,
+      error: "FILE_READ_FAILED",
+      message:
+        "Unable to read the requested file.",
+    });
+  }
+}
+
+app.post(
+  TERMUX_CAPABILITY_ROUTE,
+  (req, res) => {
+    const { capability } =
+      req.body || {};
+
+    if (
+      !capability ||
+      typeof capability !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "CAPABILITY_NOT_FOUND",
+        message:
+          "Missing or invalid capability identifier.",
+      });
+    }
+
+    if (
+      hasForbiddenCapabilityCommand(
+        req.body,
+      )
+    ) {
+      return res.status(403).json({
+        success: false,
+        error:
+          "CAPABILITY_NOT_AUTHORIZED",
+        message:
+          "Arbitrary command execution is strictly forbidden.",
+      });
+    }
+
+    if (
+      capability ===
+      CAPABILITY_SYSTEM_INFO
+    ) {
+      return res.json(
+        buildTermuxSystemInfoResponse(),
+      );
+    }
+
+    if (
+      capability ===
+      CAPABILITY_FILE_READ
+    ) {
+      return handleTermuxFileReadCapability(
+        req,
+        res,
+      );
+    }
+
     return res.status(400).json({
       success: false,
       error: "CAPABILITY_NOT_FOUND",
-      message: "Missing or invalid capability identifier.",
+      message:
+        `Unsupported capability identifier: ${capability}`,
     });
-  }
+  },
+);
 
-  // Reject shell execution / command execution attempts
-  if (req.body.command || req.body.exec || req.body.shell || req.body.args) {
-    return res.status(403).json({
-      success: false,
-      error: "CAPABILITY_NOT_AUTHORIZED",
-      message: "Arbitrary command execution is strictly forbidden.",
-    });
-  }
-
-  // Explicit Handler for termux.system.info
-  if (capability === "termux.system.info") {
-    return res.json({
-      success: true,
-      capability: "termux.system.info",
-      runtime: "TermuxRuntime",
-      platform: "android-termux",
-      data: {
-        platform: os.platform().toUpperCase(),
-        architecture: os.arch(),
-        nodeVersion: process.version,
-        termuxVersion: "0.118.0",
-        runtimeId: "termux-local-01",
-        cpuCores: os.cpus().length,
-        memoryFreeGB: (os.freemem() / (1024 * 1024 * 1024)).toFixed(2),
-        memoryTotalGB: (os.totalmem() / (1024 * 1024 * 1024)).toFixed(2),
-      },
-    });
-  }
-  // TASK-018 (Section 3.A): Explicit Handler for termux.file.read.
-  //
-  // Reads ONLY from FILE_READ_ALLOW_LIST above. The requested "path" value
-  // is treated purely as a lookup key, never as part of an actual
-  // filesystem path, so it cannot be used for traversal.
-  if (capability === "termux.file.read") {
-    const rawKey = req.body.input?.path ?? req.body.path ?? null;
-
-    if (typeof rawKey !== "string" || rawKey.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "PATH_REQUIRED",
-        message: "A 'path' identifying an allow-listed file is required.",
-      });
-    }
-
-    const looksLikeRealPath =
-      rawKey.includes("..") ||
-      rawKey.includes("/") ||
-      rawKey.includes("\\") ||
-      path.isAbsolute(rawKey);
-
-    if (looksLikeRealPath) {
-      return res.status(403).json({
-        success: false,
-        error: "PATH_NOT_ALLOWED",
-        message:
-          "Arbitrary or traversal-style file paths are strictly forbidden.",
-      });
-    }
-
-    if (!Object.hasOwn(FILE_READ_ALLOW_LIST, rawKey)) {
-      return res.status(403).json({
-        success: false,
-        error: "PATH_NOT_ALLOWED",
-        message: "Requested file is not in the allow-list.",
-      });
-    }
-
-    const absolutePath = FILE_READ_ALLOW_LIST[rawKey];
-
-    try {
-      const content = fs.readFileSync(absolutePath, "utf8");
-      return res.json({
-        success: true,
-        capability: "termux.file.read",
-        runtime: "TermuxRuntime",
-        data: {
-          path: rawKey,
-          content,
-          sizeBytes: Buffer.byteLength(content, "utf8"),
-        },
-      });
-    } catch {
-      logSanitizedError("[FILE_READ] Failed to read allow-listed file");
-      return res.status(500).json({
-        success: false,
-        error: "FILE_READ_FAILED",
-        message: "Unable to read the requested file.",
-      });
-    }
-  }
-
-  return res.status(400).json({
-    success: false,
-    error: "CAPABILITY_NOT_FOUND",
-    message: `Unsupported capability identifier: ${capability}`,
-  });
-});
 
 app.use("/api/system", sourceApi);
 
@@ -727,7 +809,7 @@ app.get(
         "Content-Disposition",
         'attachment; filename="orbis-foundation-diagnostic.json"',
       );
-      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(CACHE_CONTROL_HEADER, "no-store");
       res.json(report);
       void addSystemLog(
         "INFO",
@@ -752,7 +834,7 @@ app.get(
         offset: req.query.offset,
         limit: req.query.limit,
       });
-      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(CACHE_CONTROL_HEADER, "no-store");
       return res.json({ success: true, ...result });
     } catch (error) {
       const code =
@@ -777,7 +859,7 @@ app.get(
         req.params.table,
         req.params.id,
       );
-      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(CACHE_CONTROL_HEADER, "no-store");
       return res.json({ success: true, ...result });
     } catch (error) {
       const notFound = new Set([
@@ -930,7 +1012,7 @@ const HISTORICAL_FALLBACK_METADATA = {
       ],
     },
     commit: AUDIT_FALLBACK,
-    implementer: "Orbis Core",
+    implementer: ORBIS_CORE_IMPLEMENTER,
   },
   2: {
     objective:
@@ -946,7 +1028,7 @@ const HISTORICAL_FALLBACK_METADATA = {
       ],
     },
     commit: AUDIT_FALLBACK,
-    implementer: "Orbis Core",
+    implementer: ORBIS_CORE_IMPLEMENTER,
   },
   3: {
     objective: "Control runtime lifecycle and health state.",
@@ -961,7 +1043,7 @@ const HISTORICAL_FALLBACK_METADATA = {
       ],
     },
     commit: AUDIT_FALLBACK,
-    implementer: "Orbis Core",
+    implementer: ORBIS_CORE_IMPLEMENTER,
   },
   4: {
     objective: "Provide the final authorization barrier before execution.",
@@ -974,7 +1056,7 @@ const HISTORICAL_FALLBACK_METADATA = {
       ],
     },
     commit: AUDIT_FALLBACK,
-    implementer: "Orbis Core",
+    implementer: ORBIS_CORE_IMPLEMENTER,
   },
   5: {
     objective: "Expose the execution foundation through the Admin Dashboard.",
@@ -988,7 +1070,7 @@ const HISTORICAL_FALLBACK_METADATA = {
       ],
     },
     commit: AUDIT_FALLBACK,
-    implementer: "Orbis Core",
+    implementer: ORBIS_CORE_IMPLEMENTER,
   },
   6: {
     objective:
@@ -1004,7 +1086,7 @@ const HISTORICAL_FALLBACK_METADATA = {
       backend: ["orbis-server/bridge.cjs"],
     },
     commit: AUDIT_FALLBACK,
-    implementer: "Orbis Core",
+    implementer: ORBIS_CORE_IMPLEMENTER,
   },
   7: {
     objective:
@@ -1020,7 +1102,7 @@ const HISTORICAL_FALLBACK_METADATA = {
       backend: ["orbis-server/bridge.cjs"],
     },
     commit: "7100abd",
-    implementer: "Orbis Core",
+    implementer: ORBIS_CORE_IMPLEMENTER,
   },
 };
 
@@ -1084,15 +1166,18 @@ function extractField(content, label) {
 function isLabelLikeParagraph(paragraph) {
   const trimmed = paragraph.trim();
   if (!trimmed) return true;
-  if (trimmed.endsWith(":") && trimmed.split(/\s+/).length <= 6) return true;
-  if (
+
+  return (
+    (trimmed.endsWith(":") &&
+      trimmed.split(/\s+/).length <= 6) ||
     paragraph
       .split("\n")
-      .every((line) => /^(?: {4,}|\t)/.test(line) || !line.trim())
-  ) {
-    return true;
-  }
-  return false;
+      .every(
+        (line) =>
+          /^(?: {4,}|\t)/.test(line) ||
+          !line.trim(),
+      )
+  );
 }
 
 function extractNamedSection(content, name) {

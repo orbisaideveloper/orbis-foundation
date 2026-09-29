@@ -22,6 +22,8 @@
 // always routed to REQUIRE_APPROVAL by the existing, unmodified
 // ExecutionPolicyEngine / SecureExecutionAuthorizationGate chain. No new
 // approval architecture was added.
+const CAPABILITY_FILE_READ = "termux.file.read";
+
 const CAPABILITY_PHRASES = [
   {
     capabilityId: "termux.system.info",
@@ -66,7 +68,7 @@ const CAPABILITY_PHRASES = [
     // orbis-server/bridge.cjs's hardcoded FILE_READ_ALLOW_LIST, never by
     // free-form chat text — this matcher never extracts a path from the
     // user's message.
-    capabilityId: "termux.file.read",
+    capabilityId: CAPABILITY_FILE_READ,
     phrases: [
       // English
       "read file",
@@ -116,6 +118,9 @@ const CAPABILITY_PHRASES = [
 
 // Bengali (Bangla) Unicode block: U+0980–U+09FF.
 const BENGALI_RANGE = /[\u0980-\u09FF]/;
+
+const EXPLICIT_BENGALI_REPLY_PATTERN =
+  /(?:\b(?:banglay|banglai|banglate)\b|\b(?:answer|reply|respond|write|say|tell|explain)\b.{0,24}\b(?:in|using)\s+(?:bangla|bengali)\b|\b(?:bangla|bengali)\b.{0,32}\b(?:bojhao|bolo|bolun|likho|likhun|uttor)\b)/iu;
 
 const WEATHER_TOKEN =
   /^(?:weather|আবহাওয়া|আবহাওয়া|ওয়েদার|ওয়েদার)(?:টা|টি)?$/iu;
@@ -204,6 +209,24 @@ const LOCATION_REPLY_BLOCKED_TOKENS = new Set([
   "শিট",
 ]);
 
+const WEATHER_CONTEXT_MODIFIERS = new Set([
+  "current",
+  "latest",
+  "live",
+  "today",
+  "todays",
+  "today's",
+  "আজ",
+  "আজকে",
+  "আজকের",
+  "এখন",
+  "এখনকার",
+  "বর্তমান",
+  "লাইভ",
+  "সর্বশেষ",
+]);
+
+
 function normalize(text) {
   return String(text || "")
     .normalize("NFKC")
@@ -235,12 +258,34 @@ function validatedLocation(tokens) {
 }
 
 function nearestLocationBefore(tokens, weatherIndex) {
-  const end = weatherIndex;
-  if (end === 0 || !isLocationToken(tokens[end - 1])) return null;
+  let end = weatherIndex;
+
+  while (
+    end > 0 &&
+    WEATHER_CONTEXT_MODIFIERS.has(tokens[end - 1])
+  ) {
+    end -= 1;
+  }
+
+  if (
+    end === 0 ||
+    !isLocationToken(tokens[end - 1])
+  ) {
+    return null;
+  }
 
   let start = end - 1;
-  while (start > 0 && isLocationToken(tokens[start - 1])) start -= 1;
-  return validatedLocation(tokens.slice(start, end));
+
+  while (
+    start > 0 &&
+    isLocationToken(tokens[start - 1])
+  ) {
+    start -= 1;
+  }
+
+  return validatedLocation(
+    tokens.slice(start, end),
+  );
 }
 
 function nearestLocationAfter(tokens, weatherIndex) {
@@ -333,7 +378,7 @@ function matchRequest(message) {
   const capabilityId = match(normalized);
   if (!capabilityId) return null;
 
-  if (capabilityId === "termux.file.read") {
+  if (capabilityId === CAPABILITY_FILE_READ) {
     // TASK-019 fix (root cause of the PATH_REQUIRED-after-approval bug):
     // a phrase match alone only proves the user wants SOME file read —
     // it does NOT prove which allow-listed file. Only when a specific
@@ -349,7 +394,7 @@ function matchRequest(message) {
     // bridge.cjs — after the user had already approved nothing
     // specific).
     const fileEntry = CAPABILITY_PHRASES.find(
-      (e) => e.capabilityId === "termux.file.read",
+      (e) => e.capabilityId === CAPABILITY_FILE_READ,
     );
     const variants = fileEntry?.fileVariants || {};
 
@@ -483,7 +528,14 @@ function matchApprovalDecision(message) {
  * reply in — never used for capability selection.
  */
 function detectLanguage(message) {
-  return BENGALI_RANGE.test(String(message || "")) ? "bn" : "en";
+  const text = String(message || "");
+
+  return (
+    BENGALI_RANGE.test(text) ||
+    EXPLICIT_BENGALI_REPLY_PATTERN.test(text)
+  )
+    ? "bn"
+    : "en";
 }
 
 module.exports = {

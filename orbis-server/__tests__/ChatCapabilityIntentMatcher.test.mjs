@@ -8,21 +8,25 @@ const {
   detectLanguage,
 } = require("../ai/brain/ChatCapabilityIntentMatcher.cjs");
 
+const CAP_SYSTEM_INFO = "termux.system.info";
+const CAP_FILE_READ = "termux.file.read";
+const PACKAGE_JSON = "package.json";
+
 describe("TASK-013: ChatCapabilityIntentMatcher", () => {
   it("matches an English system-info phrase to termux.system.info", () => {
-    expect(match("Show me system information")).toBe("termux.system.info");
-    expect(match("what is my system info")).toBe("termux.system.info");
+    expect(match("Show me system information")).toBe(CAP_SYSTEM_INFO);
+    expect(match("what is my system info")).toBe(CAP_SYSTEM_INFO);
   });
 
   it("matches a Bengali system-info phrase to termux.system.info", () => {
     expect(match("আমার Termux system information দেখাও")).toBe(
-      "termux.system.info",
+      CAP_SYSTEM_INFO,
     );
-    expect(match("সিস্টেম তথ্য দেখাও")).toBe("termux.system.info");
+    expect(match("সিস্টেম তথ্য দেখাও")).toBe(CAP_SYSTEM_INFO);
   });
 
   it("is case-insensitive and tolerant of surrounding whitespace", () => {
-    expect(match("   SYSTEM INFORMATION please   ")).toBe("termux.system.info");
+    expect(match("   SYSTEM INFORMATION please   ")).toBe(CAP_SYSTEM_INFO);
   });
 
   it("returns null for normal conversation (never guesses)", () => {
@@ -40,7 +44,7 @@ describe("TASK-013: ChatCapabilityIntentMatcher", () => {
 
   it("only ever returns the fixed known capability id or null, never an arbitrary string", () => {
     const result = match("rm -rf / system information");
-    expect(result === null || result === "termux.system.info").toBe(true);
+    expect(result === null || result === CAP_SYSTEM_INFO).toBe(true);
   });
 
   it("detects Bengali vs English for reply-language selection only", () => {
@@ -75,33 +79,33 @@ describe("Task 3A: deterministic weather-location slots", () => {
 describe("TASK-019: ChatCapabilityIntentMatcher.matchRequest() file-read routing", () => {
   it("resolves package.json from English variants", () => {
     expect(matchRequest("read file package.json")).toEqual({
-      capabilityId: "termux.file.read",
-      input: { path: "package.json" },
+      capabilityId: CAP_FILE_READ,
+      input: { path: PACKAGE_JSON },
       needsInput: false,
     });
     expect(matchRequest("open the file package json")).toEqual({
-      capabilityId: "termux.file.read",
-      input: { path: "package.json" },
+      capabilityId: CAP_FILE_READ,
+      input: { path: PACKAGE_JSON },
       needsInput: false,
     });
   });
 
   it("resolves package.json from the Bengali variant", () => {
     expect(matchRequest("ফাইল পড়ো প্যাকেজ জেসন")).toEqual({
-      capabilityId: "termux.file.read",
-      input: { path: "package.json" },
+      capabilityId: CAP_FILE_READ,
+      input: { path: PACKAGE_JSON },
       needsInput: false,
     });
   });
 
   it("resolves README.md from English variants, including the bare 'readme' form", () => {
     expect(matchRequest("read file README.md")).toEqual({
-      capabilityId: "termux.file.read",
+      capabilityId: CAP_FILE_READ,
       input: { path: "README.md" },
       needsInput: false,
     });
     expect(matchRequest("show file contents readme")).toEqual({
-      capabilityId: "termux.file.read",
+      capabilityId: CAP_FILE_READ,
       input: { path: "README.md" },
       needsInput: false,
     });
@@ -109,7 +113,7 @@ describe("TASK-019: ChatCapabilityIntentMatcher.matchRequest() file-read routing
 
   it("resolves README.md from the Bengali variant", () => {
     expect(matchRequest("ফাইল দেখাও রিডমি")).toEqual({
-      capabilityId: "termux.file.read",
+      capabilityId: CAP_FILE_READ,
       input: { path: "README.md" },
       needsInput: false,
     });
@@ -118,7 +122,7 @@ describe("TASK-019: ChatCapabilityIntentMatcher.matchRequest() file-read routing
   it("TASK-019 regression: a generic file-read phrase with no determinable file asks for one instead of producing input:{}", () => {
     const result = matchRequest("read file");
     expect(result).toEqual({
-      capabilityId: "termux.file.read",
+      capabilityId: CAP_FILE_READ,
       input: {},
       needsInput: true,
     });
@@ -132,7 +136,7 @@ describe("TASK-019: ChatCapabilityIntentMatcher.matchRequest() file-read routing
 
   it("system.info requests are unaffected and never set needsInput", () => {
     expect(matchRequest("show me system information")).toEqual({
-      capabilityId: "termux.system.info",
+      capabilityId: CAP_SYSTEM_INFO,
       input: {},
       needsInput: false,
     });
@@ -140,5 +144,50 @@ describe("TASK-019: ChatCapabilityIntentMatcher.matchRequest() file-read routing
 
   it("returns null for unmatched conversation, same as match()", () => {
     expect(matchRequest("Hello")).toBeNull();
+  });
+});
+
+
+describe("compound Bengali weather location", () => {
+  it("keeps the bounded location before current/today weather modifiers", () => {
+    expect(
+      matchWeatherRequest(
+        "শিলিগুড়ি, পশ্চিমবঙ্গের আজকের current weather কেমন?",
+      ),
+    ).toEqual({
+      location:
+        "শিলিগুড়ি পশ্চিমবঙ্গের",
+    });
+
+    expect(
+      matchWeatherRequest(
+        "আজকের current weather কেমন?",
+      ),
+    ).toEqual({
+      location: null,
+    });
+  });
+});
+
+
+describe("reply-language fallback for explicit Bengali requests", () => {
+  it("recognizes Banglish and English requests that explicitly ask for Bengali", () => {
+    expect(
+      detectLanguage(
+        "Ami Banglay bujhte chai: closure ki? Banglay bojhao.",
+      ),
+    ).toBe("bn");
+
+    expect(
+      detectLanguage(
+        "Answer in Bengali and explain closures.",
+      ),
+    ).toBe("bn");
+
+    expect(
+      detectLanguage(
+        "Explain Bengali grammar in English.",
+      ),
+    ).toBe("en");
   });
 });

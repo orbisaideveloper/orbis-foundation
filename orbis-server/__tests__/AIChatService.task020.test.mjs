@@ -6,6 +6,13 @@ let providerManager;
 let tavilySearch;
 let brainRuntime;
 
+const NORMAL_AI_REPLY = "normal ai reply";
+const SILIGURI_WEATHER_QUERY = "শিলিগুড়ির weather টা বলো";
+const MISSING_LOCATION_WEATHER_QUERY =
+  "আজকের ওয়েদারটা একটু বলবে আমাকে";
+const EXCEL_SUM_LEARNING_QUERY =
+  "এক্সেলে SUM formula কীভাবে করতে পারি?";
+
 beforeEach(() => {
   process.env.TAVILY_API_KEY = "configured-test-key";
   vi.resetModules();
@@ -26,7 +33,7 @@ beforeEach(() => {
 
   vi.spyOn(providerManager, "getActiveProvider").mockReturnValue({
     generateChat: vi.fn().mockResolvedValue({
-      content: "normal ai reply",
+      content: NORMAL_AI_REPLY,
       provider: { name: "Ollama", type: "local" },
     }),
   });
@@ -55,7 +62,7 @@ describe("TASK-020 Phase 1-A: 'ওয়েদার' temporal keyword fix", () 
     "আজকের weather কেমন?",
     "আজকের ওয়েদার কেমন?",
     "Siliguri weather বলো",
-    "শিলিগুড়ির weather টা বলো",
+    SILIGURI_WEATHER_QUERY,
     "আমি শিলিগুড়ি ওয়েদার রিপোর্ট চেয়েছি ঢাকার না",
   ];
 
@@ -79,14 +86,14 @@ describe("TASK-020 Phase 1-A: 'ওয়েদার' temporal keyword fix", () 
     ]);
 
     expect(providerManager.getActiveProvider).toHaveBeenCalled();
-    expect(result.message.content).toBe("normal ai reply");
+    expect(result.message.content).toBe(NORMAL_AI_REPLY);
   });
 });
 
 describe("TASK-020 Phase 1-B: realtime context safety (no silent default location)", () => {
   it("Task 3A regression: the reported Bengali request cannot treat generic words as a location", async () => {
     const result = await AIChatService.processChatRequest([
-      { role: "user", content: "আজকের ওয়েদারটা একটু বলবে আমাকে" },
+      { role: "user", content: MISSING_LOCATION_WEATHER_QUERY },
     ]);
 
     expect(tavilySearch.search).not.toHaveBeenCalled();
@@ -95,7 +102,7 @@ describe("TASK-020 Phase 1-B: realtime context safety (no silent default locatio
     expect(result.provider.type).toBe("WEB_SEARCH_CLARIFICATION");
     expect(result.clarification.pending).toMatchObject({
       kind: "weather-location",
-      originalRequest: "আজকের ওয়েদারটা একটু বলবে আমাকে",
+      originalRequest: MISSING_LOCATION_WEATHER_QUERY,
     });
   });
 
@@ -114,12 +121,12 @@ describe("TASK-020 Phase 1-B: realtime context safety (no silent default locatio
 
   it("Task 3A regression: 'কলকাতা' reconstructs the exact reported request and executes once", async () => {
     const first = await AIChatService.processChatRequest([
-      { role: "user", content: "আজকের ওয়েদারটা একটু বলবে আমাকে" },
+      { role: "user", content: MISSING_LOCATION_WEATHER_QUERY },
     ]);
     expect(first.provider.type).toBe("WEB_SEARCH_CLARIFICATION");
     expect(first.clarification.pending).toMatchObject({
       kind: "weather-location",
-      originalRequest: "আজকের ওয়েদারটা একটু বলবে আমাকে",
+      originalRequest: MISSING_LOCATION_WEATHER_QUERY,
     });
 
     const second = await AIChatService.processChatRequest(
@@ -169,7 +176,7 @@ describe("TASK-020 Phase 1-B: realtime context safety (no silent default locatio
 
   it("keeps waiting when a generic Bengali follow-up is not a location and bypasses every provider", async () => {
     const first = await AIChatService.processChatRequest([
-      { role: "user", content: "আজকের ওয়েদারটা একটু বলবে আমাকে" },
+      { role: "user", content: MISSING_LOCATION_WEATHER_QUERY },
     ]);
     const originalPending = first.clarification.pending;
     const second = await AIChatService.processChatRequest(
@@ -204,7 +211,7 @@ describe("TASK-020 Phase 1-B: realtime context safety (no silent default locatio
   });
 
   it("a weather question WITH a location proceeds to Tavily, and the location is preserved verbatim (never invented)", async () => {
-    const message = "শিলিগুড়ির weather টা বলো";
+    const message = SILIGURI_WEATHER_QUERY;
 
     await AIChatService.processChatRequest([
       { role: "user", content: message },
@@ -236,6 +243,77 @@ describe("TASK-020 Phase 1-B: realtime context safety (no silent default locatio
 });
 
 describe("TASK-020 Phase 1-D: Tavily language steering (best-effort)", () => {
+  it("converts an English verified Tavily answer to Bengali without changing its numeric facts", async () => {
+    const message =
+      "আজকের USD to INR rate web source দেখে বাংলায় বলো";
+
+    const englishAnswer =
+      "On 2026-09-29 the USD to INR rate is 93.50.";
+
+    const bengaliAnswer =
+      "2026-09-29 তারিখে USD to INR হার 93.50।";
+
+    tavilySearch.search.mockResolvedValueOnce({
+      answer: englishAnswer,
+      sources: [
+        {
+          title: "Verified FX source",
+          url: "https://example.test/fx",
+          excerpt: englishAnswer,
+        },
+      ],
+      retrievedAt: new Date().toISOString(),
+    });
+
+    const generateSpy = vi
+      .spyOn(providerManager, "generateChat")
+      .mockResolvedValueOnce({
+        content: bengaliAnswer,
+        provider: {
+          name: "Hugging Face",
+          type: "cloud",
+        },
+      });
+
+    const result =
+      await AIChatService.processChatRequest([
+        {
+          role: "user",
+          content: message,
+        },
+      ]);
+
+    expect(result.provider.type).toBe(
+      "WEB_SEARCH",
+    );
+
+    expect(
+      result.evidence?.verification?.status,
+    ).toBe("verified");
+
+    expect(result.message.content).toContain(
+      bengaliAnswer,
+    );
+
+    expect(result.message.content).toMatch(
+      /[\u0980-\u09FF]/u,
+    );
+
+    expect(generateSpy).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "system",
+          content: expect.stringContaining(
+            "evidence-preserving Bengali",
+          ),
+        }),
+      ]),
+      expect.objectContaining({
+        task: "general-chat",
+      }),
+    );
+  });
+
   it("honors the orchestrator route for Bengali sentence punctuation", async () => {
     const message = "আজকের। খবর বলো";
     const result = await AIChatService.processChatRequest([
@@ -247,7 +325,7 @@ describe("TASK-020 Phase 1-D: Tavily language steering (best-effort)", () => {
   });
 
   it("passes 'bn' for a Bengali message", async () => {
-    const message = "শিলিগুড়ির weather টা বলো";
+    const message = SILIGURI_WEATHER_QUERY;
     await AIChatService.processChatRequest([
       { role: "user", content: message },
     ]);
@@ -313,8 +391,29 @@ describe("TASK-020 Phase 1-E: Ollama anti-fabrication system message", () => {
       { role: "user", content: "কেমন আছো?" },
     ]);
 
-    const systemMessages = capturedMessages.filter((m) => m.role === "system");
-    expect(systemMessages).toHaveLength(1);
+    const systemMessages =
+      capturedMessages.filter(
+        (message) =>
+          message.role === "system",
+      );
+
+    expect(
+      systemMessages.some(
+        (message) =>
+          message.content
+            .toLowerCase()
+            .includes("live"),
+      ),
+    ).toBe(true);
+
+    expect(
+      systemMessages.some(
+        (message) =>
+          message.content.includes(
+            "fluent, natural Bengali",
+          ),
+      ),
+    ).toBe(true);
   });
 
   it("original conversation history remains intact alongside the new system message", async () => {
@@ -426,11 +525,11 @@ describe("Brain Phase 1: truthful customer-chat file capability status", () => {
 
   it("keeps a normal Excel learning question with the general provider", async () => {
     const result = await AIChatService.processChatRequest([
-      { role: "user", content: "এক্সেলে SUM formula কীভাবে করতে পারি?" },
+      { role: "user", content: EXCEL_SUM_LEARNING_QUERY },
     ]);
 
     expect(providerManager.getActiveProvider).toHaveBeenCalled();
-    expect(result.message.content).toBe("normal ai reply");
+    expect(result.message.content).toBe(NORMAL_AI_REPLY);
   });
 
   it("does not treat Bengali 'এখন' by itself as a live-information request", async () => {
@@ -440,7 +539,7 @@ describe("Brain Phase 1: truthful customer-chat file capability status", () => {
 
     expect(tavilySearch.search).not.toHaveBeenCalled();
     expect(providerManager.getActiveProvider).toHaveBeenCalled();
-    expect(result.message.content).toBe("normal ai reply");
+    expect(result.message.content).toBe(NORMAL_AI_REPLY);
   });
 });
 
@@ -474,18 +573,63 @@ describe("Brain Phase 2: Brain-first general conversation", () => {
     });
 
     const result = await AIChatService.processChatRequest([
-      { role: "user", content: "এক্সেলে SUM formula কীভাবে করতে পারি?" },
+      { role: "user", content: EXCEL_SUM_LEARNING_QUERY },
     ]);
 
-    expect(result.route).toBe("brain-orchestrated-provider");
-    expect(result.brainDecision).toBe("general-conversation");
-    expect(capturedMessages).toHaveLength(2);
-    expect(capturedMessages[0].role).toBe("system");
-    expect(capturedMessages[0].content).toContain(
-      "classified this as a general-conversation request",
+    expect(result.route).toBe(
+      "brain-orchestrated-provider",
     );
-    expect(capturedMessages[0].content).toContain("Reply primarily in Bengali");
-    expect(capturedMessages[0].content).toContain("actual latest request only");
+
+    expect(
+      result.brainDecision,
+    ).toBe(
+      "general-conversation",
+    );
+
+    const systemMessages =
+      capturedMessages.filter(
+        (message) =>
+          message.role === "system",
+      );
+
+    const brainPlan =
+      systemMessages.find(
+        (message) =>
+          message.content.includes(
+            "classified this as a general-conversation request",
+          ),
+      );
+
+    expect(brainPlan).toBeTruthy();
+
+    expect(
+      brainPlan.content,
+    ).toContain(
+      "Reply primarily in Bengali",
+    );
+
+    expect(
+      brainPlan.content,
+    ).toContain(
+      "actual latest request only",
+    );
+
+    expect(
+      systemMessages.some(
+        (message) =>
+          message.content.includes(
+            "fluent, natural Bengali",
+          ),
+      ),
+    ).toBe(true);
+
+    expect(
+      capturedMessages.at(-1),
+    ).toEqual({
+      role: "user",
+      content:
+        EXCEL_SUM_LEARNING_QUERY,
+    });
   });
 });
 
@@ -514,5 +658,36 @@ describe("TASK-020 Phase 1: regression — existing routing unchanged", () => {
 
     expect(result.message.content.toLowerCase()).toContain("package.json");
     expect(providerManager.getActiveProvider).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("compound Bengali location reaches Tavily", () => {
+  it("does not ask for location again when the sentence already contains it", async () => {
+    const message =
+      "শিলিগুড়ি, পশ্চিমবঙ্গের আজকের current weather কেমন?";
+
+    const result =
+      await AIChatService.processChatRequest([
+        {
+          role: "user",
+          content: message,
+        },
+      ]);
+
+    expect(
+      tavilySearch.search,
+    ).toHaveBeenCalledWith(
+      message,
+      "bn",
+    );
+
+    expect(
+      result.provider.type,
+    ).toBe("WEB_SEARCH");
+
+    expect(
+      result.brainDecision,
+    ).toBe("live-web-search");
   });
 });

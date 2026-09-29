@@ -14,8 +14,8 @@ const {
 } = require("./FoundationConversationPolicy.cjs");
 const { verifyWebSearchResult } = require("./brain/WebEvidenceVerifier.cjs");
 const {
-  composeEvidenceAwareWebAnswer,
-} = require("./brain/EvidenceAwareResponseComposer.cjs");
+  composeVerifiedWebAnswer,
+} = require("./brain/VerifiedWebResponseComposer.cjs");
 const {
   EMPTY_LEARNING_POLICY,
   TIME_SENSITIVE_EVIDENCE_POLICY,
@@ -669,7 +669,7 @@ class AIChatService {
       return {
         message: {
           role: "assistant",
-          content: composeEvidenceAwareWebAnswer(
+          content: await composeVerifiedWebAnswer(
             verifiedResult.answer,
             searchLang,
           ),

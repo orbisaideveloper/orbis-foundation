@@ -394,6 +394,114 @@ describe("FullscreenChatView", () => {
     expect(await screen.findByText(MOCK_AI_RESPONSE)).toBeInTheDocument();
   });
 
+
+  it("keeps one voice draft across pauses and waits for explicit stop plus Send", async () => {
+    const recognitions: any[] = [];
+
+    (window as any).SpeechRecognition = class {
+      lang = "";
+      continuous = false;
+      interimResults = false;
+      maxAlternatives = 1;
+      onresult?: (event: any) => void;
+      onend?: () => void;
+      onerror?: (event: any) => void;
+
+      constructor() {
+        recognitions.push(this);
+      }
+
+      start() {}
+
+      stop() {
+        this.onend?.();
+      }
+    };
+
+    render(
+      <FullscreenChatView onClose={() => {}} />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: "Voice input" },
+      ),
+    );
+
+    expect(recognitions).toHaveLength(1);
+    expect(
+      recognitions[0].continuous,
+    ).toBe(true);
+
+    recognitions[0].onresult({
+      results: [
+        Object.assign(
+          [
+            {
+              transcript:
+                "আমি প্রথম অংশ বললাম",
+              confidence: 0.95,
+            },
+          ],
+          { isFinal: true },
+        ),
+      ],
+    });
+
+    // Simulate browser ending recognition after a pause.
+    // ORBIS must resume without losing the first part.
+    recognitions[0].onend();
+
+    expect(recognitions).toHaveLength(2);
+
+    recognitions[1].onresult({
+      results: [
+        Object.assign(
+          [
+            {
+              transcript:
+                "এবার দ্বিতীয় অংশ বললাম",
+              confidence: 0.94,
+            },
+          ],
+          { isFinal: true },
+        ),
+      ],
+    });
+
+    expect(
+      await screen.findByDisplayValue(
+        "আমি প্রথম অংশ বললাম এবার দ্বিতীয় অংশ বললাম",
+      ),
+    ).toBeInTheDocument();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: "Stop voice input" },
+      ),
+    );
+
+    expect(recognitions).toHaveLength(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole(
+        "button",
+        { name: /send message/i },
+      ),
+    );
+
+    expect(
+      await screen.findByText(
+        MOCK_AI_RESPONSE,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("moves voice language selection to the header and keeps clear chat in data controls", async () => {
     render(<FullscreenChatView onClose={() => {}} />);
     const languageButton = await screen.findByRole("button", {

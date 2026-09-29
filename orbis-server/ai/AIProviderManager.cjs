@@ -3,6 +3,109 @@ const HuggingFaceProvider = require("./providers/HuggingFaceProvider.cjs");
 const { modelRouter } = require("./models/ModelRouter.cjs");
 const { modelRegistry } = require("./models/ModelRegistry.cjs");
 
+const HF_PROVIDER_NAME =
+  "Hugging Face";
+
+function isTransientProviderFailureCode(
+  errorCode,
+) {
+  const code =
+    String(errorCode || "");
+
+  return (
+    code === "PROVIDER_TIMEOUT" ||
+    /^PROVIDER_UNAVAILABLE_(?:408|425|429|5\d\d)$/u.test(
+      code,
+    )
+  );
+}
+
+function transientRetryDelayMs(
+  errorCode,
+) {
+  if (
+    errorCode ===
+    "PROVIDER_UNAVAILABLE_429"
+  ) {
+    return 1_500;
+  }
+
+  if (
+    /^PROVIDER_UNAVAILABLE_5\d\d$/u.test(
+      String(errorCode || ""),
+    )
+  ) {
+    return 600;
+  }
+
+  return 300;
+}
+
+function waitForRetry(delayMs) {
+  return new Promise(
+    (resolve) =>
+      setTimeout(resolve, delayMs),
+  );
+}
+
+function preferredRoutingFailureCode(
+  attempts,
+  fallbackCode,
+) {
+  const codes = attempts
+    .map(
+      (attempt) =>
+        String(
+          attempt?.errorCode || "",
+        ),
+    )
+    .filter(Boolean);
+
+  const authentication =
+    codes.find(
+      (code) =>
+        code ===
+        "PROVIDER_AUTH_FAILED",
+    );
+
+  if (authentication) {
+    return authentication;
+  }
+
+  const httpStatus =
+    codes.find(
+      (code) =>
+        /^PROVIDER_UNAVAILABLE_\d{3}$/u.test(
+          code,
+        ),
+    );
+
+  if (httpStatus) {
+    return httpStatus;
+  }
+
+  if (
+    codes.includes(
+      "PROVIDER_TIMEOUT",
+    )
+  ) {
+    return "PROVIDER_TIMEOUT";
+  }
+
+  if (
+    codes.includes(
+      "PROVIDER_RESPONSE_REJECTED",
+    )
+  ) {
+    return "PROVIDER_RESPONSE_REJECTED";
+  }
+
+  return (
+    String(fallbackCode || "") ||
+    "PROVIDER_UNAVAILABLE"
+  );
+}
+
 class AIProviderManager {
   constructor() {
     this.providers = new Map();
@@ -48,21 +151,32 @@ class AIProviderManager {
       availableProviders: Array.from(this.providers.keys()),
     });
 
-    const seenProviders = new Set();
     const candidates = [];
+    const seenRegistryCandidates = new Set();
+    const representedProviders = new Set();
 
     for (const model of selection.candidates) {
       const provider = this.providers.get(model.provider);
+      const registryKey =
+        `${model.provider}:${model.modelId}`;
 
-      if (!provider || seenProviders.has(provider)) continue;
+      if (
+        !provider ||
+        seenRegistryCandidates.has(registryKey)
+      ) {
+        continue;
+      }
 
-      seenProviders.add(provider);
+      seenRegistryCandidates.add(registryKey);
+      representedProviders.add(provider);
+
       candidates.push({
         provider,
         model,
         source: "model-registry",
       });
 
+      // Keep the primary + one registry fallback bounded.
       if (candidates.length >= 2) break;
     }
 
@@ -74,16 +188,23 @@ class AIProviderManager {
     ];
 
     for (const provider of providerFallbacks) {
-      if (!provider || seenProviders.has(provider)) continue;
+      if (
+        !provider ||
+        representedProviders.has(provider)
+      ) {
+        continue;
+      }
 
-      seenProviders.add(provider);
+      representedProviders.add(provider);
+
       candidates.push({
         provider,
         model: null,
         source: "provider-fallback",
       });
 
-      if (candidates.length >= 2) break;
+      // Primary registry model + registry fallback + provider fallback.
+      if (candidates.length >= 3) break;
     }
 
     return { selection, candidates };
@@ -181,63 +302,38 @@ class AIProviderManager {
     };
   }
 
-  async generateChat(messages, options = {}) {
-    const active = this.getActiveProvider();
-
-    const { selection, candidates } = this.buildCandidates(
-      messages,
-      options,
-      active,
-    );
-
-    const attempts = [];
-    let lastCode = "PROVIDER_UNAVAILABLE";
-
-    for (const candidate of candidates) {
-      const startedAt = Date.now();
-      const attemptBase = {
-        provider: candidate.provider?.name || null,
-        providerType: candidate.provider?.type || null,
-        model:
-          candidate.model?.modelId ||
-          candidate.provider?.model ||
-          null,
-        registryModelId: candidate.model?.id || null,
-        codename: candidate.model?.codename || null,
-        source: candidate.source,
-      };
-
-      try {
-        const requestOptions = this.buildRequestOptions(
-          candidate,
-          options,
-        );
-
-        const response = await candidate.provider.generateChat(
-          messages,
-          requestOptions,
-        );
-
-        return this.completeSuccessfulRouting({
-          selection,
-          candidate,
-          response,
-          attempts,
-          attemptBase,
-          startedAt,
-        });
-      } catch (error) {
-        lastCode = error?.code || "PROVIDER_UNAVAILABLE";
-
-        attempts.push({
-          ...attemptBase,
-          status: "failed",
-          durationMs: Math.max(0, Date.now() - startedAt),
-          errorCode: lastCode,
-        });
-      }
+  validateProviderResponse(
+    response,
+    validateResponse,
+  ) {
+    if (typeof validateResponse !== "function") {
+      return;
     }
 
+    let accepted = false;
+
+    try {
+      accepted =
+        validateResponse(response) === true;
+    } catch {
+      accepted = false;
+    }
+
+    if (accepted) {
+      return;
+    }
+
+    const error =
+      new Error("PROVIDER_RESPONSE_REJECTED");
+    error.code = error.message;
+    throw error;
+  }
+
+  throwRoutingFailure(
+    selection,
+    attempts,
+    errorCode,
+  ) {
     this.rememberRouting({
       status: "failed",
       task: selection.task,
@@ -247,16 +343,173 @@ class AIProviderManager {
       modelId: null,
       provider: null,
       source: null,
-      errorCode: lastCode,
+      errorCode,
       attempts,
     });
 
-    const normalized = new Error(lastCode);
-    normalized.code = lastCode;
-    normalized.routingAttempts = attempts.map(
-      (attempt) => ({ ...attempt }),
-    );
+    const normalized =
+      new Error(errorCode);
+
+    normalized.code =
+      errorCode;
+
+    normalized.routingAttempts =
+      attempts.map(
+        (attempt) => ({
+          ...attempt,
+        }),
+      );
+
     throw normalized;
+  }
+
+  async generateChat(messages, options = {}) {
+    const active =
+      this.getActiveProvider();
+
+    const {
+      selection,
+      candidates,
+    } = this.buildCandidates(
+      messages,
+      options,
+      active,
+    );
+
+    const attempts = [];
+    let lastCode =
+      "PROVIDER_UNAVAILABLE";
+
+    for (
+      let candidateIndex = 0;
+      candidateIndex < candidates.length;
+      candidateIndex += 1
+    ) {
+      const candidate =
+        candidates[candidateIndex];
+
+      const requestOptions =
+        this.buildRequestOptions(
+          candidate,
+          options,
+        );
+
+      const attemptBase = {
+        provider:
+          candidate.provider?.name ||
+          null,
+        providerType:
+          candidate.provider?.type ||
+          null,
+        model:
+          candidate.model?.modelId ||
+          candidate.provider?.model ||
+          null,
+        registryModelId:
+          candidate.model?.id ||
+          null,
+        codename:
+          candidate.model?.codename ||
+          null,
+        source: candidate.source,
+      };
+
+      const mayRetryFirstHfCandidate =
+        candidateIndex === 0 &&
+        candidate.provider?.name ===
+          HF_PROVIDER_NAME;
+
+      const maximumAttempts =
+        mayRetryFirstHfCandidate
+          ? 2
+          : 1;
+
+      for (
+        let attemptIndex = 0;
+        attemptIndex < maximumAttempts;
+        attemptIndex += 1
+      ) {
+        const startedAt =
+          Date.now();
+
+        try {
+          const response =
+            await candidate.provider
+              .generateChat(
+                messages,
+                requestOptions,
+              );
+
+          this.validateProviderResponse(
+            response,
+            options.validateResponse,
+          );
+
+          return this.completeSuccessfulRouting({
+            selection,
+            candidate,
+            response,
+            attempts,
+            attemptBase,
+            startedAt,
+          });
+        } catch (error) {
+          lastCode =
+            error?.code ||
+            "PROVIDER_UNAVAILABLE";
+
+          attempts.push({
+            ...attemptBase,
+            status: "failed",
+            durationMs:
+              Math.max(
+                0,
+                Date.now() -
+                  startedAt,
+              ),
+            errorCode:
+              lastCode,
+          });
+
+          if (
+            lastCode ===
+            "PROVIDER_AUTH_FAILED"
+          ) {
+            this.throwRoutingFailure(
+              selection,
+              attempts,
+              lastCode,
+            );
+          }
+
+          const retryAllowed =
+            attemptIndex === 0 &&
+            mayRetryFirstHfCandidate &&
+            isTransientProviderFailureCode(
+              lastCode,
+            );
+
+          if (!retryAllowed) {
+            break;
+          }
+
+          await waitForRetry(
+            transientRetryDelayMs(
+              lastCode,
+            ),
+          );
+        }
+      }
+    }
+
+    this.throwRoutingFailure(
+      selection,
+      attempts,
+      preferredRoutingFailureCode(
+        attempts,
+        lastCode,
+      ),
+    );
   }
 
   getStatus() {
