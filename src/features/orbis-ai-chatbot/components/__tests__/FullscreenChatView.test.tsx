@@ -12,6 +12,8 @@ const WEB_PROVIDER_NAME = "ORBIS Brain (Web)";
 const WEB_CLARIFICATION_TYPE = "WEB_SEARCH_CLARIFICATION";
 const DEFAULT_CONVERSATION_ID = "account-1:default-chat-v2";
 const WEATHER_REQUEST = "আজকের weather বলো";
+const LOCAL_DATA_CONTROLS_TITLE = "Local data controls";
+const STOP_VOICE_INPUT_LABEL = "Stop voice input";
 
 const mocks = vi.hoisted(() => {
   const declined = "declined" as const;
@@ -390,17 +392,36 @@ describe("FullscreenChatView", () => {
       await screen.findByDisplayValue("ঘনশ্যামকে ১২০ liter देना है"),
     ).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
-    expect(await screen.findByText(MOCK_AI_RESPONSE)).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: STOP_VOICE_INPUT_LABEL,
+      }),
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /send message/i,
+      }),
+    );
+
+    expect(
+      await screen.findByText(MOCK_AI_RESPONSE),
+    ).toBeInTheDocument();
   });
 
 
-  it("keeps one voice draft across pauses and waits for explicit stop plus Send", async () => {
+  it("preserves one voice draft across pauses and later mic sessions until explicit Send", async () => {
     const recognitions: any[] = [];
+    const firstPart = "আমি তোমাকে বলছিলাম";
+    const secondPart = "ভয়েসটা ঠিক করার জন্য";
+    const thirdPart = "আরও একটা কথা যোগ করছি";
 
     (window as any).SpeechRecognition = class {
       lang = "";
-      continuous = false;
+      continuous = true;
       interimResults = false;
       maxAlternatives = 1;
       onresult?: (event: any) => void;
@@ -418,29 +439,25 @@ describe("FullscreenChatView", () => {
       }
     };
 
-    render(
-      <FullscreenChatView onClose={() => {}} />,
-    );
+    render(<FullscreenChatView onClose={() => {}} />);
+
+    await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
 
     fireEvent.click(
-      await screen.findByRole(
-        "button",
-        { name: "Voice input" },
-      ),
+      screen.getByRole("button", {
+        name: /voice input/i,
+      }),
     );
 
     expect(recognitions).toHaveLength(1);
-    expect(
-      recognitions[0].continuous,
-    ).toBe(true);
+    expect(recognitions[0].continuous).toBe(false);
 
     recognitions[0].onresult({
       results: [
         Object.assign(
           [
             {
-              transcript:
-                "আমি প্রথম অংশ বললাম",
+              transcript: firstPart,
               confidence: 0.95,
             },
           ],
@@ -449,19 +466,28 @@ describe("FullscreenChatView", () => {
       ],
     });
 
-    // Simulate browser ending recognition after a pause.
-    // ORBIS must resume without losing the first part.
+    expect(
+      await screen.findByDisplayValue(firstPart),
+    ).toBeInTheDocument();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // User pauses to think. Chrome ends its one-shot session,
+    // but ORBIS keeps the logical voice session alive.
     recognitions[0].onend();
 
-    expect(recognitions).toHaveLength(2);
+    await waitFor(() => {
+      expect(recognitions).toHaveLength(2);
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
 
     recognitions[1].onresult({
       results: [
         Object.assign(
           [
             {
-              transcript:
-                "এবার দ্বিতীয় অংশ বললাম",
+              transcript: secondPart,
               confidence: 0.94,
             },
           ],
@@ -470,36 +496,91 @@ describe("FullscreenChatView", () => {
       ],
     });
 
+    const combined =
+      `${firstPart} ${secondPart}`;
+
     expect(
-      await screen.findByDisplayValue(
-        "আমি প্রথম অংশ বললাম এবার দ্বিতীয় অংশ বললাম",
-      ),
+      await screen.findByDisplayValue(combined),
+    ).toBeInTheDocument();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    expect(
+      screen.getByRole("button", {
+        name: /send message/i,
+      }),
+    ).toBeDisabled();
+
+    // User explicitly stops voice.
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: STOP_VOICE_INPUT_LABEL,
+      }),
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", {
+          name: /send message/i,
+        }),
+      ).toBeEnabled();
+    });
+
+    // Even a later Mic session must keep the existing draft.
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Voice input",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(recognitions).toHaveLength(3);
+    });
+
+    recognitions[2].onresult({
+      results: [
+        Object.assign(
+          [
+            {
+              transcript: thirdPart,
+              confidence: 0.93,
+            },
+          ],
+          { isFinal: true },
+        ),
+      ],
+    });
+
+    const finalDraft =
+      `${combined} ${thirdPart}`;
+
+    expect(
+      await screen.findByDisplayValue(finalDraft),
     ).toBeInTheDocument();
 
     expect(fetchMock).not.toHaveBeenCalled();
 
     fireEvent.click(
-      await screen.findByRole(
-        "button",
-        { name: "Stop voice input" },
-      ),
+      screen.getByRole("button", {
+        name: STOP_VOICE_INPUT_LABEL,
+      }),
     );
 
-    expect(recognitions).toHaveLength(2);
     expect(fetchMock).not.toHaveBeenCalled();
 
     fireEvent.click(
-      screen.getByRole(
-        "button",
-        { name: /send message/i },
-      ),
+      screen.getByRole("button", {
+        name: /send message/i,
+      }),
     );
 
     expect(
-      await screen.findByText(
-        MOCK_AI_RESPONSE,
-      ),
+      await screen.findByText(MOCK_AI_RESPONSE),
     ).toBeInTheDocument();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("moves voice language selection to the header and keeps clear chat in data controls", async () => {
@@ -517,10 +598,45 @@ describe("FullscreenChatView", () => {
     );
     expect(languageButton).toHaveTextContent("EN");
 
-    fireEvent.click(screen.getByTitle("Local data controls"));
+    fireEvent.click(screen.getByTitle(LOCAL_DATA_CONTROLS_TITLE));
     expect(
       screen.getByRole("button", { name: "Clear chat" }),
     ).toBeInTheDocument();
+  });
+
+  it("shows time-scoped chat backup controls for persistent device history", async () => {
+    mocks.consent = "accepted";
+
+    render(<FullscreenChatView onClose={() => {}} />);
+
+    const input =
+      await screen.findByPlaceholderText(CHAT_PLACEHOLDER);
+
+    await waitFor(() =>
+      expect(input).not.toBeDisabled(),
+    );
+
+    fireEvent.click(
+      screen.getByTitle(LOCAL_DATA_CONTROLS_TITLE),
+    );
+
+    expect(
+      screen.getByRole("combobox", {
+        name: "Chat history range",
+      }),
+    ).toHaveValue("24h");
+
+    expect(
+      screen.getByRole("button", { name: "Copy chat" }),
+    ).toBeEnabled();
+
+    expect(
+      screen.getByRole("button", { name: "Export .txt" }),
+    ).toBeEnabled();
+
+    expect(
+      screen.getByRole("button", { name: "Export .json" }),
+    ).toBeEnabled();
   });
 
   it("keeps learning consent separate and requires candidate review before approval", async () => {
@@ -549,7 +665,7 @@ describe("FullscreenChatView", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /send message/i }));
     await screen.findByText("ordinary reply");
-    fireEvent.click(screen.getByTitle("Local data controls"));
+    fireEvent.click(screen.getByTitle(LOCAL_DATA_CONTROLS_TITLE));
     fireEvent.click(
       screen.getByRole("button", { name: "Enable learning review" }),
     );

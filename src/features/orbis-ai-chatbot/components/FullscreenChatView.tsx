@@ -38,8 +38,18 @@ import {
   shareMessageContent,
 } from "../utils/messageActions";
 import {
+  chatArchiveFileName,
+  downloadChatArchive,
+  formatChatArchiveJson,
+  formatChatArchiveText,
+  selectChatArchiveMessages,
+} from "../utils/chatArchive";
+import type {
+  ChatArchiveFormat,
+  ChatArchiveRange,
+} from "../utils/chatArchive";
+import {
   getSpeechRecognitionConstructor,
-  normalizeVoiceTranscript,
   readVoiceResult,
   VOICE_LANGUAGES,
   VoiceLanguage,
@@ -306,6 +316,9 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   const [showConsent, setShowConsent] = useState(false);
   const [showStorageControls, setShowStorageControls] = useState(false);
   const [usage, setUsage] = useState<ChatStorageUsage | null>(null);
+  const [archiveRange, setArchiveRange] =
+    useState<ChatArchiveRange>("24h");
+  const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingClarification | null>(null);
   const [providerHealth, setProviderHealth] =
     useState<ProviderHealth>("UNKNOWN");
@@ -493,6 +506,94 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       );
       await refreshUsage();
     }
+  };
+
+  const getSelectedArchiveMessages = async () => {
+    if (!persistent) {
+      setArchiveNotice(
+        "Chat export-এর জন্য আগে device storage enable করুন.",
+      );
+      return [];
+    }
+
+    try {
+      const stored =
+        await chatStorage.getMessagesByConversation(
+          conversationIdRef.current,
+          profileIdRef.current,
+        );
+
+      const selected =
+        selectChatArchiveMessages(stored, archiveRange);
+
+      if (selected.length === 0) {
+        setArchiveNotice(
+          "এই সময়সীমায় export করার মতো chat নেই.",
+        );
+      }
+
+      return selected;
+    } catch {
+      setArchiveNotice(
+        "Local chat history পড়া যায়নি. আবার চেষ্টা করুন.",
+      );
+      return [];
+    }
+  };
+
+  const copyChatArchive = async () => {
+    const selected = await getSelectedArchiveMessages();
+    if (selected.length === 0) return;
+
+    const payload =
+      formatChatArchiveText(selected, archiveRange);
+
+    if (await copyMessageContent(payload)) {
+      setArchiveNotice(
+        `${selected.length}টি message clipboard-এ কপি হয়েছে.`,
+      );
+    } else {
+      setArchiveNotice(
+        "এই browser-এ clipboard access পাওয়া যায়নি.",
+      );
+    }
+  };
+
+  const exportChatArchive = async (
+    format: ChatArchiveFormat,
+  ) => {
+    const selected = await getSelectedArchiveMessages();
+    if (selected.length === 0) return;
+
+    const exportedAt = Date.now();
+    const payload =
+      format === "json"
+        ? formatChatArchiveJson(
+            selected,
+            archiveRange,
+            exportedAt,
+          )
+        : formatChatArchiveText(
+            selected,
+            archiveRange,
+            exportedAt,
+          );
+
+    const saved = downloadChatArchive(
+      payload,
+      chatArchiveFileName(
+        archiveRange,
+        format,
+        exportedAt,
+      ),
+      format,
+    );
+
+    setArchiveNotice(
+      saved
+        ? `${selected.length}টি message Downloads-এ export হয়েছে.`
+        : "এই browser download শুরু করতে পারেনি.",
+    );
   };
 
   const learningRequest = useCallback(
@@ -798,9 +899,20 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
   };
 
   const toggleVoiceInput = () => {
-    if (isListening && recognitionRef.current) {
+    if (isListening) {
       voiceContinueRef.current = false;
-      recognitionRef.current.stop();
+
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      } else {
+        setIsListening(false);
+        setVoiceStatus(
+          voiceTranscriptRef.current.trim()
+            ? "Transcript দেখে Send চাপুন।"
+            : "কোনো কথা শোনা যায়নি। আবার চেষ্টা করুন।",
+        );
+      }
+
       return;
     }
 
@@ -820,18 +932,25 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       return;
     }
 
-    voiceContinueRef.current = true;
+    // Existing textarea text becomes the base of this voice session.
+    // Starting Mic again never clears the user's draft.
     voiceBaseTranscriptRef.current =
       inputText.trim();
     voiceTranscriptRef.current =
       inputText.trim();
+    voiceContinueRef.current = true;
 
     const startRecognitionSession = () => {
+      if (!voiceContinueRef.current) return;
+
       const recognition =
         new SpeechRecognition();
 
       recognition.lang = voiceLanguage;
-      recognition.continuous = true;
+
+      // Keep Chrome recognition itself one-shot.
+      // ORBIS owns the longer logical session across pauses.
+      recognition.continuous = false;
       recognition.interimResults = true;
       recognition.maxAlternatives = 3;
 
@@ -839,15 +958,14 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
         const result =
           readVoiceResult(event);
 
-        const transcript =
-          normalizeVoiceTranscript(
-            [
-              voiceBaseTranscriptRef.current,
-              result.transcript,
-            ]
-              .filter(Boolean)
-              .join(" "),
-          );
+        const transcript = [
+          voiceBaseTranscriptRef.current,
+          result.transcript,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
 
         voiceTranscriptRef.current =
           transcript;
@@ -855,7 +973,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
 
         if (transcript) {
           setVoiceStatus(
-            "শুনছি… কথা শেষ হলে Mic বন্ধ করে Send চাপুন।",
+            "শুনছি… থামলেও আগের লেখা থাকবে। শেষ হলে Stop চাপুন।",
           );
         }
       };
@@ -867,25 +985,25 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           voiceTranscriptRef.current.trim();
 
         if (voiceContinueRef.current) {
+          // Preserve everything already spoken and continue from there.
           voiceBaseTranscriptRef.current =
             transcript;
 
-          setVoiceStatus("শুনছি…");
+          setVoiceStatus(
+            "শুনছি… আবার কথা বলুন। আগের লেখা রাখা হয়েছে।",
+          );
+
           startRecognitionSession();
           return;
         }
 
         setIsListening(false);
 
-        if (transcript) {
-          setVoiceStatus(
-            "Transcript দেখে Send চাপুন।",
-          );
-        } else {
-          setVoiceStatus(
-            "কোনো কথা শোনা যায়নি। আবার চেষ্টা করুন।",
-          );
-        }
+        setVoiceStatus(
+          transcript
+            ? "Transcript দেখে Send চাপুন।"
+            : "কোনো কথা শোনা যায়নি। আবার চেষ্টা করুন।",
+        );
       };
 
       recognition.onerror = (event: any) => {
@@ -895,7 +1013,9 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
           event?.error === "no-speech" &&
           voiceContinueRef.current
         ) {
-          setVoiceStatus("শুনছি…");
+          setVoiceStatus(
+            "শুনছি… আবার কথা বলুন। আগের লেখা রাখা হয়েছে।",
+          );
           return;
         }
 
@@ -912,7 +1032,10 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
     };
 
     setIsListening(true);
-    setVoiceStatus("শুনছি…");
+    setVoiceStatus(
+      "শুনছি… থামলেও আগের লেখা থাকবে। শেষ হলে Stop চাপুন।",
+    );
+
     startRecognitionSession();
   };
 
@@ -1084,6 +1207,69 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               Browser/app data removal or uninstall removes local history. No
               encrypted backup exists yet.
             </p>
+            <div className="rounded-lg border border-emerald-200 p-3 dark:border-emerald-800">
+              <p className="font-semibold">Chat history export</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Browser/site data clear করলে IndexedDB history মুছে যেতে পারে.
+                Downloads-এ export করা TXT/JSON browser storage-এর বাইরে থাকে.
+                Export file encrypted নয়—privateভাবে রাখুন.
+              </p>
+
+              <label className="mt-3 block text-xs font-semibold">
+                Chat history range
+                <select
+                  aria-label="Chat history range"
+                  value={archiveRange}
+                  disabled={!persistent}
+                  onChange={(event) => {
+                    setArchiveRange(
+                      event.target.value as ChatArchiveRange,
+                    );
+                    setArchiveNotice(null);
+                  }}
+                  className="ml-2 rounded border px-2 py-1 disabled:opacity-50"
+                >
+                  <option value="6h">Last 6 hours</option>
+                  <option value="24h">Last 24 hours</option>
+                  <option value="48h">Last 48 hours</option>
+                  <option value="all">All chat</option>
+                </select>
+              </label>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!persistent}
+                  onClick={() => void copyChatArchive()}
+                  className="rounded border px-3 py-1 disabled:opacity-50"
+                >
+                  Copy chat
+                </button>
+                <button
+                  type="button"
+                  disabled={!persistent}
+                  onClick={() => void exportChatArchive("txt")}
+                  className="rounded border px-3 py-1 disabled:opacity-50"
+                >
+                  Export .txt
+                </button>
+                <button
+                  type="button"
+                  disabled={!persistent}
+                  onClick={() => void exportChatArchive("json")}
+                  className="rounded border px-3 py-1 disabled:opacity-50"
+                >
+                  Export .json
+                </button>
+              </div>
+
+              {archiveNotice && (
+                <output className="mt-2 block text-xs text-slate-600 dark:text-slate-300">
+                  {archiveNotice}
+                </output>
+              )}
+            </div>
+
             <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
               <p className="font-semibold">Foundation text learning</p>
               <p className="mt-1 text-xs text-gray-500">
@@ -1263,7 +1449,10 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
-                  void sendMessage();
+
+                  if (!isListening) {
+                    void sendMessage();
+                  }
                 }
               }}
               placeholder="ORBIS-কে নির্দেশ দিন..."
@@ -1287,7 +1476,12 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
             <button
               type="button"
               onClick={() => void sendMessage()}
-              disabled={!inputText.trim() || isSending || !ready}
+              disabled={
+                isListening ||
+                !inputText.trim() ||
+                isSending ||
+                !ready
+              }
               aria-label="Send message"
               className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-200 text-slate-700 shadow-sm hover:bg-orange-300 disabled:opacity-50"
             >
