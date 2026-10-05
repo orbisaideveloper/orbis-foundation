@@ -1,3 +1,4 @@
+import { accountingBusinessDate, accountingToday } from "../../models/lotteryAccountingBusinessDate";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, FilePenLine } from "lucide-react";
 import {
@@ -22,16 +23,13 @@ type StockistRow = {
 };
 
 const CONTROL_CLASS =
-  "w-full rounded-lg border border-emerald-100 bg-white px-2 py-2 text-[11px] text-slate-800 outline-none focus:border-emerald-500";
+  "w-full rounded-lg border border-emerald-100 bg-white px-2 py-2 text-[11px] text-slate-800 outline-hidden focus:border-emerald-500";
 
 function todayInputValue() {
-  return new Date().toISOString().slice(0, 10);
+  return accountingToday();
 }
 
-function dateKey(value: string) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
-}
+const dateKey = accountingBusinessDate;
 
 function naturalNumber(value: string) {
   return /^\d+$/.test(value) ? BigInt(value) : 0n;
@@ -321,13 +319,13 @@ export function DailyStockistEntry({
 
   useEffect(() => {
     if (!editRequest) return;
-    setSelectedDate(editRequest.occurredAt.slice(0, 10));
+    setSelectedDate(accountingBusinessDate(editRequest.occurredAt));
     setSelectedPartyId(editRequest.partyId);
   }, [editRequest]);
 
   if (!stockists.length) {
     return (
-      <section className="rounded-[22px] border border-emerald-100 bg-white p-4 shadow-sm">
+      <section className="rounded-[22px] border border-emerald-100 bg-white p-4 shadow-xs">
         <h4 className="text-sm font-black text-slate-900">Daily purchase and return</h4>
         <p className="mt-2 text-[10px] text-slate-600">
           Add a Stockist in Setup with its fixed ticket rate first.
@@ -469,7 +467,7 @@ export function DailyStockistEntry({
 
   return (
     <section className="space-y-3" aria-label="Daily stockist entry">
-      <header className="rounded-[22px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-orange-50/50 p-4 shadow-sm">
+      <header className="rounded-[22px] border border-emerald-100 bg-linear-to-br from-emerald-50 via-white to-orange-50/50 p-4 shadow-xs">
         <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700">
           Simple purchase entry
         </p>
@@ -502,7 +500,7 @@ export function DailyStockistEntry({
         </div>
       </header>
 
-      <div className="block rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm">
+      <div className="block rounded-[22px] border border-emerald-100 bg-white p-3 shadow-xs">
         <label
           htmlFor="daily-stockist-party"
           className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500"
@@ -528,11 +526,11 @@ export function DailyStockistEntry({
         </p>
       )}
 
-      <section className="rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm">
+      <section className="rounded-[22px] border border-emerald-100 bg-white p-3 shadow-xs">
         <div className="flex items-center justify-between gap-2">
           <h5 className="text-xs font-black text-slate-900">Stockist entry</h5>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 text-[9px] text-slate-500">Scroll sideways <ChevronDown className="h-3 w-3 rotate-[-90deg]" /></span>
+            <span className="inline-flex items-center gap-1 text-[9px] text-slate-500">Scroll sideways <ChevronDown className="h-3 w-3 -rotate-90" /></span>
             <button
               type="button"
               disabled={saving.size > 0}

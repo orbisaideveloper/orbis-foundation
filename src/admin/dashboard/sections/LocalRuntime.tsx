@@ -164,7 +164,7 @@ Brain -> Policy -> Registry -> Lifecycle -> Authorization -> Runtime`;
       {showModal && (
         <dialog
           open
-          className="fixed inset-0 z-[100] m-0 flex h-dvh max-h-none w-screen max-w-none items-center justify-center bg-slate-950/70 p-3 sm:p-5 backdrop-blur-md"
+          className="fixed inset-0 z-100 m-0 flex h-dvh max-h-none w-screen max-w-none items-center justify-center bg-slate-950/70 p-3 sm:p-5 backdrop-blur-md"
           aria-modal="true"
           aria-labelledby="local-runtime-details-title"
         >

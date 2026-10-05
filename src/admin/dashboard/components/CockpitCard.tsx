@@ -11,6 +11,6 @@ export const CockpitCard = ({
     <h3 className="text-[#FF9933] text-sm font-bold uppercase tracking-wider mb-4 border-b border-[#22c55e]/20 pb-2">
       {title}
     </h3>
-    <div className="text-white flex-grow">{children}</div>
+    <div className="text-white grow">{children}</div>
   </div>
 );

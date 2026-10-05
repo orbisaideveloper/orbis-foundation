@@ -1,5 +1,8 @@
 "use strict";
 
+const { paymentMethodBalance, visiblePaymentRows } = require("./accounting-money-balances.cjs");
+const { businessDateKey, businessDayRange } = require("./accounting-business-date.cjs");
+
 const { createHash, randomUUID } = require("node:crypto");
 
 const CORRECTION_ENTITY_TYPES = new Set([
@@ -136,9 +139,9 @@ function latestByEntity(corrections) {
   return index;
 }
 
-function projectAccountingRows(rows, corrections, type) {
+function projectAccountingRows(rows, corrections, type, { includeVoided = false } = {}) {
   const index = latestByEntity(corrections);
-  return (rows || []).map((row) => {
+  return (rows || []).filter((row) => includeVoided || !index.get(`${type}:${row.id}`)?.replacement?.voided).map((row) => {
     const correction = index.get(`${type}:${row.id}`);
     if (!correction) {
       return {
@@ -275,15 +278,6 @@ async function writeCorrectionLedger(
   }
 }
 
-function paymentMethodBalance(payments, method) {
-  let balance = 0n;
-  for (const payment of payments) {
-    const amount = BigInt(payment.methodSplit?.[method] || 0);
-    balance += payment.direction === "RECEIPT" ? amount : -amount;
-  }
-  return balance;
-}
-
 async function normalizeStockistEntry(client, organizationId, original, previous, replacement) {
   assertOnlyKeys(
     replacement,
@@ -342,7 +336,7 @@ async function normalizeStockistEntry(client, organizationId, original, previous
     corrections,
     "STOCKIST_ENTRY",
   ).filter((row) => row.id !== original.id);
-  const day = new Date(original.occurredAt).toISOString().slice(0, 10);
+  const day = businessDateKey(original.occurredAt);
   for (const [saleField, quantity] of [
     ["morningReturnQuantity", morningReturnQuantity],
     ["dayReturnQuantity", dayReturnQuantity],
@@ -351,13 +345,13 @@ async function normalizeStockistEntry(client, organizationId, original, previous
     const sellerReturn = sales
       .filter(
         (sale) =>
-          new Date(sale.occurredAt).toISOString().slice(0, 10) === day,
+          businessDateKey(sale.occurredAt) === day,
       )
       .reduce((total, sale) => total + BigInt(sale[saleField] || 0), 0n);
     const alreadyReturned = effectiveRows
       .filter(
         (entry) =>
-          new Date(entry.occurredAt).toISOString().slice(0, 10) === day,
+          businessDateKey(entry.occurredAt) === day,
       )
       .reduce((total, entry) => total + BigInt(entry[saleField] || 0), 0n);
     if (quantity > sellerReturn - alreadyReturned) {
@@ -445,7 +439,7 @@ async function normalizeExpensePayment(
     );
   }
 
-  const [bills, expensePayments, lotteryPayments, corrections] =
+  const [bills, expensePayments, lotteryPayments, corrections, clearances] =
     await Promise.all([
       client.foundationAccountingExpenseBill.findMany({
         where: { organizationId, profileId: original.profileId },
@@ -457,6 +451,7 @@ async function normalizeExpensePayment(
         where: { organizationId, status: "POSTED" },
       }),
       client.foundationAccountingCorrection.findMany({ where: { organizationId } }),
+      client.foundationLotteryEntryClearance.findMany({ where: { organizationId } }),
     ]);
 
   const occurredAt = new Date(original.occurredAt);
@@ -464,7 +459,7 @@ async function normalizeExpensePayment(
     bills,
     corrections,
     "EXPENSE_BILL",
-  ).filter((bill) => new Date(bill.occurredAt) <= occurredAt);
+  ).filter((bill) => new Date(bill.occurredAt) < businessDayRange(occurredAt).endsAt);
   const effectiveExpensePayments = projectAccountingRows(
     expensePayments,
     corrections,
@@ -473,7 +468,7 @@ async function normalizeExpensePayment(
   const priorProfilePayments = effectiveExpensePayments.filter(
     (payment) =>
       payment.id !== original.id &&
-      new Date(payment.occurredAt) <= occurredAt,
+      new Date(payment.occurredAt) < businessDayRange(occurredAt).endsAt,
   );
   const billed = effectiveBills.reduce(
     (total, bill) => total + BigInt(bill.amountPaise),
@@ -490,11 +485,11 @@ async function normalizeExpensePayment(
     );
   }
 
-  const effectiveLotteryPayments = projectAccountingRows(
+  const effectiveLotteryPayments = visiblePaymentRows(projectAccountingRows(
     lotteryPayments,
     corrections,
     "PAYMENT",
-  ).filter((payment) => new Date(payment.occurredAt) <= occurredAt);
+  ), clearances).filter((payment) => new Date(payment.occurredAt) < businessDayRange(occurredAt).endsAt);
   const allOtherExpensePayments = projectAccountingRows(
     await client.foundationAccountingExpensePayment.findMany({
       where: { organizationId },
@@ -504,7 +499,7 @@ async function normalizeExpensePayment(
   ).filter(
     (payment) =>
       payment.id !== original.id &&
-      new Date(payment.occurredAt) <= occurredAt,
+      new Date(payment.occurredAt) < businessDayRange(occurredAt).endsAt,
   );
   const availableCash =
     paymentMethodBalance(effectiveLotteryPayments, "cashPaise") -
@@ -590,24 +585,28 @@ async function normalizePayment(
       client.foundationAccountingCorrection.findMany({
         where: { organizationId },
       });
-    const [payments, corrections] = await Promise.all([
+    const [payments, corrections, expensePayments, clearances] = await Promise.all([
       postedPaymentsQuery,
       correctionHistoryQuery,
+      client.foundationAccountingExpensePayment.findMany({ where: { organizationId } }),
+      client.foundationLotteryEntryClearance.findMany({ where: { organizationId } }),
     ]);
     const occurredAt = new Date(original.occurredAt);
-    const otherEffective = projectAccountingRows(
+    const otherEffective = visiblePaymentRows(projectAccountingRows(
       payments,
       corrections,
       "PAYMENT",
-    ).filter(
+    ), clearances).filter(
       (payment) =>
         payment.id !== original.id &&
-        new Date(payment.occurredAt) <= occurredAt,
+        new Date(payment.occurredAt) < businessDayRange(occurredAt).endsAt,
     );
+    const otherExpenses = projectAccountingRows(expensePayments, corrections, "EXPENSE_PAYMENT")
+      .filter((payment) => new Date(payment.occurredAt) < businessDayRange(occurredAt).endsAt);
     for (const field of PAYMENT_METHOD_FIELDS) {
       const requested = BigInt(methodSplit[field] || 0);
       if (requested === 0n) continue;
-      const available = paymentMethodBalance(otherEffective, field);
+      const available = paymentMethodBalance(otherEffective, field, otherExpenses);
       if (requested > available) {
         throw correctionError(
           "INVALID_PAYMENT",
@@ -740,6 +739,7 @@ function createAccountingCorrectionService({ prisma }) {
       }
 
       const previous = effectiveSnapshot(original, latest);
+      if (previous.voided) throw correctionError("TRANSACTION_ALREADY_VOIDED", "entityId");
       const replacement = await normalizeReplacement(
         client,
         organizationId,

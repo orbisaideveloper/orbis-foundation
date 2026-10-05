@@ -52,7 +52,7 @@ const ReleaseManagerView: React.FC = () => {
             <button
               type="button"
               disabled
-              className="px-4 py-2 bg-gray-700 text-gray-400 rounded cursor-not-allowed text-sm font-semibold transition-all"
+              className="px-4 py-2 bg-gray-700 text-gray-400 rounded-sm cursor-not-allowed text-sm font-semibold transition-all"
             >
               Approve & Publish (Locked)
             </button>

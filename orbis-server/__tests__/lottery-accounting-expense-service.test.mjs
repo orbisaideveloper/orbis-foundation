@@ -173,6 +173,8 @@ describe("Lottery Accounting additive expense service", () => {
           return row;
         }),
       },
+      foundationAccountingCorrection: { findMany: vi.fn().mockResolvedValue([]) },
+      foundationLotteryEntryClearance: { findMany: vi.fn().mockResolvedValue([]) },
       foundationLotteryPayment: {
         findMany: vi.fn().mockResolvedValue([
           {

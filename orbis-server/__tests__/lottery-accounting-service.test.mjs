@@ -248,6 +248,7 @@ function createPrismaMock() {
         state.expenseCategories.filter((row) => within(row, where)),
     },
     foundationAccountingExpenseProfile: {
+      findFirst: async ({ where }) => state.expenseProfiles.find((row) => within(row, where)) || null,
       findMany: async ({ where = {} }) =>
         state.expenseProfiles.filter((row) => within(row, where)),
     },
@@ -256,6 +257,11 @@ function createPrismaMock() {
         state.expenseBills.filter((row) => within(row, where)),
     },
     foundationAccountingExpensePayment: {
+      create: async ({ data }) => {
+        const row = created("expense-payment", data);
+        state.expensePayments.push(row);
+        return row;
+      },
       findMany: async ({ where = {} }) =>
         state.expensePayments.filter((row) => within(row, where)),
     },
@@ -303,6 +309,90 @@ const sale = {
 };
 
 describe("Lottery Accounting Service", () => {
+  it("deducts corrected expenses and uses corrected receipts for new cash payments", async () => {
+    const prisma = createPrismaMock();
+    const date = new Date("2026-09-01T12:00:00.000Z");
+    prisma.state.payments.push({ id: "in", organizationId: "org-1", partyId: "party-1",
+      status: "POSTED", direction: "RECEIPT", occurredAt: date, totalAmountPaise: 100000n,
+      methodSplit: { cashPaise: "100000" } });
+    prisma.state.expensePayments.push({ id: "exp", organizationId: "org-1", profileId: "salary",
+      occurredAt: date, totalAmountPaise: 50000n, cashPaise: 50000n, bankPaise: 0n });
+    prisma.state.corrections.push(
+      { id: "c1", organizationId: "org-1", entityType: "PAYMENT", entityId: "in", version: 1,
+        replacement: { totalAmountPaise: "80000", methodSplit: { cashPaise: "80000" } }, createdAt: date },
+      { id: "c2", organizationId: "org-1", entityType: "EXPENSE_PAYMENT", entityId: "exp", version: 1,
+        replacement: { totalAmountPaise: "20000", cashPaise: "20000", bankPaise: "0" }, createdAt: date },
+    );
+    const service = createLotteryAccountingService({ prisma });
+    const outgoing = { organizationId: "org-1", partyId: "party-1", direction: "PAYMENT", occurredAt: "2026-09-01" };
+    await expect(service.recordPayment({ ...outgoing, totalAmountPaise: "70000",
+      methodSplit: { cashPaise: "70000" } }, "admin")).rejects.toMatchObject({ code: "INVALID_PAYMENT" });
+    const posted = await service.recordPayment({ ...outgoing, totalAmountPaise: "60000",
+      methodSplit: { cashPaise: "60000" } }, "admin");
+    expect(posted.verifiedPayment.totalAmountPaise).toBe("60000");
+    expect(prisma.state.payments).toHaveLength(2);
+  });
+
+  it("reduces a 5000 seller due by a 600 PWT receipt without cash or TDS", async () => {
+    const prisma = createPrismaMock();
+    const service = createLotteryAccountingService({ prisma });
+    await service.recordStockMovement({ organizationId: "org-1", type: "RECEIPT", quantity: 500 }, "admin");
+    await service.recordSale({ ...sale, dispatchQuantity: 500, morningReturnQuantity: 0,
+      dayReturnQuantity: 0, eveningReturnQuantity: 0, commissionPaise: 0 }, "admin");
+    await service.recordPayment({ organizationId: "org-1", partyId: "party-1", direction: "RECEIPT",
+      totalAmountPaise: "60000", methodSplit: { pwtPaise: "60000" } }, "admin");
+    const summary = await service.getVerifiedSummary({ organizationId: "org-1" });
+    expect(summary).toMatchObject({ outstandingPaise: "440000", netCashFlowPaise: "0",
+      pwtBalancePaise: "60000", tdsPaise: "0" });
+    expect(prisma.state.ledger.filter((line) => line.accountCode === "TDS_PAYABLE")).toHaveLength(0);
+  });
+
+  it("uses corrected expense bills and prior payments for expense due validation", async () => {
+    const prisma = createPrismaMock();
+    const date = new Date("2026-09-01T00:00:00.000Z");
+    prisma.state.expenseProfiles.push({ id: "salary", organizationId: "org-1", status: "ACTIVE", scheduleType: "ONE_TIME" });
+    prisma.state.expenseBills.push({ id: "bill", organizationId: "org-1", profileId: "salary", occurredAt: date, amountPaise: 100000n });
+    prisma.state.expensePayments.push({ id: "paid", organizationId: "org-1", profileId: "salary", occurredAt: date,
+      totalAmountPaise: 50000n, cashPaise: 50000n, bankPaise: 0n });
+    prisma.state.payments.push({ id: "funds", organizationId: "org-1", partyId: "party-1", occurredAt: date,
+      status: "POSTED", direction: "RECEIPT", totalAmountPaise: 100000n, methodSplit: { cashPaise: "100000" } });
+    prisma.state.corrections.push(
+      { id: "b1", organizationId: "org-1", entityType: "EXPENSE_BILL", entityId: "bill", version: 1,
+        replacement: { amountPaise: "50000" }, createdAt: date },
+      { id: "p1", organizationId: "org-1", entityType: "EXPENSE_PAYMENT", entityId: "paid", version: 1,
+        replacement: { totalAmountPaise: "20000", cashPaise: "20000", bankPaise: "0" }, createdAt: date },
+    );
+    const service = createLotteryAccountingService({ prisma });
+    const payment = { organizationId: "org-1", profileId: "salary", occurredAt: "2026-09-01", bankPaise: "0" };
+    await expect(service.recordExpensePayment({ ...payment, totalAmountPaise: "40000", cashPaise: "40000" }, "admin"))
+      .rejects.toMatchObject({ code: "INVALID_PAYMENT" });
+    await expect(service.recordExpensePayment({ ...payment, totalAmountPaise: "30000", cashPaise: "30000" }, "admin"))
+      .resolves.toMatchObject({ totalAmountPaise: "30000" });
+  });
+
+  it("posts excess vouchers as signed party credit without changing the TDS snapshot", async () => {
+    const prisma = createPrismaMock();
+    const service = createLotteryAccountingService({
+      prisma,
+      now: () => new Date("2026-08-30T01:00:00Z"),
+    });
+    await service.recordStockMovement(
+      { organizationId: "org-1", type: "RECEIPT", quantity: 120 }, "admin-1",
+    );
+    const result = await service.recordSale({ ...sale, commissionPaise: 100_000 }, "admin-1");
+    expect(result.calculated).toMatchObject({
+      grossSalesPaise: "80000", commissionPaise: "100000",
+      tdsRateBps: "200", tdsPaise: "2000", netPayablePaise: "-18000",
+    });
+    expect(prisma.state.sales[0].netPayablePaise).toBe(-18000n);
+    expect(result.ledger).toContainEqual(expect.objectContaining({
+      accountCode: "PARTY_RECEIVABLE", side: "CREDIT", amountPaise: "18000",
+    }));
+    expect(prisma.state.payments).toHaveLength(0);
+    expect(prisma.state.settlements).toHaveLength(0);
+    expect(prisma.state.audits.at(-1).eventType).toBe("SALE_POSTED");
+  });
+
   it("creates the organization, scoped party and accounting period with audits", async () => {
     const prisma = createPrismaMock();
     const service = createLotteryAccountingService({ prisma });
@@ -1173,4 +1263,29 @@ describe("Lottery Accounting Service", () => {
     await service.getWorkspace({ organizationId: "org-1" });
     expect(transactionCount).toBe(1);
   });
+  it("keeps a corrected stockist entry editable through the daily grid without reviving an old snapshot", async () => {
+    const prisma = createPrismaMock();
+    const date = new Date("2026-10-02T18:30:00Z");
+    prisma.state.parties.push({ id: "stockist-edit", organizationId: "org-1", partyType: "STOCKIST",
+      status: "ACTIVE", name: "Stockist", uniqueCode: "stockist-edit", ticketRatePaise: 100n });
+    const original = { id: "daily-edit", organizationId: "org-1", partyId: "stockist-edit", reference: "PUR-EDIT",
+      purchaseQuantity: 10n, morningReturnQuantity: 0n, dayReturnQuantity: 0n, eveningReturnQuantity: 0n,
+      totalReturnQuantity: 0n, netPurchaseQuantity: 10n, unitRatePaise: 100n, grossPurchasePaise: 1000n,
+      commissionPaise: 0n, tdsPaise: 0n, tdsRateBps: 200, netPayablePaise: 1000n, occurredAt: date };
+    prisma.state.stockistEntries.push(original);
+    prisma.state.corrections.push({ id: "stockist-correction", organizationId: "org-1", entityType: "STOCKIST_ENTRY",
+      entityId: original.id, version: 1, createdAt: date,
+      replacement: { purchaseQuantity: "8", netPurchaseQuantity: "8", grossPurchasePaise: "800", netPayablePaise: "800" } });
+    prisma.foundationAccountingCorrection.create = async ({ data }) => {
+      const row = { createdAt: date, ...data }; prisma.state.corrections.push(row); return row;
+    };
+    const service = createLotteryAccountingService({ prisma });
+    await service.saveDailyStockistEntry({ organizationId: "org-1", partyId: "stockist-edit", occurredAt: "2026-10-03",
+      purchaseQuantity: 20, morningReturnQuantity: 0, dayReturnQuantity: 0, eveningReturnQuantity: 0,
+      commissionPaise: "0" }, "admin");
+    const workspace = await service.getWorkspace({ organizationId: "org-1" }, { materializeRecurringExpenses: false });
+    expect(workspace.stockistEntries[0]).toMatchObject({ id: "daily-edit", purchaseQuantity: "20",
+      grossPurchasePaise: "2000", correctionVersion: 2 });
+  });
+
 });

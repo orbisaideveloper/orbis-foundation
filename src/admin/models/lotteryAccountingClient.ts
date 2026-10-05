@@ -108,7 +108,22 @@ export interface LotteryAccountingCorrectionAck {
   operationId: string;
 }
 
+export type LotteryAccountingVoidEntityType = LotteryAccountingCorrectionEntityType |
+  "SELLER_SALE" | "STOCK_MOVEMENT" | "SETTLEMENT" | "LEGACY_STOCKIST_DAY";
+export interface LotteryAccountingVoidPreview {
+  organizationId: string; entityType: LotteryAccountingVoidEntityType; entityId: string;
+  reference: string; previewToken: string;
+  effects: { transactions: number; ledgerLines: number; payments: number; settlements: number; stockAdjustments: number };
+}
+export interface LotteryAccountingVoidAck extends LotteryAccountingVoidPreview {
+  id: string; operationId: string; voided: true;
+}
+
 export interface LotteryAccountingClient {
+  previewAccountingVoid?: (entityType: LotteryAccountingVoidEntityType, entityId: string,
+    payload: Record<string, unknown>) => Promise<LotteryAccountingVoidPreview>;
+  voidAccountingTransaction?: (entityType: LotteryAccountingVoidEntityType, entityId: string,
+    payload: Record<string, unknown>) => Promise<LotteryAccountingVoidAck>;
   listOrganizations: () => Promise<LotteryOrganization[]>;
   loadWorkspace: (organizationId: string) => Promise<LotteryWorkspace>;
   createOrganization: (payload: {
@@ -282,6 +297,16 @@ export const lotteryAccountingClient: LotteryAccountingClient = {
       payload,
     );
     return body.draft;
+  },
+  async previewAccountingVoid(entityType, entityId, payload) {
+    const body = await postLottery<{ preview: LotteryAccountingVoidPreview }>(
+      `/voids/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}/preview`, payload);
+    return body.preview;
+  },
+  async voidAccountingTransaction(entityType, entityId, payload) {
+    const body = await postLottery<{ deletion: LotteryAccountingVoidAck }>(
+      `/voids/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`, payload);
+    return body.deletion;
   },
   async correctAccountingTransaction(entityType, entityId, payload) {
     const body = await postLottery<{ correction: LotteryAccountingCorrectionAck }>(

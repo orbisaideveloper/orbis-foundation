@@ -8,7 +8,7 @@ export const GlassChatCard: React.FC = () => {
   return (
     <>
       <div
-        className="relative overflow-hidden rounded-2xl border border-gray-200/50 bg-gradient-to-br from-orange-50/40 via-white/40 to-green-50/40 p-6 shadow-xl backdrop-blur-xl transition-all duration-300 hover:shadow-orange-500/10 cursor-pointer group dark:border-white/10 dark:from-orange-950/20 dark:via-black/40 dark:to-green-950/20"
+        className="relative overflow-hidden rounded-2xl border border-gray-200/50 bg-linear-to-br from-orange-50/40 via-white/40 to-green-50/40 p-6 shadow-xl backdrop-blur-xl transition-all duration-300 hover:shadow-orange-500/10 cursor-pointer group dark:border-white/10 dark:from-orange-950/20 dark:via-black/40 dark:to-green-950/20"
       >
         <button
           type="button"
@@ -20,13 +20,13 @@ export const GlassChatCard: React.FC = () => {
               setIsChatOpen(true);
             }
           }}
-          className="absolute inset-0 z-10 cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+          className="absolute inset-0 z-10 cursor-pointer rounded-2xl focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
         />
         <div className="pointer-events-none">
           {/* Header */}
           <div className="mb-4 flex items-center justify-between border-b border-gray-200/50 pb-4 dark:border-white/10">
           <div className="flex items-center gap-3">
-            <div className="rounded-full bg-gradient-to-br from-orange-100 to-amber-100 p-2 dark:from-orange-500/20 dark:to-amber-500/20">
+            <div className="rounded-full bg-linear-to-br from-orange-100 to-amber-100 p-2 dark:from-orange-500/20 dark:to-amber-500/20">
               <BrainCircuit className="h-6 w-6 text-orange-600 dark:text-orange-400" />
             </div>
             <h3 className="flex items-center gap-2 text-xl font-semibold tracking-wide text-gray-800 dark:text-white">
@@ -45,7 +45,7 @@ export const GlassChatCard: React.FC = () => {
         </div>
 
           {/* AI Last Response Area */}
-          <div className="mb-6 flex min-h-[80px] items-center rounded-xl bg-white/50 p-4 text-sm text-gray-600 shadow-sm backdrop-blur-sm dark:bg-black/30 dark:text-gray-300">
+          <div className="mb-6 flex min-h-[80px] items-center rounded-xl bg-white/50 p-4 text-sm text-gray-600 shadow-xs backdrop-blur-xs dark:bg-black/30 dark:text-gray-300">
             <p className="italic">
               "সিস্টেম অপ্টিমাইজড আছে। আমি আপনার পরবর্তী নির্দেশের জন্য
               প্রস্তুত..."
@@ -59,7 +59,7 @@ export const GlassChatCard: React.FC = () => {
               type="text"
               readOnly
               placeholder="ORBIS-কে নির্দেশ দিন..."
-              className="w-full cursor-pointer rounded-full border border-gray-300/50 bg-white/60 py-3 pl-5 pr-12 text-sm text-gray-800 outline-none backdrop-blur-sm transition-all group-hover:border-emerald-400/50 dark:border-white/10 dark:bg-black/50 dark:text-white dark:placeholder-gray-400"
+              className="w-full cursor-pointer rounded-full border border-gray-300/50 bg-white/60 py-3 pl-5 pr-12 text-sm text-gray-800 outline-hidden backdrop-blur-xs transition-all group-hover:border-emerald-400/50 dark:border-white/10 dark:bg-black/50 dark:text-white dark:placeholder-gray-400"
             />
             <button
               type="button"

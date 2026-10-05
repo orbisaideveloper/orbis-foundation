@@ -170,6 +170,15 @@ export interface LotteryAuditEvent {
   createdAt: string;
 }
 
+export interface LotteryTdsReconciliation {
+  generatedPayablePaise: string;
+  recordedCreditPaise: string;
+  legacyUnclassifiedPaise: string;
+  /** Comparison only; payable and credit remain separate accounts. */
+  comparisonDifferencePaise: string;
+  settlementStatus: "NOT_RECORDED";
+}
+
 export interface VerifiedLotterySummary {
   verified: boolean;
   moneyUnit: "PAISE";
@@ -185,6 +194,14 @@ export interface VerifiedLotterySummary {
   outstandingPaise: string;
   operatingResultPaise: string;
   netCashFlowPaise: string;
+  accruedExpensePaise?: string;
+  paidExpensePaise?: string;
+  grossCustomerSalesPaise?: string;
+  grossPurchasePaise?: string;
+  stockistCommissionPaise?: string;
+  pwtBalancePaise?: string;
+  methodBalances?: Record<string, string>;
+  tdsReconciliation?: LotteryTdsReconciliation;
   stock: {
     received: string;
     dispatched: string;
@@ -289,6 +306,11 @@ export interface LotteryWorkspace {
   expenseBills: LotteryExpenseBill[];
   expensePayments: LotteryExpensePayment[];
   customerBills: LotteryCustomerBill[];
+  voidedExpenseMonths?: Array<{ profileId: string; billingMonth: string }>;
+  voidedTransactions?: Array<{
+    entityType: string; entityId: string; createdAt: string;
+    previousSnapshot: Record<string, unknown>;
+  }>;
   summary: VerifiedLotterySummary;
   insights: LotteryInsight[];
 }

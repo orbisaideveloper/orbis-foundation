@@ -161,7 +161,7 @@ function NavigationCard({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex min-h-[92px] items-center gap-3 rounded-2xl border border-emerald-100 bg-white/90 p-3 text-left shadow-sm transition active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex min-h-[92px] items-center gap-3 rounded-2xl border border-emerald-100 bg-white/90 p-3 text-left shadow-xs transition active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-50"
     >
       <span className="rounded-xl bg-emerald-50 p-2.5 text-emerald-700">
         {icon}
@@ -376,7 +376,7 @@ export function ManagedProductModels({
         <button
           type="button"
           onClick={() => setScreen("model")}
-          className="flex w-full items-center gap-3 rounded-[20px] border border-emerald-100 bg-gradient-to-br from-emerald-50/80 via-white to-orange-50/50 p-3 text-left shadow-sm"
+          className="flex w-full items-center gap-3 rounded-[20px] border border-emerald-100 bg-linear-to-br from-emerald-50/80 via-white to-orange-50/50 p-3 text-left shadow-xs"
         >
           <span className="rounded-xl bg-emerald-600 p-2.5 text-white">
             <Bot className="h-5 w-5" />
@@ -407,7 +407,7 @@ export function ManagedProductModels({
       >
         <BackButton label="All modules" onClick={() => setScreen("catalog")} />
         {alert}
-        <div className="rounded-[22px] border border-emerald-100 bg-gradient-to-br from-emerald-50/80 via-white to-orange-50/50 p-4 shadow-sm">
+        <div className="rounded-[22px] border border-emerald-100 bg-linear-to-br from-emerald-50/80 via-white to-orange-50/50 p-4 shadow-xs">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700">
@@ -486,7 +486,7 @@ export function ManagedProductModels({
     <section className="space-y-3" aria-label="Lottery Accounting workspace">
       <BackButton label="Accounting model" onClick={() => setScreen("model")} />
       {alert}
-      <div className="rounded-[22px] border border-emerald-100 bg-white/90 p-4 shadow-sm">
+      <div className="rounded-[22px] border border-emerald-100 bg-white/90 p-4 shadow-xs">
         <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700">
           Module workspace
         </p>
@@ -535,7 +535,7 @@ function WorkspacePanel({
   children,
 }: Readonly<{ title: string; children: React.ReactNode }>) {
   return (
-    <div className="rounded-[22px] border border-emerald-100 bg-white/90 p-4 shadow-sm">
+    <div className="rounded-[22px] border border-emerald-100 bg-white/90 p-4 shadow-xs">
       <h4 className="text-sm font-black text-slate-900">{title}</h4>
       <div className="mt-3">{children}</div>
     </div>

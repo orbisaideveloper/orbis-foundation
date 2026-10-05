@@ -1,3 +1,5 @@
+import { accountingBusinessDate, accountingToday } from "../../models/lotteryAccountingBusinessDate";
+import { sellerWorkingRecordVoided, sellerVoidForDay } from "../../models/lotteryAccountingLocalProjection";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
@@ -38,7 +40,7 @@ type DailySellerRow = AccountingSellerWorkingRow;
 type SaleLike = LotterySale | LotteryDraftSale;
 
 const CONTROL_CLASS =
-  "w-full rounded-lg border border-emerald-100 bg-white px-2 py-2 text-[11px] text-slate-800 outline-none focus:border-emerald-500";
+  "w-full rounded-lg border border-emerald-100 bg-white px-2 py-2 text-[11px] text-slate-800 outline-hidden focus:border-emerald-500";
 
 const DEVICE_STORAGE_UNAVAILABLE_MESSAGE =
   "Device accounting storage is unavailable. This entry has not been durably saved.";
@@ -52,14 +54,11 @@ const METHOD_LABELS = {
 } as const;
 
 function todayInputValue() {
-  return new Date().toISOString().slice(0, 10);
+  return accountingToday();
 }
 
 function isSameEntryDate(value: string, day: string) {
-  const parsed = new Date(value);
-  return (
-    !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === day
-  );
+  return accountingBusinessDate(value) === day;
 }
 
 function selectAllInputText(event: React.FocusEvent<HTMLInputElement>) {
@@ -166,7 +165,7 @@ function storePendingRow(
   }
 }
 
-function clearPendingRow(
+export function clearPendingRow(
   organizationId: string,
   partyId: string,
   occurredAt: string,
@@ -330,7 +329,7 @@ function DailyTotals({
     ]),
   ];
   return (
-    <section className="rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm">
+    <section className="rounded-2xl border border-emerald-100 bg-white p-3 shadow-xs">
       <h5 className="text-xs font-black text-slate-900">{title}</h5>
       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {items.map(([label, value]) => (
@@ -362,6 +361,7 @@ export interface DailySellerEntryProps {
     payload: Record<string, unknown>,
   ) => Promise<LotteryDailySellerDraftIdentity | null>;
   onDeleteDraft: (saleId: string) => Promise<boolean>;
+  onVoidSeller?: (saleId: string) => Promise<boolean>;
   onCorrectPosted: (
     saleId: string,
   ) => Promise<LotteryDailySellerDraftIdentity | null>;
@@ -386,6 +386,7 @@ export function DailySellerEntry({
   onSaveDraft,
   onUpdateDraft,
   onDeleteDraft,
+  onVoidSeller,
   onCorrectPosted,
   onUpdateTdsRate,
   onRegisterFlush,
@@ -427,6 +428,7 @@ export function DailySellerEntry({
     onSaveDraft,
     onUpdateDraft,
     onDeleteDraft,
+    onVoidSeller,
     onCorrectPosted,
   });
   const sellerKey = sellers
@@ -441,6 +443,7 @@ export function DailySellerEntry({
     onSaveDraft,
     onUpdateDraft,
     onDeleteDraft,
+    onVoidSeller,
     onCorrectPosted,
   };
 
@@ -460,6 +463,11 @@ export function DailySellerEntry({
     const legacyRecoveredPartyIds = sellersRef.current.flatMap((party) => {
       const pending = readPendingRow(organizationId, party.id, selectedDate);
       if (!pending) return [];
+      if (sellerWorkingRecordVoided(currentWorkspace, { partyId: party.id, occurredAt: selectedDate,
+        row: pending, updatedAt: 0 })) {
+        clearPendingRow(organizationId, party.id, selectedDate);
+        return [];
+      }
       nextRows[party.id] = { ...nextRows[party.id], ...pending, partyId: party.id };
       return [party.id];
     });
@@ -479,6 +487,7 @@ export function DailySellerEntry({
           if (cancelled || currentDateRef.current !== selectedDate) return;
           const recoveredRecords = records.filter(
             (record) =>
+              !sellerWorkingRecordVoided(currentWorkspace, record) &&
               record.syncState !== "SYNCED" &&
               (rowVersionsRef.current.get(record.partyId) || 0) <= 1,
           );
@@ -530,7 +539,7 @@ export function DailySellerEntry({
 
   useEffect(() => {
     if (!editRequest) return;
-    setSelectedDate(editRequest.occurredAt.slice(0, 10));
+    setSelectedDate(accountingBusinessDate(editRequest.occurredAt));
     setSelectedPartyId(editRequest.partyId);
   }, [editRequest]);
 
@@ -561,6 +570,8 @@ export function DailySellerEntry({
     const nextRow = {
       ...(rowsRef.current[partyId] || blankRow(partyId)),
       [field]: value,
+      ...(sellerVoidForDay(workspaceRef.current, partyId, selectedDate)
+        ? { replacesVoidId: sellerVoidForDay(workspaceRef.current, partyId, selectedDate)?.entityId } : {}),
     };
     storePendingRow(organizationId, partyId, selectedDate, nextRow);
     onLocalRowStateChange?.(selectedDate, nextRow, "PENDING");
@@ -633,7 +644,7 @@ export function DailySellerEntry({
       calculation.hasInvalidCommission
     ) {
       throw new Error(
-        "Enter a commission amount that is not greater than the net amount.",
+        "Enter a valid non-negative commission amount.",
       );
     }
     if (BigInt(party.ticketRatePaise || "0") <= 0n) {
@@ -666,6 +677,12 @@ export function DailySellerEntry({
     actions: typeof actionsRef.current,
   ) => {
     if (!row.saleId) return true;
+    if (!window.confirm("Delete this saved seller entry?") || !window.confirm("Final confirmation: delete this entry and its linked effects?")) {
+      dirtyPartyIdsRef.current.delete(row.partyId);
+      setLocalError("Deletion cancelled. The saved transaction remains in the ledger.");
+      return false;
+    }
+    if (actions.onVoidSeller) return actions.onVoidSeller(row.saleId);
     if (row.status !== "POSTED") {
       return actions.onDeleteDraft(row.saleId);
     }
@@ -683,6 +700,7 @@ export function DailySellerEntry({
       ...entryPayload(party, row),
       operationId: sync.operationId,
       expectedVersion: sync.expectedVersion,
+      ...(row.replacesVoidId ? { replacesVoidId: row.replacesVoidId } : {}),
     };
     if (!row.saleId) return actions.onSaveDraft(payload);
     if (row.status !== "POSTED") {
@@ -990,6 +1008,7 @@ export function DailySellerEntry({
         .then((records) => {
           if (!records.length) return;
           for (const record of records) {
+            if (sellerWorkingRecordVoided(workspaceRef.current, { partyId: record.payload.partyId, occurredAt: record.entityKey.match(/:SELLER_DAILY:[^:]+:(.+)$/)?.[1] || "", row: record.payload, updatedAt: record.updatedAt })) continue;
             dirtyPartyIdsRef.current.add(record.payload.partyId);
           }
           setAutosaveVersion((current) => current + 1);
@@ -1053,7 +1072,7 @@ export function DailySellerEntry({
 
   if (!sellers.length) {
     return (
-      <section className="rounded-[22px] border border-emerald-100 bg-white p-4 shadow-sm">
+      <section className="rounded-[22px] border border-emerald-100 bg-white p-4 shadow-xs">
         <h4 className="text-sm font-black text-slate-900">
           Daily seller entry
         </h4>
@@ -1067,7 +1086,7 @@ export function DailySellerEntry({
 
   return (
     <section className="space-y-3" aria-label="Daily seller entry">
-      <header className="rounded-[22px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-orange-50/50 p-4 shadow-sm">
+      <header className="rounded-[22px] border border-emerald-100 bg-linear-to-br from-emerald-50 via-white to-orange-50/50 p-4 shadow-xs">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700">
@@ -1148,7 +1167,7 @@ export function DailySellerEntry({
         </ActionButton>
       </div>
 
-      <label className="block rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm">
+      <label className="block rounded-[22px] border border-emerald-100 bg-white p-3 shadow-xs">
         <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-slate-500">Seller</span>
         <select aria-label="Seller" value={selectedPartyId} onChange={(event) => setSelectedPartyId(event.target.value)} className={CONTROL_CLASS}>
           {sellers.map((party) => <option key={party.id} value={party.id}>{party.name}</option>)}
@@ -1288,12 +1307,12 @@ function DailySellerTable({
     ),
   };
   return (
-    <section className="rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm">
+    <section className="rounded-[22px] border border-emerald-100 bg-white p-3 shadow-xs">
       <div className="flex items-center justify-between gap-2">
         <h5 className="text-xs font-black text-slate-900">Seller table</h5>
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1 text-[9px] text-slate-500">
-            Scroll sideways <ChevronDown className="h-3 w-3 rotate-[-90deg]" />
+            Scroll sideways <ChevronDown className="h-3 w-3 -rotate-90" />
           </span>
 <SaveTableButton busy={savingPartyIds.size > 0} onSaveTable={onSaveTable} />
         </div>
@@ -1524,7 +1543,7 @@ function DailySellerGrid({
           return (
             <article
               key={party.id}
-              className="rounded-[22px] border border-emerald-100 bg-white p-4 shadow-sm"
+              className="rounded-[22px] border border-emerald-100 bg-white p-4 shadow-xs"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>

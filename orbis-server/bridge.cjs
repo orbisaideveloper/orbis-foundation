@@ -16,6 +16,7 @@ const { PrismaPg } = require("@prisma/adapter-pg");
 const { PrismaClient } = require("@prisma/client");
 
 const aiChatService = require("./ai/AIChatService.cjs");
+const { createMayaRouter } = require("./maya-api.cjs");
 const providerManager = require("./ai/AIProviderManager.cjs");
 const {
   requireAuthenticatedAdmin,
@@ -287,6 +288,12 @@ async function handleOllamaStream(prompt, res) {
 
 const app = express();
 app.disable("x-powered-by");
+// Maya owns its stricter CORS/parser boundary before the global handlers.
+// Admin capability authorization adapter remains required; fail closed meanwhile.
+app.use("/api/maya", createMayaRouter({
+  authMiddleware: requireAuthenticatedUser,
+  providerManager,
+}));
 app.use(cors(getCorsOptions));
 app.use((error, req, res, next) => {
   if (error?.code === "CORS_ORIGIN_NOT_ALLOWED") {

@@ -185,7 +185,7 @@ export function LearningReviewPanel({
 
   return (
     <div className="space-y-3">
-      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-sm font-black text-slate-900">Learning review</h3>
@@ -209,7 +209,7 @@ export function LearningReviewPanel({
       </section>
 
       {candidatePreview && selectedPattern && (
-        <section className="rounded-[22px] border border-emerald-200 bg-emerald-50/70 p-4 shadow-sm">
+        <section className="rounded-[22px] border border-emerald-200 bg-emerald-50/70 p-4 shadow-xs">
           <p className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">Admin decision required</p>
           <h3 className="mt-2 text-sm font-black text-slate-900">Proposed safe rule</h3>
           <p className="mt-2 text-sm leading-relaxed text-slate-700">{candidatePreview.candidate.content}</p>
@@ -237,7 +237,7 @@ export function LearningReviewPanel({
         </section>
       )}
 
-      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
         <h3 className="text-sm font-black text-slate-900">Patterns awaiting review</h3>
         <p className="mt-1 text-[10px] text-slate-500">
           These are aggregated non-confirmed outcomes. Creating a preview does not write a rule.
@@ -270,7 +270,7 @@ export function LearningReviewPanel({
         </div>
       </section>
 
-      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
         <h3 className="text-sm font-black text-slate-900">Approved rules</h3>
         <p className="mt-1 text-[10px] text-slate-500">Stored rules are not yet consumed by Brain decisions.</p>
         <div className="mt-3 space-y-2">

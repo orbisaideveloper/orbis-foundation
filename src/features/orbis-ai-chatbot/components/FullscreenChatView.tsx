@@ -1044,7 +1044,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[radial-gradient(circle_at_0_0,rgba(255,225,180,0.72),transparent_34%),radial-gradient(circle_at_100%_100%,rgba(211,247,213,0.78),transparent_34%),linear-gradient(155deg,#fff3df,#fff9ed_48%,#edfbea)] font-sans">
-      <header className="z-10 flex shrink-0 items-center justify-between border-b border-emerald-100/70 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-2xl sm:px-6 sm:py-4">
+      <header className="z-10 flex shrink-0 items-center justify-between border-b border-emerald-100/70 bg-white/80 px-4 py-3 shadow-xs backdrop-blur-2xl sm:px-6 sm:py-4">
         <div className="flex items-center gap-4">
           <button
             type="button"
@@ -1055,7 +1055,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
             <ArrowLeft className="h-6 w-6" />
           </button>
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-orange-100 bg-gradient-to-br from-emerald-50 via-white to-orange-100 shadow-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-orange-100 bg-linear-to-br from-emerald-50 via-white to-orange-100 shadow-xs">
               <Sparkles className="h-4 w-4 text-emerald-600" />
             </div>
             <div>
@@ -1124,7 +1124,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       </header>
 
       <div className="z-10 shrink-0 border-b border-orange-100/70 bg-[#fff8e9]/80 px-3 py-2 backdrop-blur-xl sm:px-6">
-        <div className="mx-auto flex max-w-4xl gap-2 overflow-x-auto [scrollbar-width:none]">
+        <div className="mx-auto flex max-w-4xl gap-2 overflow-x-auto scrollbar-none">
           <button
             type="button"
             onClick={() => setInputText("আমার Termux system info দেখাও")}
@@ -1184,7 +1184,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       {showStorageControls && (
         <section
           aria-label="Local Chatbot data controls"
-          className="z-20 border-b bg-white p-4 text-sm shadow-sm dark:bg-gray-900 dark:text-gray-200"
+          className="z-20 border-b bg-white p-4 text-sm shadow-xs dark:bg-gray-900 dark:text-gray-200"
         >
           <div className="mx-auto max-w-4xl space-y-2">
             <p className="font-semibold">
@@ -1227,7 +1227,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                     );
                     setArchiveNotice(null);
                   }}
-                  className="ml-2 rounded border px-2 py-1 disabled:opacity-50"
+                  className="ml-2 rounded-sm border px-2 py-1 disabled:opacity-50"
                 >
                   <option value="6h">Last 6 hours</option>
                   <option value="24h">Last 24 hours</option>
@@ -1241,7 +1241,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                   type="button"
                   disabled={!persistent}
                   onClick={() => void copyChatArchive()}
-                  className="rounded border px-3 py-1 disabled:opacity-50"
+                  className="rounded-sm border px-3 py-1 disabled:opacity-50"
                 >
                   Copy chat
                 </button>
@@ -1249,7 +1249,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                   type="button"
                   disabled={!persistent}
                   onClick={() => void exportChatArchive("txt")}
-                  className="rounded border px-3 py-1 disabled:opacity-50"
+                  className="rounded-sm border px-3 py-1 disabled:opacity-50"
                 >
                   Export .txt
                 </button>
@@ -1257,7 +1257,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                   type="button"
                   disabled={!persistent}
                   onClick={() => void exportChatArchive("json")}
-                  className="rounded border px-3 py-1 disabled:opacity-50"
+                  className="rounded-sm border px-3 py-1 disabled:opacity-50"
                 >
                   Export .json
                 </button>
@@ -1281,7 +1281,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                 <button
                   type="button"
                   onClick={() => toggleLearning(!learningEnabled)}
-                  className="rounded border px-3 py-1"
+                  className="rounded-sm border px-3 py-1"
                 >
                   {learningEnabled
                     ? "Turn learning off"
@@ -1294,7 +1294,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                     !messages.some((item) => item.role === "user")
                   }
                   onClick={() => void previewLearningCandidate()}
-                  className="rounded border px-3 py-1 disabled:opacity-50"
+                  className="rounded-sm border px-3 py-1 disabled:opacity-50"
                 >
                   Review latest message for learning
                 </button>
@@ -1302,7 +1302,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                   type="button"
                   disabled={!learningEnabled}
                   onClick={() => void refreshLearnedRecords()}
-                  className="rounded border px-3 py-1 disabled:opacity-50"
+                  className="rounded-sm border px-3 py-1 disabled:opacity-50"
                 >
                   List learned records
                 </button>
@@ -1317,7 +1317,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                   {learnedRecords.map((record) => (
                     <li
                       key={record.id}
-                      className="flex items-start justify-between gap-3 rounded border p-2"
+                      className="flex items-start justify-between gap-3 rounded-sm border p-2"
                     >
                       <span className="text-xs">{record.content}</span>
                       <button
@@ -1341,7 +1341,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                     setStorageState("ephemeral");
                     cache.clearEphemeral();
                   }}
-                  className="rounded border px-3 py-1"
+                  className="rounded-sm border px-3 py-1"
                 >
                   Revoke storage consent
                 </button>
@@ -1349,7 +1349,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                 <button
                   type="button"
                   onClick={() => void chooseConsent(true)}
-                  className="rounded border px-3 py-1"
+                  className="rounded-sm border px-3 py-1"
                 >
                   Enable device storage
                 </button>
@@ -1362,14 +1362,14 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                     .then(refreshUsage)
                 }
                 disabled={!persistent}
-                className="rounded border px-3 py-1 disabled:opacity-50"
+                className="rounded-sm border px-3 py-1 disabled:opacity-50"
               >
                 Clear personal memory
               </button>
               <button
                 type="button"
                 onClick={() => void clearChat()}
-                className="rounded border px-3 py-1"
+                className="rounded-sm border px-3 py-1"
               >
                 Clear chat
               </button>
@@ -1391,7 +1391,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                         setShowConsent(true);
                       });
                 }}
-                className="rounded border border-red-300 px-3 py-1 text-red-600 disabled:opacity-50"
+                className="rounded-sm border border-red-300 px-3 py-1 text-red-600 disabled:opacity-50"
               >
                 Delete all local Chatbot data
               </button>
@@ -1457,7 +1457,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               }}
               placeholder="ORBIS-কে নির্দেশ দিন..."
               disabled={isSending || !ready}
-              className="min-h-[44px] max-h-44 flex-1 resize-none bg-transparent px-2 py-3 text-[15px] leading-relaxed text-slate-800 outline-none placeholder:text-slate-400 disabled:opacity-60"
+              className="min-h-[44px] max-h-44 flex-1 resize-none bg-transparent px-2 py-3 text-[15px] leading-relaxed text-slate-800 outline-hidden placeholder:text-slate-400 disabled:opacity-60"
             />
             <button
               type="button"
@@ -1483,14 +1483,14 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
                 !ready
               }
               aria-label="Send message"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-200 text-slate-700 shadow-sm hover:bg-orange-300 disabled:opacity-50"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-200 text-slate-700 shadow-xs hover:bg-orange-300 disabled:opacity-50"
             >
               <Send className="h-4 w-4" />
             </button>
           </div>
           {voiceStatus ? (
             <div className="flex justify-end px-2 pb-1 pt-0.5">
-              <output className="max-w-full break-words text-right text-[11px] text-slate-500">
+              <output className="max-w-full wrap-break-word text-right text-[11px] text-slate-500">
                 {voiceStatus}
               </output>
             </div>
@@ -1503,7 +1503,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       </div>
 
       {showConsent && (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+        <div className="absolute inset-0 z-70 flex items-center justify-center bg-black/40 p-4">
           <dialog
             open
             aria-modal="true"
@@ -1539,7 +1539,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
       )}
 
       {learningCandidate && (
-        <div className="absolute inset-0 z-[75] flex items-center justify-center bg-black/40 p-4">
+        <div className="absolute inset-0 z-75 flex items-center justify-center bg-black/40 p-4">
           <dialog
             open
             aria-modal="true"
@@ -1553,7 +1553,7 @@ export const FullscreenChatView: React.FC<FullscreenChatViewProps> = ({
               This is the only text that will be stored. The source chat and
               response are never written to the database.
             </p>
-            <p className="mt-4 rounded border p-3 text-sm">
+            <p className="mt-4 rounded-sm border p-3 text-sm">
               {learningCandidate.content}
             </p>
             <p className="mt-2 text-xs text-gray-500">

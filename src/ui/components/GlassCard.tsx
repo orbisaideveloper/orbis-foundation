@@ -52,13 +52,13 @@ export const GlassCard: React.FC<GlassCardProps> = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay }}
-      className="relative overflow-hidden rounded-[var(--radius-card)] border border-[var(--glass-opacity-border)] bg-[var(--glass-opacity-bg)] p-6 backdrop-blur-[var(--glass-blur)] shadow-xl flex flex-col"
+      className="relative overflow-hidden rounded-(--radius-card) border border-(--glass-opacity-border) bg-(--glass-opacity-bg) p-6 backdrop-blur-(--glass-blur) shadow-xl flex flex-col"
       role="region"
       aria-labelledby={`card-title-${cardId}`}
     >
       <motion.div
         layout
-        className="flex items-center justify-between mb-4 border-b border-[var(--glass-opacity-border)] pb-2"
+        className="flex items-center justify-between mb-4 border-b border-(--glass-opacity-border) pb-2"
       >
         <h3
           id={`card-title-${cardId}`}
@@ -75,7 +75,7 @@ export const GlassCard: React.FC<GlassCardProps> = ({
             <button
               type="button"
               onClick={handleCopy}
-              className="hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#F97316] rounded"
+              className="hover:text-white transition-colors focus:outline-hidden focus:ring-2 focus:ring-[#F97316] rounded-sm"
               title={isCopied ? "Copied!" : "Copy to Clipboard"}
               aria-label="Copy widget data"
               aria-live="polite"
@@ -91,7 +91,7 @@ export const GlassCard: React.FC<GlassCardProps> = ({
             <button
               type="button"
               onClick={() => setIsExpanded(!isExpanded)}
-              className="hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#F97316] rounded"
+              className="hover:text-white transition-colors focus:outline-hidden focus:ring-2 focus:ring-[#F97316] rounded-sm"
               title={isExpanded ? "Collapse View" : "Expand JSON View"}
               aria-expanded={isExpanded}
               aria-controls={`json-view-${cardId}`}

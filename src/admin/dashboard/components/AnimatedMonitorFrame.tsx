@@ -28,7 +28,7 @@ export function AnimatedMonitorFrame({
       className={className}
     >
       <div
-        className={`px-5 py-4 border-b border-slate-100 flex justify-between items-center shadow-sm ${headerClassName}`}
+        className={`px-5 py-4 border-b border-slate-100 flex justify-between items-center shadow-xs ${headerClassName}`}
       >
         <h2 className={titleClassName}>{title}</h2>
         <button

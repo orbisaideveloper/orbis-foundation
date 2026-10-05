@@ -155,7 +155,7 @@ describe("lotteryAccountingLocalProjection", () => {
     });
   });
 
-  it("uses a zero local row as delete and projects a posted correction as draft", () => {
+  it("keeps a zeroed saved row until confirmed deletion and projects a posted correction as draft", () => {
     const serverDraft = {
       ...projectSellerWorkingRecords(workspace, [localRecord()]).draftSales[0],
       id: "draft-1",
@@ -179,7 +179,7 @@ describe("lotteryAccountingLocalProjection", () => {
         }),
       ],
     );
-    expect(deleted.draftSales).toEqual([]);
+    expect(deleted.draftSales).toEqual([serverDraft]);
 
     const posted = {
       ...serverDraft,

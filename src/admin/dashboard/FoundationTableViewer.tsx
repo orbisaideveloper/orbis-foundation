@@ -191,7 +191,7 @@ export function FoundationTableViewerRow({
       >
         <span className="min-w-0">
           <span className="block text-[11px] font-semibold text-slate-500">{status}</span>
-          <span className="mt-1 block break-words text-[13px] font-bold text-slate-800">
+          <span className="mt-1 block wrap-break-word text-[13px] font-bold text-slate-800">
             {table}: {formatStoredCount(count, "Unavailable")}
           </span>
           <span className="mt-1 block text-[8px] text-slate-400">
@@ -206,7 +206,7 @@ export function FoundationTableViewerRow({
           open
           aria-modal="true"
           aria-label={`${table} stored records`}
-          className="fixed inset-0 z-[95] m-0 flex h-dvh max-h-none w-screen max-w-none flex-col bg-[#fffef9] text-slate-800"
+          className="fixed inset-0 z-95 m-0 flex h-dvh max-h-none w-screen max-w-none flex-col bg-[#fffef9] text-slate-800"
         >
           <header className="flex shrink-0 items-center gap-3 border-b border-emerald-100 bg-white/95 px-3 py-3">
             {selected ? (
@@ -271,11 +271,11 @@ export function FoundationTableViewerRow({
                     </button>
                   )}
                 </div>
-                <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-2xl border border-emerald-100 bg-white p-3 text-[10px]">
+                <pre className="overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-2xl border border-emerald-100 bg-white p-3 text-[10px]">
                   {JSON.stringify(metadata, null, 2)}
                 </pre>
                 {content !== null && (
-                  <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-2xl bg-slate-950 p-3 text-[10px] text-slate-100">
+                  <pre className="overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-2xl bg-slate-950 p-3 text-[10px] text-slate-100">
                     {content}
                   </pre>
                 )}

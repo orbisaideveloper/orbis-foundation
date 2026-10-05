@@ -32,14 +32,14 @@ const AdminSidebar: React.FC = () => {
             key={item.path}
             to={item.path}
             className={({ isActive }) =>
-              `flex-shrink-0 md:flex-shrink flex items-center gap-4 px-5 py-3.5 md:py-4 rounded-2xl border transition-all duration-300 ${
+              `shrink-0 md:shrink flex items-center gap-4 px-5 py-3.5 md:py-4 rounded-2xl border transition-all duration-300 ${
                 isActive
                   ? "bg-white border-green-100 text-green-700 shadow-md scale-105 md:scale-100 md:translate-x-2"
                   : "bg-transparent border-transparent text-slate-500 hover:bg-white/50 hover:text-slate-800"
               }`
             }
           >
-            <span className="text-xl drop-shadow-sm">{item.icon}</span>
+            <span className="text-xl drop-shadow-xs">{item.icon}</span>
             <span className="text-sm font-bold tracking-wide whitespace-nowrap">
               {item.label}
             </span>

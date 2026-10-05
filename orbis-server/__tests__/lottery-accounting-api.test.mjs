@@ -285,4 +285,20 @@ describe("Lottery Accounting Admin API", () => {
     );
     expect(JSON.stringify(response.body)).not.toContain("database detail");
   });
+  it("routes a scoped preview and final void through the protected Admin API", async () => {
+    const service = serviceMock();
+    service.previewAccountingVoid = vi.fn().mockResolvedValue({ previewToken: "token" });
+    service.voidAccountingTransaction = vi.fn().mockResolvedValue({ voided: true });
+    const app = appWith(service);
+    await request(app).post("/lottery/voids/PAYMENT/payment-1/preview")
+      .send({ organizationId: "org-1" }).expect(200);
+    await request(app).post("/lottery/voids/PAYMENT/payment-1")
+      .send({ organizationId: "org-1", previewToken: "token", operationId: "operation" }).expect(201);
+    expect(service.voidAccountingTransaction).toHaveBeenCalledWith({ organizationId: "org-1",
+      entityType: "PAYMENT", entityId: "payment-1", previewToken: "token", operationId: "operation" }, "admin-1");
+    await request(appWith(service, (_req, res) => res.status(401).end()))
+      .post("/lottery/voids/PAYMENT/payment-1").send({ organizationId: "org-1" }).expect(401);
+    expect(service.voidAccountingTransaction).toHaveBeenCalledOnce();
+  });
+
 });

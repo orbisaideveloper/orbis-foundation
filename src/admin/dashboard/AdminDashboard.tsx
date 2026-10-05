@@ -327,7 +327,7 @@ const MetricTile: React.FC<{
     <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700/80">
       {label}
     </p>
-    <div className="mt-3 break-words text-[18px] font-black text-slate-800">
+    <div className="mt-3 wrap-break-word text-[18px] font-black text-slate-800">
       {value}
     </div>
     <p className="mt-1 text-[9px] text-slate-400">{source}</p>
@@ -357,7 +357,7 @@ const DetailRow: React.FC<{
     <div className="flex items-center justify-between gap-4 border-b border-emerald-50 py-3 last:border-b-0">
       <div className="min-w-0">
         <p className="text-[11px] font-semibold text-slate-500">{label}</p>
-        <p className="mt-1 break-words text-[13px] font-bold text-slate-800">
+        <p className="mt-1 wrap-break-word text-[13px] font-bold text-slate-800">
           {value}
         </p>
         <p className="mt-1 text-[8px] text-slate-400">{source}</p>
@@ -400,7 +400,7 @@ const HomeCard: React.FC<HomeCardProps> = ({
     onClick={onClick}
     className={`group relative min-h-[100px] overflow-hidden rounded-[20px] border border-emerald-100/70 bg-white/85 p-3 text-left shadow-[0_10px_26px_rgba(50,90,58,0.07)] transition active:scale-[0.985] ${className}`}
   >
-    <span className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-emerald-300 via-white to-orange-200" />
+    <span className="absolute inset-x-0 bottom-0 h-1 bg-linear-to-r from-emerald-300 via-white to-orange-200" />
     <div className="flex items-start justify-between gap-3">
       <span className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700/80">
         {eyebrow}
@@ -427,7 +427,7 @@ const ReadOnlyChatPreview: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     open
     aria-modal="true"
     aria-label="ORBIS Assistant read-only preview"
-    className="fixed inset-0 z-[90] m-0 flex h-dvh max-h-none w-screen max-w-none flex-col bg-[linear-gradient(180deg,#fffef9_0%,#f6fbf3_100%)] text-slate-800"
+    className="fixed inset-0 z-90 m-0 flex h-dvh max-h-none w-screen max-w-none flex-col bg-[linear-gradient(180deg,#fffef9_0%,#f6fbf3_100%)] text-slate-800"
   >
     <header className="flex items-center gap-3 border-b border-emerald-100 bg-white/90 px-4 py-3 backdrop-blur-xl">
       <button
@@ -446,7 +446,7 @@ const ReadOnlyChatPreview: React.FC<{ onClose: () => void }> = ({ onClose }) => 
       </div>
     </header>
     <main className="flex flex-1 items-center justify-center p-5">
-      <section className="w-full max-w-md rounded-[24px] border border-emerald-100 bg-white/90 p-5 text-center shadow-sm">
+      <section className="w-full max-w-md rounded-[24px] border border-emerald-100 bg-white/90 p-5 text-center shadow-xs">
         <MessageCircle className="mx-auto h-8 w-8 text-emerald-600" />
         <h3 className="mt-3 text-base font-black text-slate-900">
           Chat interaction is disabled here
@@ -695,7 +695,7 @@ export function AdminDashboard({
   };
 
   const summaryHeader = (
-    <section className="rounded-[24px] border border-emerald-100/70 bg-gradient-to-br from-white via-emerald-50/65 to-orange-50/70 p-5 shadow-[0_16px_40px_rgba(50,90,58,0.08)]">
+    <section className="rounded-[24px] border border-emerald-100/70 bg-linear-to-br from-white via-emerald-50/65 to-orange-50/70 p-5 shadow-[0_16px_40px_rgba(50,90,58,0.08)]">
       {previewMode && (
         <output
           className="mb-4 flex items-start gap-2 rounded-2xl border border-orange-100 bg-orange-50/80 px-3 py-2.5 text-[10px] font-semibold leading-relaxed text-orange-800"
@@ -726,7 +726,7 @@ export function AdminDashboard({
           onClick={() => void refreshSummary()}
           disabled={summaryLoading}
           aria-label="Refresh dashboard data"
-          className="rounded-2xl border border-emerald-100 bg-white/85 p-3 text-emerald-700 shadow-sm disabled:opacity-50"
+          className="rounded-2xl border border-emerald-100 bg-white/85 p-3 text-emerald-700 shadow-xs disabled:opacity-50"
         >
           <RefreshCw className={`h-5 w-5 ${summaryLoading ? "animate-spin" : ""}`} />
         </button>
@@ -755,7 +755,7 @@ export function AdminDashboard({
           subtitle="One conversational entry to Brain and enabled capabilities."
           icon={<MessageCircle className="h-5 w-5" />}
           onClick={openChat}
-          className="col-span-4 bg-gradient-to-br from-emerald-50/90 via-white to-orange-50/80 md:col-span-2 md:row-span-2 md:min-h-[244px]"
+          className="col-span-4 bg-linear-to-br from-emerald-50/90 via-white to-orange-50/80 md:col-span-2 md:row-span-2 md:min-h-[244px]"
           status={<StatusPill state={providerHealth} label={activeProvider?.name || "Provider not checked"} />}
         />
         <HomeCard
@@ -870,7 +870,7 @@ export function AdminDashboard({
 
   const renderMarket = () => (
     <div className="space-y-3">
-      <section className="rounded-[24px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/70 p-5 shadow-sm">
+      <section className="rounded-[24px] border border-orange-100 bg-linear-to-br from-white to-orange-50/70 p-5 shadow-xs">
         <div className="flex items-center gap-3">
           <span className="rounded-2xl bg-orange-50 p-3 text-orange-500"><TrendingUp className="h-6 w-6" /></span>
           <div>
@@ -897,7 +897,7 @@ export function AdminDashboard({
         <MetricTile label="Development registry" value="Not wired" source="No live module registry endpoint" />
         <MetricTile label="Published registry" value="Not wired" source="No live module registry endpoint" />
       </div>
-      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
         <h3 className="text-sm font-black text-slate-900">Current capability registry</h3>
         <div className="mt-2">
           {(diagnosticExport?.capabilities || []).map((capability) => (
@@ -948,7 +948,7 @@ export function AdminDashboard({
         <MetricTile label="Load average" value={systemStats.load} source="OS 1-minute load average" />
         <MetricTile label="Uptime" value={systemStats.uptime} source="OS uptime" />
       </div>
-      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
         <h3 className="text-sm font-black text-slate-900">Runtime boundaries</h3>
         <DetailRow label="Current backend runtime" value={`${systemStats.platform} ${systemStats.release}`} source="/api/system-stats" copyable />
         <DetailRow label="Node runtime" value={diagnosticExport?.runtime.node || "Unavailable"} source="Admin diagnostic export" copyable />
@@ -963,7 +963,7 @@ export function AdminDashboard({
     <div className="space-y-3">
       <nav
         aria-label="Brain detail sections"
-        className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]"
+        className="flex gap-2 overflow-x-auto pb-1 scrollbar-none"
       >
         {([
           ["status", "Status"],
@@ -996,7 +996,7 @@ export function AdminDashboard({
             <MetricTile label="Active provider" value={activeProvider?.name || "Unavailable"} source="/api/ai/providers/status" />
             <MetricTile label="Provider health" value={activeProvider?.health?.state || "UNKNOWN"} source={`Checked: ${formatCheckedAt(activeProvider?.health?.checkedAt)}`} />
           </div>
-          <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+          <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
             <h3 className="text-sm font-black text-slate-900">Providers</h3>
             {(providerStatus.allProviders || []).map((provider) => (
               <DetailRow
@@ -1034,7 +1034,7 @@ export function AdminDashboard({
       )}
 
       {brainDetailTab === "changes" && (
-        <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+        <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
           <h3 className="text-sm font-black text-slate-900">Brain Test Lab boundaries</h3>
           <DetailRow label="Chat Test Log" value="Device-local only" source="Existing OrbisChatDB; raw chat is not written to server diagnostics" />
           <DetailRow label="Chat behaviour" value="Unchanged" source="Existing authentication, rate limit, routing and approval boundaries remain in place" />
@@ -1068,7 +1068,7 @@ export function AdminDashboard({
           <MetricTile label="Provider health" value={activeProvider?.health?.state || "UNKNOWN"} source={activeProvider?.name || "No active provider"} />
           <MetricTile label="Process uptime" value={diagnosticExport ? `${Math.floor(diagnosticExport.runtime.processUptimeSeconds / 60)} min` : "Unavailable"} source="Current backend process" />
         </div>
-        <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+        <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="min-w-0 flex-1 text-sm font-black text-slate-900">Redacted operational events</h3>
             <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -1105,7 +1105,7 @@ export function AdminDashboard({
               </button>
             </div>
           </div>
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 scrollbar-none">
             {(["ALL", "INFO", "WARN", "ERROR"] as const).map((filter) => (
               <button
                 key={filter}
@@ -1114,7 +1114,7 @@ export function AdminDashboard({
                 aria-pressed={diagnosticFilter === filter}
                 className={`min-h-[36px] shrink-0 rounded-full border px-3 py-1.5 text-[10px] font-bold ${
                   diagnosticFilter === filter
-                    ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
+                    ? "border-emerald-600 bg-emerald-600 text-white shadow-xs"
                     : "border-emerald-100 bg-white text-slate-500"
                 }`}
               >
@@ -1146,7 +1146,7 @@ export function AdminDashboard({
         <MetricTile label="Telemetry" value={diagnosticExport?.telemetry.status || "Unavailable"} source="Admin diagnostic export" />
         <MetricTile label="Storage scope" value="Foundation tables only" source="Diagnostic export allow-list" />
       </div>
-      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
         <h3 className="text-sm font-black text-slate-900">Foundation table counts</h3>
         {(diagnosticExport?.database.foundationTableCounts || []).map((table) => (
           <FoundationTableViewerRow
@@ -1177,7 +1177,7 @@ export function AdminDashboard({
         <MetricTile label="Migrations" value={diagnosticExport?.migrations.length ?? "Unavailable"} source="Local migration directory" />
         <MetricTile label="Generated" value={diagnosticExport?.generatedAt ? new Date(diagnosticExport.generatedAt).toLocaleString() : "Unavailable"} source="Diagnostic export timestamp" />
       </div>
-      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
         <h3 className="text-sm font-black text-slate-900">Release evidence</h3>
         <DetailRow label="Current commit" value={diagnosticExport?.version.commit || "Unavailable"} source="Admin diagnostic export" copyable />
         <DetailRow label="Application version" value={diagnosticExport?.version.application || "Unavailable"} source="package.json" copyable />
@@ -1266,7 +1266,7 @@ export function AdminDashboard({
       </nav>
 
       {moreOpen && (
-        <div className="fixed inset-0 z-[70] flex items-end md:justify-center">
+        <div className="fixed inset-0 z-70 flex items-end md:justify-center">
           <button
             type="button"
             aria-label="Close More menu"

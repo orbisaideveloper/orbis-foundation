@@ -101,7 +101,7 @@ export default function SystemDiagnosticConsole() {
 
     if (errorMsg) {
       return (
-        <div className="bg-red-50 border border-red-200 text-red-600 p-6 rounded-xl text-center shadow-sm">
+        <div className="bg-red-50 border border-red-200 text-red-600 p-6 rounded-xl text-center shadow-xs">
           <h3 className="font-bold text-lg mb-2">⚠️ Connection Failed</h3>
           <p className="text-sm font-medium">{errorMsg}</p>
         </div>
@@ -114,7 +114,7 @@ export default function SystemDiagnosticConsole() {
           <button
             type="button"
             onClick={() => setActiveCard("Bridge Status")}
-            className="text-left bg-white border border-blue-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
+            className="text-left bg-white border border-blue-100 shadow-xs rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
           >
             <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-wide">
               Bridge Node
@@ -128,7 +128,7 @@ export default function SystemDiagnosticConsole() {
           <button
             type="button"
             onClick={() => setActiveCard("Git Activity")}
-            className="text-left bg-white border border-orange-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
+            className="text-left bg-white border border-orange-100 shadow-xs rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
           >
             <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">
               Last Commit
@@ -141,7 +141,7 @@ export default function SystemDiagnosticConsole() {
           <button
             type="button"
             onClick={() => setActiveCard("Hardware Metrics")}
-            className="text-left bg-white border border-green-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
+            className="text-left bg-white border border-green-100 shadow-xs rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
           >
             <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-wide">
               Server Load
@@ -157,7 +157,7 @@ export default function SystemDiagnosticConsole() {
           <button
             type="button"
             onClick={() => setActiveCard("AI Providers")}
-            className="text-left bg-white border border-purple-100 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
+            className="text-left bg-white border border-purple-100 shadow-xs rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95"
           >
             <h4 className="text-[10px] font-bold text-purple-600 uppercase tracking-wide">
               Local Models
@@ -168,11 +168,11 @@ export default function SystemDiagnosticConsole() {
           <button
             type="button"
             onClick={() => setActiveCard("Master Console")}
-            className="text-left bg-white border border-slate-200 shadow-sm rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95 md:col-span-2"
+            className="text-left bg-white border border-slate-200 shadow-xs rounded-xl p-4 cursor-pointer hover:border-slate-400 hover:shadow-md hover:scale-[1.02] transition-all duration-200 active:scale-95 md:col-span-2"
           >
             <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
               Runtime Console{" "}
-              <span className="bg-red-100 text-red-600 px-1.5 rounded animate-pulse">
+              <span className="bg-red-100 text-red-600 px-1.5 rounded-sm animate-pulse">
                 LIVE
               </span>
             </h4>
@@ -204,7 +204,7 @@ export default function SystemDiagnosticConsole() {
               setCopiedText(true);
               setTimeout(() => setCopiedText(false), 2000);
             }}
-            className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-sm ${copiedText ? "bg-emerald-100 text-emerald-700" : "bg-slate-800 hover:bg-slate-700 text-white"}`}
+            className={`text-[12px] font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all active:scale-95 shadow-xs ${copiedText ? "bg-emerald-100 text-emerald-700" : "bg-slate-800 hover:bg-slate-700 text-white"}`}
           >
             {copiedText ? "✓ Copied" : "⧉ Copy Data"}
           </button>
@@ -227,7 +227,7 @@ export default function SystemDiagnosticConsole() {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center font-sans">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-xs z-9999 flex flex-col items-center justify-center font-sans">
           <motion.div
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
@@ -235,7 +235,7 @@ export default function SystemDiagnosticConsole() {
             className="w-full max-w-4xl h-[85vh] bg-slate-50 shadow-2xl rounded-2xl flex flex-col overflow-hidden border border-slate-200"
           >
             {/* HEADER */}
-            <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white shadow-sm">
+            <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white shadow-xs">
               <h2 className="text-[16px] font-bold text-slate-800 flex items-center gap-2">
                 <span className="text-xl">📊</span>{" "}
                 {activeCard ? `${activeCard} Log` : "Overview Monitor"}

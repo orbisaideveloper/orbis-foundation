@@ -1,3 +1,6 @@
+const { paymentMethodBalance } = require("./accounting-money-balances.cjs");
+const { projectRecurringExpenseBills } = require("./accounting-expense-projection.cjs");
+const { businessDateKey, businessDayRange } = require("./accounting-business-date.cjs");
 const {
   accountingError,
   analyzeLotterySummary,
@@ -30,15 +33,6 @@ const PAYMENT_METHOD_FIELDS = [
 const EXPENSE_SCHEDULE_TYPES = new Set(["ONE_TIME", "MONTHLY"]);
 const SYSTEM_MONTHLY_EXPENSE_ACTOR = "SYSTEM_MONTHLY_EXPENSE";
 
-function paymentMethodBalance(payments, method) {
-  return payments.reduce((balance, payment) => {
-    const amount = BigInt(payment.methodSplit?.[method] || 0);
-    return payment.direction === "RECEIPT"
-      ? balance + amount
-      : balance - amount;
-  }, 0n);
-}
-
 function requiredText(value, field) {
   if (typeof value !== "string" || !value.trim()) {
     throw accountingError("REQUIRED_FIELD", field);
@@ -48,8 +42,11 @@ function requiredText(value, field) {
 
 function optionalDate(value, field, fallback = new Date()) {
   const parsed = value ? new Date(value) : fallback;
-  if (Number.isNaN(parsed.getTime()))
-    throw accountingError("INVALID_DATE", field);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+      parsed.toISOString().slice(0, 10) !== value)
+  ) throw accountingError("INVALID_DATE", field);
   return parsed;
 }
 
@@ -112,8 +109,9 @@ function partyProfileFromRow(party) {
 }
 
 function financialYearStart(occurredAt) {
-  const year = occurredAt.getUTCFullYear();
-  return occurredAt.getUTCMonth() >= 3 ? year : year - 1;
+  const day = businessDateKey(occurredAt);
+  const year = Number(day.slice(0, 4));
+  return Number(day.slice(5, 7)) >= 4 ? year : year - 1;
 }
 
 function financialYearLabel(occurredAt) {
@@ -128,27 +126,14 @@ function financialYearRange(startYear) {
   }
   return {
     label: `FY${String(parsed).slice(-2)}-${String(parsed + 1).slice(-2)}`,
-    startsAt: new Date(Date.UTC(parsed, 3, 1)),
-    endsAt: new Date(Date.UTC(parsed + 1, 2, 31, 23, 59, 59, 999)),
+    startsAt: new Date(`${parsed}-04-01T00:00:00.000+05:30`),
+    endsAt: new Date(`${parsed + 1}-03-31T23:59:59.999+05:30`),
   };
 }
 
 function optionalReference(value) {
   if (value === undefined || value === null || value === "") return null;
   return requiredText(value, "reference");
-}
-
-function utcDayRange(date) {
-  const startsAt = new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-  );
-  const endsAt = new Date(startsAt);
-  endsAt.setUTCDate(endsAt.getUTCDate() + 1);
-  return { startsAt, endsAt };
-}
-
-function utcDateKey(date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function expenseScheduleType(value) {
@@ -185,8 +170,8 @@ function recurringMonthKeys(startDate, throughDate) {
   return months;
 }
 
-function monthStartUtc(monthKey) {
-  return new Date(`${monthKey}-01T00:00:00.000Z`);
+function businessMonthStart(monthKey) {
+  return new Date(`${monthKey}-01T00:00:00.000+05:30`);
 }
 
 function serialize(value) {
@@ -366,7 +351,7 @@ function clearanceScopeForStockMovement(movement) {
 function rowWasCleared(clearances, row, scope) {
   const rowChangedAt = new Date(row.updatedAt || row.createdAt || 0);
   return clearances.some((clearance) => {
-    if (utcDateKey(clearance.occurredAt) !== utcDateKey(row.occurredAt)) {
+    if (businessDateKey(clearance.occurredAt) !== businessDateKey(row.occurredAt)) {
       return false;
     }
     if (clearance.scope !== "ALL" && clearance.scope !== scope) return false;
@@ -378,9 +363,12 @@ function visibleAfterClearances(clearances, rows, scope) {
   return rows.filter((row) => !rowWasCleared(clearances, row, scope));
 }
 
+const { createAccountingVoidService, wasVoided, voidedExpenseMonths } = require("./accounting-transaction-voids.cjs");
+
 function createLotteryAccountingService({ prisma, now = () => new Date() }) {
   if (!prisma) throw new Error("A Prisma client is required.");
   const accountingCorrectionService = createAccountingCorrectionService({ prisma });
+  const accountingVoidService = createAccountingVoidService({ prisma });
 
   async function listOrganizations() {
     const organizations =
@@ -479,13 +467,13 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     const partyNames = new Map(parties.map((party) => [party.id, party.name]));
     const dailyKeys = new Set(
       stockistEntries.map(
-        (entry) => `${entry.partyId}:${utcDateKey(entry.occurredAt)}`,
+        (entry) => `${entry.partyId}:${businessDateKey(entry.occurredAt)}`,
       ),
     );
     const legacy = new Map();
     for (const movement of stockMovements) {
       if (!isStockistMovement(movement)) continue;
-      const day = utcDateKey(movement.occurredAt);
+      const day = businessDateKey(movement.occurredAt);
       const key = `${movement.partyId}:${day}`;
       if (dailyKeys.has(key)) continue;
       const entry =
@@ -499,7 +487,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       legacy.set(key, entry);
     }
     return [
-      ...stockistEntries.map((entry) => ({
+      ...stockistEntries.filter((entry) => !entry.voided).map((entry) => ({
         ...entry,
         partyName: partyNames.get(entry.partyId) || "Unknown stockist",
         source: "DAILY",
@@ -853,9 +841,13 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         profileId,
       );
       await ensureExpenseCategory(client, organizationId, categoryId);
+      // Freeze every elapsed month at its previous rate before changing the profile.
+      // Existing posted bills remain the authoritative historical amounts.
+      await ensureRecurringExpenseBillsThrough(client, organizationId, now(), profile.id);
       const recurringStartsAt =
         scheduleType === "MONTHLY"
-          ? profile.scheduleType === "MONTHLY" && profile.recurringStartsAt
+          ? profile.scheduleType === "MONTHLY" && profile.recurringStartsAt &&
+            !(BigInt(profile.usualAmountPaise) === 0n && usualAmountPaise > 0n)
             ? profile.recurringStartsAt
             : now()
           : null;
@@ -971,7 +963,10 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     throughDate,
     existing,
   ) {
-    if (!profile.recurringStartsAt || BigInt(profile.usualAmountPaise) <= 0n) {
+    if (
+      !profile.recurringStartsAt || BigInt(profile.usualAmountPaise) <= 0n ||
+      businessDateKey(profile.recurringStartsAt) > businessDateKey(throughDate)
+    ) {
       return;
     }
     for (const billingMonth of recurringMonthKeys(
@@ -985,7 +980,10 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           organizationId,
           profileId: profile.id,
           amountPaise: BigInt(profile.usualAmountPaise),
-          occurredAt: monthStartUtc(billingMonth),
+          occurredAt: new Date(Math.max(
+            businessMonthStart(billingMonth).getTime(),
+            businessDayRange(profile.recurringStartsAt).startsAt.getTime(),
+          )),
           actorAdminId: SYSTEM_MONTHLY_EXPENSE_ACTOR,
           billingMonth,
         });
@@ -1000,12 +998,14 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     client,
     organizationId,
     throughDate,
+    profileId = null,
   ) {
     const profiles = await client.foundationAccountingExpenseProfile.findMany({
       where: {
         organizationId,
         status: "ACTIVE",
         scheduleType: "MONTHLY",
+        ...(profileId ? { id: profileId } : {}),
       },
     });
     if (!profiles.length) return;
@@ -1058,6 +1058,29 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     });
   }
 
+  function paymentDateFilter(value, occurredAt) {
+    return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? { lt: businessDayRange(occurredAt).endsAt } : { lte: occurredAt };
+  }
+
+  async function effectivePaymentBooks(client, organizationId, occurredAtFilter) {
+    const [payments, expensePayments, corrections, clearances] = await Promise.all([
+      client.foundationLotteryPayment.findMany({ where: {
+        organizationId, status: "POSTED", occurredAt: occurredAtFilter,
+      } }),
+      client.foundationAccountingExpensePayment.findMany({ where: {
+        organizationId, occurredAt: occurredAtFilter,
+      } }),
+      client.foundationAccountingCorrection.findMany({ where: { organizationId } }),
+      client.foundationLotteryEntryClearance.findMany({ where: { organizationId } }),
+    ]);
+    return {
+      payments: visibleAfterClearances(clearances, projectAccountingRows(payments, corrections, "PAYMENT"), "PAYMENT"),
+      expensePayments: projectAccountingRows(expensePayments, corrections, "EXPENSE_PAYMENT"),
+      corrections,
+    };
+  }
+
   async function recordExpensePayment(input, actorAdminId) {
     const organizationId = requiredText(input?.organizationId, "organizationId");
     const profileId = requiredText(input?.profileId, "profileId");
@@ -1082,61 +1105,22 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         organizationId,
         occurredAt,
       );
-      const [bills, previousExpensePayments, priorLotteryPayments] =
-        await Promise.all([
-          client.foundationAccountingExpenseBill.findMany({
-            where: {
-              organizationId,
-              profileId,
-              occurredAt: { lte: occurredAt },
-            },
-          }),
-          client.foundationAccountingExpensePayment.findMany({
-            where: {
-              organizationId,
-              profileId,
-              occurredAt: { lte: occurredAt },
-            },
-          }),
-          client.foundationLotteryPayment.findMany({
-            where: {
-              organizationId,
-              status: "POSTED",
-              occurredAt: { lte: occurredAt },
-            },
-          }),
-        ]);
-      const billed = bills.reduce(
-        (total, bill) => total + BigInt(bill.amountPaise),
-        0n,
-      );
-      const alreadyPaid = previousExpensePayments.reduce(
-        (total, payment) => total + BigInt(payment.totalAmountPaise),
-        0n,
-      );
+      const occurredAtFilter = paymentDateFilter(input?.occurredAt, occurredAt);
+      const [rawBills, books] = await Promise.all([
+        client.foundationAccountingExpenseBill.findMany({ where: {
+          organizationId, profileId, occurredAt: occurredAtFilter,
+        } }),
+        effectivePaymentBooks(client, organizationId, occurredAtFilter),
+      ]);
+      const bills = projectAccountingRows(rawBills, books.corrections, "EXPENSE_BILL");
+      const billed = bills.reduce((total, bill) => total + BigInt(bill.amountPaise), 0n);
+      const alreadyPaid = books.expensePayments.filter((payment) => payment.profileId === profileId)
+        .reduce((total, payment) => total + BigInt(payment.totalAmountPaise), 0n);
       if (totalAmountPaise > billed - alreadyPaid) {
         throw accountingError("INVALID_PAYMENT", "totalAmountPaise");
       }
-
-      const priorAllExpensePayments =
-        await client.foundationAccountingExpensePayment.findMany({
-          where: {
-            organizationId,
-            occurredAt: { lte: occurredAt },
-          },
-        });
-      const availableCash =
-        paymentMethodBalance(priorLotteryPayments, "cashPaise") -
-        priorAllExpensePayments.reduce(
-          (total, payment) => total + BigInt(payment.cashPaise),
-          0n,
-        );
-      const availableBank =
-        paymentMethodBalance(priorLotteryPayments, "bankPaise") -
-        priorAllExpensePayments.reduce(
-          (total, payment) => total + BigInt(payment.bankPaise),
-          0n,
-        );
+      const availableCash = paymentMethodBalance(books.payments, "cashPaise", books.expensePayments);
+      const availableBank = paymentMethodBalance(books.payments, "bankPaise", books.expensePayments);
       if (cashPaise > 0n && cashPaise > availableCash) {
         throw accountingError("INVALID_PAYMENT", "cashPaise");
       }
@@ -1370,6 +1354,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
             unitRatePaise: unitRatePaise.toString(),
             amountPaise: amountPaise.toString(),
             receivedPaise: receivedPaise.toString(),
+            paymentId: payment?.id || null,
           },
         },
       });
@@ -1499,6 +1484,12 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         if (movementType === "STOCKIST_RETURN" && !sourceReceipt) {
           throw accountingError("STOCKIST_RETURN_NEEDS_RECEIPT", "sourceReceiptId");
         }
+        if (sourceReceipt) {
+          const receiptCorrections = await client.foundationAccountingCorrection.findMany({ where: { organizationId } });
+          if (wasVoided(receiptCorrections, "STOCK_MOVEMENT", sourceReceipt.id)) {
+            throw accountingError("TRANSACTION_ALREADY_VOIDED", "sourceReceiptId");
+          }
+        }
         sourceReceiptId = sourceReceipt?.id || null;
         returnSession = movementType === "STOCKIST_RETURN" ? requiredText(input?.returnSession, "returnSession").toUpperCase() : null;
         if (returnSession && !new Set(["MORNING", "DAY", "EVENING"]).has(returnSession)) throw accountingError("INVALID_RETURN_SESSION", "returnSession");
@@ -1569,8 +1560,8 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     const organizationId = requiredText(input?.organizationId, "organizationId");
     const partyId = requiredText(input?.partyId, "partyId");
     const occurredAt = optionalDate(input?.occurredAt, "occurredAt", now());
-    const range = utcDayRange(occurredAt);
-    const entryDate = utcDateKey(range.startsAt);
+    const range = businessDayRange(occurredAt);
+    const entryDate = businessDateKey(occurredAt);
     const purchaseQuantity = nonNegativeInteger(
       input?.purchaseQuantity ?? 0,
       "purchaseQuantity",
@@ -1596,7 +1587,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     const commissionPaise = optionalMoney(input?.commissionPaise, "commissionPaise");
 
     return prisma.$transaction(async (client) => {
-      const [party, organization, allStock, allSales, dailyEntries, parties, clearances] = await Promise.all([
+      const [party, organization, allStock, allSales, dailyEntries, parties, clearances, corrections] = await Promise.all([
         ensureParty(client, organizationId, partyId),
         ensureOrganization(client, organizationId),
         client.foundationLotteryStockMovement.findMany({
@@ -1612,12 +1603,13 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         client.foundationLotteryEntryClearance.findMany({
           where: { organizationId },
         }),
+        client.foundationAccountingCorrection.findMany({ where: { organizationId } }),
       ]);
       if (!new Set(["STOCKIST", "SERVICE_STOCKIST"]).has(party.partyType)) {
         throw accountingError("INVALID_STOCK_PARTY", "partyId");
       }
 
-      const visibleStock = allStock.filter(
+      const visibleStock = projectAccountingRows(allStock, corrections, "STOCK_MOVEMENT").filter(
         (movement) =>
           !rowWasCleared(
             clearances,
@@ -1627,12 +1619,12 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       );
       const visibleSales = visibleAfterClearances(
         clearances,
-        allSales,
+        allSales.filter((sale) => sale.status !== "REVERSED"),
         "SELLER",
       );
       const visibleDailyEntries = visibleAfterClearances(
         clearances,
-        dailyEntries,
+        projectAccountingRows(dailyEntries, corrections, "STOCKIST_ENTRY", { includeVoided: true }),
         "STOCKIST",
       );
       const effectiveEntries = effectiveStockistEntries(
@@ -1643,12 +1635,14 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       const existing = effectiveEntries.find(
         (entry) =>
           entry.partyId === partyId &&
-          utcDateKey(entry.occurredAt) === entryDate,
+          businessDateKey(entry.occurredAt) === entryDate &&
+          !wasVoided(corrections, "STOCKIST_ENTRY", entry.id),
       );
       const existingDaily = dailyEntries.find(
         (entry) =>
           entry.partyId === partyId &&
-          utcDateKey(entry.occurredAt) === entryDate,
+          businessDateKey(entry.occurredAt) === entryDate &&
+          !wasVoided(corrections, "STOCKIST_ENTRY", entry.id),
       );
       for (const [session, field] of Object.entries({
         MORNING: "morningReturnQuantity",
@@ -1656,10 +1650,10 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         EVENING: "eveningReturnQuantity",
       })) {
         const sellerReturn = visibleSales
-          .filter((sale) => utcDateKey(sale.occurredAt) === entryDate)
+          .filter((sale) => businessDateKey(sale.occurredAt) === entryDate)
           .reduce((total, sale) => total + BigInt(sale[field]), 0n);
         const alreadyReturned = visibleDailyEntries
-          .filter((entry) => entry.id !== existingDaily?.id && utcDateKey(entry.occurredAt) === entryDate)
+          .filter((entry) => !entry.voided && entry.id !== existingDaily?.id && businessDateKey(entry.occurredAt) === entryDate)
           .reduce((total, entry) => total + BigInt(entry[field]), 0n);
         if (returns[session] > sellerReturn - alreadyReturned) {
           throw accountingError("RETURN_EXCEEDS_AVAILABLE_STOCK", `${field}`);
@@ -1693,9 +1687,13 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         tdsPaise,
         grossPurchasePaise,
         netPayablePaise: grossPurchasePaise - commissionPaise + tdsPaise,
-        occurredAt: range.startsAt,
+        occurredAt: existingDaily ? existingDaily.occurredAt : new Date(range.startsAt.getTime() +
+          dailyEntries.filter((row) => row.partyId === partyId && businessDateKey(row.occurredAt) === entryDate).length),
         updatedByAdminId: actorAdminId,
       };
+      const priorCorrection = existingDaily ? corrections.filter((row) => row.entityType === "STOCKIST_ENTRY" && row.entityId === existingDaily.id)
+        .sort((a, b) => b.version - a.version)[0] : null;
+      const priorSnapshot = priorCorrection ? serialize({ ...existingDaily, ...priorCorrection.replacement }) : null;
       const entry = existingDaily
         ? await client.foundationLotteryStockistEntry.update({
             where: { id: existingDaily.id },
@@ -1713,6 +1711,18 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
               createdByAdminId: actorAdminId,
             },
           });
+      if (priorCorrection) {
+        const correctionId = randomUUID();
+        const operationId = `DAILY-STOCKIST-UPDATE:${correctionId}`;
+        const version = priorCorrection.version + 1;
+        await client.foundationAccountingCorrection.create({ data: {
+          id: correctionId, organizationId, entityType: "STOCKIST_ENTRY", entityId: entry.id,
+          version, operationId, requestHash: createHash("sha256").update(JSON.stringify(serialize(entryData))).digest("hex"),
+          previousSnapshot: priorSnapshot, replacement: serialize(entryData),
+          acknowledgement: { correctionId, entityType: "STOCKIST_ENTRY", entityId: entry.id, version, operationId },
+          reason: "Daily stockist entry updated", actorAdminId,
+        } });
+      }
       await client.foundationLotteryAuditEvent.create({
         data: {
           organizationId,
@@ -1739,7 +1749,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     if (!new Set(["ALL", "SELLER", "STOCKIST", "PAYMENT"]).has(scope)) {
       throw accountingError("INVALID_CLEARANCE_SCOPE", "scope");
     }
-    const range = utcDayRange(occurredAt);
+    const range = businessDayRange(occurredAt);
     return prisma.$transaction(async (client) => {
       await ensureOrganization(client, organizationId);
       const clearance = await client.foundationLotteryEntryClearance.create({
@@ -1757,7 +1767,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
           entityType: "DAILY_ENTRY_CLEARANCE",
           entityId: clearance.id,
           actorAdminId,
-          metadata: { day: utcDateKey(range.startsAt), scope },
+          metadata: { day: businessDateKey(range.startsAt), scope },
         },
       });
       return serialize(clearance);
@@ -1818,11 +1828,24 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       await client.foundationLotteryStockMovement.findMany({
         where: { organizationId },
       });
+    const [stockCorrections, dailyStock, stockClearances] = await Promise.all([
+      client.foundationAccountingCorrection.findMany({ where: { organizationId } }),
+      client.foundationLotteryStockistEntry.findMany({ where: { organizationId } }),
+      client.foundationLotteryEntryClearance.findMany({ where: { organizationId } }),
+    ]);
+    const activeMovements = projectAccountingRows(existingMovements, stockCorrections, "STOCK_MOVEMENT")
+      .filter((row) => !rowWasCleared(stockClearances, row, clearanceScopeForStockMovement(row)));
+    const effectiveStock = effectiveStockistEntries(activeMovements,
+      visibleAfterClearances(stockClearances,
+        projectAccountingRows(dailyStock, stockCorrections, "STOCKIST_ENTRY", { includeVoided: true }), "STOCKIST"), []);
     stockSummary([
-      ...existingMovements.map((movement) => ({
-        type: movement.movementType,
-        quantity: movement.quantity,
+      ...activeMovements.filter((row) => !isStockistMovement(row)).map((movement) => ({
+        type: movement.movementType, quantity: movement.quantity,
       })),
+      ...effectiveStock.flatMap((row) => [
+        { type: "RECEIPT", quantity: row.purchaseQuantity },
+        { type: "STOCKIST_RETURN", quantity: row.totalReturnQuantity },
+      ]),
       ...movements.map((movement) => ({
         type: movement.movementType,
         quantity: movement.quantity,
@@ -2028,7 +2051,17 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       });
       if (replay) return replay;
 
-      const range = utcDayRange(context.occurredAt);
+      const voids = await client.foundationAccountingCorrection.findMany({ where: {
+        organizationId: context.organizationId, entityType: "SELLER_SALE",
+      } });
+      const matchingVoid = voids.filter((row) => row.replacement?.voided &&
+        row.previousSnapshot?.partyId === context.partyId &&
+        businessDateKey(row.previousSnapshot.occurredAt) === businessDateKey(context.occurredAt))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+      if (matchingVoid && input?.replacesVoidId !== matchingVoid.entityId) {
+        throw accountingError("TRANSACTION_ALREADY_VOIDED", "occurredAt");
+      }
+      const range = businessDayRange(context.occurredAt);
       const [candidate, clearances] = await Promise.all([
         client.foundationLotterySale.findFirst({
           where: {
@@ -2335,17 +2368,13 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     return prisma.$transaction(async (client) => {
       await ensureParty(client, organizationId, partyId);
       if (payment.direction !== "RECEIPT") {
-        const priorPayments = await client.foundationLotteryPayment.findMany({
-          where: {
-            organizationId,
-            status: "POSTED",
-            occurredAt: { lte: occurredAt },
-          },
-        });
+        const books = await effectivePaymentBooks(
+          client, organizationId, paymentDateFilter(input?.occurredAt, occurredAt),
+        );
         for (const method of PAYMENT_METHOD_FIELDS) {
           const requested = BigInt(payment.methodSplit[method] || 0);
           if (requested === 0n) continue;
-          const available = paymentMethodBalance(priorPayments, method);
+          const available = paymentMethodBalance(books.payments, method, books.expensePayments);
           if (requested > available) {
             throw accountingError(
               "INVALID_PAYMENT",
@@ -2442,31 +2471,23 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       throw accountingError("INVALID_SETTLEMENT", "amountPaise");
 
     return prisma.$transaction(async (client) => {
-      const [sale, payment, saleAllocated, paymentAllocated] =
-        await Promise.all([
-          client.foundationLotterySale.findFirst({
-            where: { id: saleId, organizationId, status: "POSTED" },
-          }),
-          client.foundationLotteryPayment.findFirst({
-            where: { id: paymentId, organizationId, direction: "RECEIPT" },
-          }),
-          client.foundationLotterySettlement.aggregate({
-            where: { organizationId, saleId },
-            _sum: { amountPaise: true },
-          }),
-          client.foundationLotterySettlement.aggregate({
-            where: { organizationId, paymentId },
-            _sum: { amountPaise: true },
-          }),
-        ]);
+      const [sale, rawPayments, rawSettlements, corrections] = await Promise.all([
+        client.foundationLotterySale.findFirst({ where: { id: saleId, organizationId, status: "POSTED" } }),
+        client.foundationLotteryPayment.findMany({ where: { organizationId, status: "POSTED" } }),
+        client.foundationLotterySettlement.findMany({ where: { organizationId } }),
+        client.foundationAccountingCorrection.findMany({ where: { organizationId } }),
+      ]);
+      const payments = projectAccountingRows(rawPayments, corrections, "PAYMENT");
+      const payment = payments.find((row) => row.id === paymentId && row.direction === "RECEIPT");
       if (!sale) throw accountingError("SALE_NOT_FOUND", "saleId");
       if (!payment) throw accountingError("PAYMENT_NOT_FOUND", "paymentId");
-      const remainingSale =
-        BigInt(sale.netPayablePaise) -
-        BigInt(saleAllocated._sum.amountPaise || 0);
-      const remainingPayment =
-        BigInt(payment.totalAmountPaise) -
-        BigInt(paymentAllocated._sum.amountPaise || 0);
+      const paymentIds = new Set(payments.map((row) => row.id));
+      const settlements = projectAccountingRows(rawSettlements, corrections, "SETTLEMENT")
+        .filter((row) => paymentIds.has(row.paymentId));
+      const allocated = (field, id) => settlements.filter((row) => row[field] === id)
+        .reduce((sum, row) => sum + BigInt(row.amountPaise), 0n);
+      const remainingSale = BigInt(sale.netPayablePaise) - allocated("saleId", saleId);
+      const remainingPayment = BigInt(payment.totalAmountPaise) - allocated("paymentId", paymentId);
       if (amountPaise > remainingSale || amountPaise > remainingPayment) {
         throw accountingError("SETTLEMENT_EXCEEDS_BALANCE", "amountPaise");
       }
@@ -2627,6 +2648,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       stockistEntries,
       corrections,
       "STOCKIST_ENTRY",
+      { includeVoided: true },
     );
     const projectedExpenseBills = projectAccountingRows(
       expenseBills,
@@ -2643,7 +2665,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       corrections,
       "CUSTOMER_BILL",
     );
-    const visibleStockMovements = stockMovements.filter(
+    const visibleStockMovements = projectAccountingRows(stockMovements, corrections, "STOCK_MOVEMENT").filter(
       (movement) =>
         !rowWasCleared(
           clearances,
@@ -2679,7 +2701,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     const paymentSettled = new Map();
     const visibleSaleIds = new Set(visibleSales.map((sale) => sale.id));
     const visiblePaymentIds = new Set(visiblePayments.map((payment) => payment.id));
-    const visibleSettlements = settlements.filter(
+    const visibleSettlements = projectAccountingRows(settlements, corrections, "SETTLEMENT").filter(
       (settlement) =>
         visibleSaleIds.has(settlement.saleId) &&
         visiblePaymentIds.has(settlement.paymentId),
@@ -2785,6 +2807,11 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         partyName: partyNames.get(bill.partyId) || UNKNOWN_PARTY_NAME,
       })),
       summary,
+      voidedTransactions: corrections.filter((row) => row.replacement?.voided === true).map((row) => ({
+        entityType: row.entityType, entityId: row.entityId, createdAt: row.createdAt,
+        previousSnapshot: row.previousSnapshot,
+      })),
+      voidedExpenseMonths: voidedExpenseMonths(corrections),
       insights: analyzeLotterySummary(summary),
     });
   }
@@ -2792,10 +2819,24 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
   async function getVerifiedSummary({ organizationId, from, to }) {
     const scopedOrganizationId = requiredText(organizationId, "organizationId");
     const occurredAt = {};
-    if (from) occurredAt.gte = optionalDate(from, "from");
-    if (to) occurredAt.lte = optionalDate(to, "to");
+    if (from) {
+      const parsed = optionalDate(from, "from");
+      occurredAt.gte = /^\d{4}-\d{2}-\d{2}$/.test(from)
+        ? businessDayRange(parsed).startsAt : parsed;
+    }
+    if (to) {
+      const parsed = optionalDate(to, "to");
+      if (/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+        occurredAt.lt = businessDayRange(parsed).endsAt;
+      } else occurredAt.lte = parsed;
+    }
+    const upper = occurredAt.lt || occurredAt.lte;
+    if (occurredAt.gte && upper &&
+        (occurredAt.lt ? upper <= occurredAt.gte : upper < occurredAt.gte)) {
+      throw accountingError("INVALID_PERIOD_RANGE", "to");
+    }
     const dateFilter = Object.keys(occurredAt).length ? { occurredAt } : {};
-    const [sales, payments, stockMovements, stockistEntries, parties, clearances, corrections] = await Promise.all([
+    const [sales, payments, stockMovements, stockistEntries, parties, clearances, corrections, expenseBills, expensePayments, customerBills, expenseProfiles] = await Promise.all([
       prisma.foundationLotterySale.findMany({
         where: {
           organizationId: scopedOrganizationId,
@@ -2830,12 +2871,17 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
         where: { organizationId: scopedOrganizationId },
         orderBy: [{ entityType: "asc" }, { entityId: "asc" }, { version: "asc" }],
       }),
+      prisma.foundationAccountingExpenseBill.findMany({ where: { organizationId: scopedOrganizationId } }),
+      prisma.foundationAccountingExpensePayment.findMany({ where: { organizationId: scopedOrganizationId, ...dateFilter } }),
+      prisma.foundationAccountingCustomerBill.findMany({ where: { organizationId: scopedOrganizationId, ...dateFilter } }),
+      prisma.foundationAccountingExpenseProfile.findMany({ where: { organizationId: scopedOrganizationId, status: "ACTIVE" } }),
     ]);
     const projectedPayments = projectAccountingRows(payments, corrections, "PAYMENT");
     const projectedStockistEntries = projectAccountingRows(
       stockistEntries,
       corrections,
       "STOCKIST_ENTRY",
+      { includeVoided: true },
     );
     const visibleSales = visibleAfterClearances(clearances, sales, "SELLER");
     const visiblePayments = visibleAfterClearances(
@@ -2843,7 +2889,7 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       projectedPayments,
       "PAYMENT",
     );
-    const visibleStockMovements = stockMovements.filter(
+    const visibleStockMovements = projectAccountingRows(stockMovements, corrections, "STOCK_MOVEMENT").filter(
       (movement) =>
         !rowWasCleared(
           clearances,
@@ -2892,8 +2938,22 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
       }
       return input;
     });
+    const inScope = (row) => {
+      const date = new Date(row.occurredAt);
+      return (!occurredAt.gte || date >= occurredAt.gte) &&
+        (!occurredAt.lte || date <= occurredAt.lte) && (!occurredAt.lt || date < occurredAt.lt);
+    };
+    const effectiveExpenseBills = projectRecurringExpenseBills(
+      expenseProfiles, projectAccountingRows(expenseBills, corrections, "EXPENSE_BILL"),
+      businessDateKey(to ? optionalDate(to, "to") : now()),
+      voidedExpenseMonths(corrections),
+    ).filter(inScope);
     return summarizeLotteryAccounting({
       sales: saleInputs,
+      stockistEntries: effectiveEntries,
+      customerBills: projectAccountingRows(customerBills, corrections, "CUSTOMER_BILL"),
+      expenseBills: effectiveExpenseBills,
+      expensePayments: projectAccountingRows(expensePayments, corrections, "EXPENSE_PAYMENT"),
       payments: visiblePayments.map((payment) => ({
         direction: payment.direction,
         totalAmountPaise: payment.totalAmountPaise,
@@ -2925,6 +2985,8 @@ function createLotteryAccountingService({ prisma, now = () => new Date() }) {
     analyzeVerifiedAccounting,
     clearDailyEntries,
     correctAccountingTransaction: accountingCorrectionService.correctAccountingTransaction,
+    previewAccountingVoid: accountingVoidService.previewAccountingVoid,
+    voidAccountingTransaction: accountingVoidService.voidAccountingTransaction,
     correctPostedSale,
     createDailySellerDraft,
     createExpenseCategory,

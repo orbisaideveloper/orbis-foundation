@@ -18,7 +18,7 @@ export const CommandCenter: React.FC = () => {
 
   return (
     <AppLayout>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[var(--spacing-widget)]">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-(--spacing-widget)">
         <GlassCard
           title="System Status"
           delay={0.1}

@@ -239,4 +239,19 @@ describe("Lottery Accounting Public tenant API", () => {
     expect(JSON.stringify(response.body)).not.toContain(INTERNAL_ADMIN_ID);
     expect(JSON.stringify(response.body)).not.toContain("spoofed-browser-actor");
   });
+  it("rejects an unowned void and derives the actor for an owned deletion", async () => {
+    const prisma = prismaMock(); const service = serviceMock();
+    service.previewAccountingVoid = vi.fn().mockResolvedValue({ previewToken: "token" });
+    service.voidAccountingTransaction = vi.fn().mockResolvedValue({ voided: true });
+    const app = appWith(prisma, service);
+    await request(app).post("/lottery/voids/PAYMENT/payment-1").send({ organizationId: "other" }).expect(404);
+    expect(service.voidAccountingTransaction).not.toHaveBeenCalled();
+    prisma.foundationAccountingOrganizationMembership.findFirst.mockResolvedValue(membership("org-1"));
+    await request(app).post("/lottery/voids/PAYMENT/payment-1/preview").send({ organizationId: "org-1" }).expect(200);
+    await request(app).post("/lottery/voids/PAYMENT/payment-1")
+      .send({ organizationId: "org-1", previewToken: "token", operationId: "operation", actorAdminId: "spoof" }).expect(201);
+    expect(service.voidAccountingTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "org-1", entityType: "PAYMENT", entityId: "payment-1" }), "PUBLIC_USER:user-1");
+  });
+
 });

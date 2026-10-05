@@ -33,7 +33,7 @@ describe("lotteryAccountingSellerCalculation", () => {
     });
   });
 
-  it("blocks a return above dispatch and a commission above net amount", () => {
+  it("blocks excess returns and carries excess commission as an advance", () => {
     const invalidReturn = calculateLotterySeller({
       ...validInput,
       dispatchQuantity: 10,
@@ -45,13 +45,13 @@ describe("lotteryAccountingSellerCalculation", () => {
     expect(invalidReturn.netSale).toBe(0n);
     expect(invalidReturn.grossAmountPaise).toBe(0n);
 
-    const invalidCommission = calculateLotterySeller({
+    const advance = calculateLotterySeller({
       ...validInput,
       commissionPaise: "90000",
     });
-    expect(invalidCommission.hasInvalidCommission).toBe(true);
-    expect(invalidCommission.tdsPaise).toBe(0n);
-    expect(invalidCommission.partyPayablePaise).toBe(0n);
+    expect(advance.hasInvalidCommission).toBe(false);
+    expect(advance.tdsPaise).toBe(9000n);
+    expect(advance.partyPayablePaise).toBe(-1000n);
   });
 
   it("normalizes malformed natural-number inputs to zero and rounds basis points deterministically", () => {
@@ -66,6 +66,7 @@ describe("lotteryAccountingSellerCalculation", () => {
     expect(result.morningReturn).toBe(0n);
     expect(result.grossAmountPaise).toBe(0n);
     expect(result.commissionPaise).toBe(0n);
+    expect(result.hasInvalidCommission).toBe(true);
     expect(roundedBasisPoints(105n, 500)).toBe(5n);
   });
 

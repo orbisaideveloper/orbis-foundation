@@ -40,7 +40,7 @@ export function DiagnosticExportActions() {
   return (
     <section
       aria-label="Admin diagnostic export"
-      className="mx-5 mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+      className="mx-5 mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs"
     >
       <div className="flex items-center justify-between gap-3">
         <div>

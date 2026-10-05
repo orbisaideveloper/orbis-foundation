@@ -1,6 +1,8 @@
 import type {
   LotteryAccountingClient,
   LotteryAccountingCorrectionAck,
+  LotteryAccountingVoidPreview,
+  LotteryAccountingVoidAck,
   LotteryAccountingReadClient,
   LotteryRecordedPayment,
 } from "../admin/models/lotteryAccountingClient";
@@ -338,6 +340,16 @@ export function createPublicLotteryAccountingClient(
         payload,
       );
       return body.draft;
+    },
+    async previewAccountingVoid(entityType, entityId, payload) {
+      const body = await postPublic<{ preview: LotteryAccountingVoidPreview }>(accessToken,
+        `/voids/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}/preview`, payload);
+      return body.preview;
+    },
+    async voidAccountingTransaction(entityType, entityId, payload) {
+      const body = await postPublic<{ deletion: LotteryAccountingVoidAck }>(accessToken,
+        `/voids/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`, payload);
+      return body.deletion;
     },
     async correctAccountingTransaction(entityType, entityId, payload) {
       const body = await postPublic<{

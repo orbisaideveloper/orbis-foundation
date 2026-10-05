@@ -404,7 +404,7 @@ describe("LotteryAccountingWorkspace", () => {
       fireEvent.click(screen.getByRole("button", { name: "3 Days" }));
       expect(screen.getByText(NET_PROFIT_LABEL).parentElement).toHaveTextContent("₹100.00");
       expect(screen.getByRole("button", { name: "3 Days" })).toHaveClass(
-        "bg-gradient-to-r",
+        "bg-linear-to-r",
       );
 
       fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
@@ -413,7 +413,7 @@ describe("LotteryAccountingWorkspace", () => {
 
       expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "3 Days" })).toHaveClass(
-        "bg-gradient-to-r",
+        "bg-linear-to-r",
       );
       expect(screen.getByText(NET_PROFIT_LABEL).parentElement).toHaveTextContent("₹100.00");
     } finally {

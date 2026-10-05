@@ -45,7 +45,7 @@ export function calculateLotterySeller(
   const ticketRatePaise = naturalBigInt(input.ticketRatePaise);
   const grossAmountPaise = netSale * ticketRatePaise;
   const commissionPaise = naturalBigInt(input.commissionPaise);
-  const hasInvalidCommission = commissionPaise > grossAmountPaise;
+  const hasInvalidCommission = !/^\d+$/.test(String(input.commissionPaise));
   const tdsPaise = hasInvalidCommission
     ? 0n
     : roundedBasisPoints(commissionPaise, input.tdsRateBps);

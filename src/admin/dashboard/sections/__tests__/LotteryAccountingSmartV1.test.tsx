@@ -300,6 +300,26 @@ function createApi(): LotteryAccountingClient {
 }
 
 describe("LotteryAccountingWorkspace smart V1", () => {
+  it("shows posted TDS reconciliation separately and does not invent a tax settlement", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-03T12:00:00Z"));
+    try {
+      render(<LotteryAccountingWorkspace api={createApi()} />);
+      await screen.findByText(DASHBOARD_TITLE);
+      expect(screen.getByText("TDS reconciliation")).toBeInTheDocument();
+      expect(screen.getByText("Seller TDS generated")).toBeInTheDocument();
+      expect(screen.getByText("Stockist TDS recorded credit")).toBeInTheDocument();
+      expect(screen.getByText("Legacy stockist TDS · review")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
+      fireEvent.change(screen.getByLabelText(LEDGER_BOOK_LABEL), { target: { value: "tds" } });
+      fireEvent.change(screen.getByLabelText(LEDGER_TYPE_LABEL), { target: { value: "seller" } });
+      const summary = screen.getByLabelText("Ledger period summary");
+      expect(within(summary).getByText("Not recorded")).toBeInTheDocument();
+      expect(within(summary).getByText("Not reconciled")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("keeps the approved dashboard cards and priority dues", async () => {
     render(<LotteryAccountingWorkspace api={createApi()} />);
     expect(await screen.findByText(DASHBOARD_TITLE)).toBeInTheDocument();
@@ -466,38 +486,65 @@ describe("LotteryAccountingWorkspace smart V1", () => {
       }),
     );
   });
-  it("shows a monthly expense due and accepts a partial payment from Universal Payment", async () => {
-    const api = createApi();
-    render(<LotteryAccountingWorkspace api={api} />);
-    await screen.findByText(DASHBOARD_TITLE);
+  it.each([
+    { date: "2026-09-03T12:00:00.000Z", expectedPending: "₹7,200.00", materializedOctober: false },
+    { date: "2026-10-04T12:00:00.000Z", expectedPending: "₹14,400.00", materializedOctober: false },
+    { date: "2026-09-03T12:00:00.000Z", expectedPending: "₹7,200.00", materializedOctober: true },
+    { date: "2026-10-04T12:00:00.000Z", expectedPending: "₹14,400.00", materializedOctober: true },
+  ])("keeps monthly expense due date-scoped and accepts partial payment ($date, materialized October: $materializedOctober)", async ({ date, expectedPending, materializedOctober }) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(date));
+    try {
+      const api = createApi();
+      if (materializedOctober) {
+        vi.mocked(api.loadWorkspace).mockResolvedValue({
+          ...workspace,
+          expenseBills: [
+            ...workspace.expenseBills,
+            {
+              ...workspace.expenseBills[0],
+              id: "bill-october",
+              reference: "EXB-OCT",
+              billingMonth: "2026-10",
+              occurredAt: "2026-10-01T00:00:00.000Z",
+              createdAt: "2026-10-01T00:00:00.000Z",
+            },
+          ],
+        });
+      }
+      render(<LotteryAccountingWorkspace api={api} />);
+      await screen.findByText(DASHBOARD_TITLE);
 
-    fireEvent.click(screen.getByRole("button", { name: "Payment" }));
-    fireEvent.change(screen.getByLabelText("Payment account type"), {
-      target: { value: "EXPENSE" },
-    });
+      fireEvent.click(screen.getByRole("button", { name: "Payment" }));
+      fireEvent.change(screen.getByLabelText("Payment account type"), {
+        target: { value: "EXPENSE" },
+      });
 
-    expect(screen.getByLabelText("Expense subcategory")).toHaveValue("salary");
-    expect(screen.getByLabelText("Payment party")).toHaveValue(SALARY_RAJU_ID);
+      expect(screen.getByLabelText("Expense subcategory")).toHaveValue("salary");
+      expect(screen.getByLabelText("Payment party")).toHaveValue(SALARY_RAJU_ID);
 
-    const currentBill = screen.getByText("Current Bill").parentElement;
-    const pending = screen.getByText("Pending").parentElement;
-    expect(currentBill).toHaveTextContent("₹7,200.00");
-    expect(currentBill).toHaveTextContent("Monthly");
-    expect(pending).toHaveTextContent("₹7,200.00");
+      const currentBill = screen.getByText("Current Bill").parentElement;
+      const pending = screen.getByText("Pending").parentElement;
+      expect(currentBill).toHaveTextContent("₹7,200.00");
+      expect(currentBill).toHaveTextContent("Monthly");
+      expect(pending).toHaveTextContent(expectedPending);
 
-    fireEvent.change(screen.getByLabelText("Payment Cash"), {
-      target: { value: "1000" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Pay ₹1,000\.00/ }));
+      fireEvent.change(screen.getByLabelText("Payment Cash"), {
+        target: { value: "1000" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Pay ₹1,000\.00/ }));
 
-    await waitFor(() => expect(api.recordExpensePayment).toHaveBeenCalled());
-    expect(api.recordExpensePayment).toHaveBeenCalledWith(
-      expect.objectContaining({
-        profileId: SALARY_RAJU_ID,
-        totalAmountPaise: "100000",
-        cashPaise: "100000",
-      }),
-    );
+      await waitFor(() => expect(api.recordExpensePayment).toHaveBeenCalled());
+      expect(api.recordExpensePayment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          profileId: SALARY_RAJU_ID,
+          totalAmountPaise: "100000",
+          cashPaise: "100000",
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
 });

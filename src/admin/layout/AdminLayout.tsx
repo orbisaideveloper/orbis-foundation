@@ -20,11 +20,11 @@ const AdminLayout: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full relative overflow-hidden">
-        <header className="w-full h-16 bg-white/70 backdrop-blur-lg border-b border-white flex items-center px-4 md:px-8 justify-between shrink-0 z-10 shadow-sm">
+        <header className="w-full h-16 bg-white/70 backdrop-blur-lg border-b border-white flex items-center px-4 md:px-8 justify-between shrink-0 z-10 shadow-xs">
           <h1 className="text-lg md:text-xl font-extrabold tracking-wide text-slate-800">
             ORBIS Admin Command Center
           </h1>
-          <div className="flex items-center space-x-3 bg-white px-4 py-1.5 rounded-full border border-slate-100 shadow-sm">
+          <div className="flex items-center space-x-3 bg-white px-4 py-1.5 rounded-full border border-slate-100 shadow-xs">
             <span className="flex h-3 w-3 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>

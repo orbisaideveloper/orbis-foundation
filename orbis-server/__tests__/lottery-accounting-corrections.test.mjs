@@ -84,6 +84,7 @@ function createMock() {
       occurredAt: new Date(CORRECTION_DATE),
     }],
     settlements: [],
+    clearances: [],
     corrections: [],
     ledger: [],
     stock: [],
@@ -111,6 +112,7 @@ function createMock() {
   });
   const client = {
     foundationAccountingOrganization: model(state.organizations),
+    foundationLotteryEntryClearance: model(state.clearances),
     foundationAccountingCustomerBill: model(state.customerBills),
     foundationAccountingExpenseBill: model(state.expenseBills),
     foundationAccountingExpensePayment: model(state.expensePayments),
@@ -160,6 +162,40 @@ function createMock() {
 }
 
 describe("Accounting correction contract", () => {
+  it("does not use a cleared receipt as funds for an outgoing correction", async () => {
+    const prisma = createMock();
+    prisma.state.clearances.push({ organizationId: "org-1", scope: "PAYMENT",
+      occurredAt: new Date(CORRECTION_DATE), createdAt: new Date("2026-09-02T00:00:00.000Z") });
+    prisma.state.payments.push({ id: "out", organizationId: "org-1", partyId: "stockist-1", status: "POSTED",
+      direction: "PAYMENT", totalAmountPaise: 1000n, methodSplit: { cashPaise: "1000" },
+      occurredAt: new Date(CORRECTION_DATE) });
+    const service = createAccountingCorrectionService({ prisma });
+    await expect(service.correctAccountingTransaction({ organizationId: "org-1", entityType: "PAYMENT",
+      entityId: "out", expectedVersion: 0, operationId: "cleared-funds",
+      replacement: { totalAmountPaise: "2000", methodSplit: { cashPaise: "2000" } } }, "admin"))
+      .rejects.toMatchObject({ code: "INVALID_PAYMENT" });
+    expect(prisma.state.corrections).toHaveLength(0);
+  });
+
+  it("does not fund an outgoing correction with money already spent on expenses", async () => {
+    const prisma = createMock();
+    prisma.state.expensePayments.push({ id: "cash-spent", organizationId: "org-1", profileId: "profile-1",
+      cashPaise: 8000n, bankPaise: 0n, totalAmountPaise: 8000n, occurredAt: new Date(CORRECTION_DATE) });
+    prisma.state.payments.push({ id: "out", organizationId: "org-1", partyId: "stockist-1", status: "POSTED",
+      direction: "PAYMENT", totalAmountPaise: 1000n, methodSplit: { cashPaise: "1000" },
+      occurredAt: new Date(CORRECTION_DATE) });
+    const service = createAccountingCorrectionService({ prisma });
+    const input = { organizationId: "org-1", entityType: "PAYMENT", entityId: "out",
+      expectedVersion: 0, operationId: "out-expense-balance" };
+    await expect(service.correctAccountingTransaction({ ...input,
+      replacement: { totalAmountPaise: "3000", methodSplit: { cashPaise: "3000" } } }, "admin"))
+      .rejects.toMatchObject({ code: "INVALID_PAYMENT" });
+    expect(prisma.state.corrections).toHaveLength(0);
+    await expect(service.correctAccountingTransaction({ ...input,
+      replacement: { totalAmountPaise: "2000", methodSplit: { cashPaise: "2000" } } }, "admin"))
+      .resolves.toMatchObject({ version: 1 });
+  });
+
   it("corrects a customer bill append-only with balanced reversal/replacement and stock compensation", async () => {
     const prisma = createMock();
     const service = createAccountingCorrectionService({ prisma });

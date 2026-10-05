@@ -41,7 +41,7 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
       className={`mx-auto flex w-full max-w-4xl gap-3 ${userMessage ? "justify-end" : ""}`}
     >
       {!userMessage && (
-        <div className="mt-5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-emerald-50 shadow-sm">
+        <div className="mt-5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-orange-100 bg-linear-to-br from-orange-50 via-white to-emerald-50 shadow-xs">
           <Bot className="h-5 w-5 text-emerald-600" />
         </div>
       )}
@@ -55,7 +55,7 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
           {...longPress}
           data-testid={`chat-message-${message.id}`}
           aria-label={`${userMessage ? "Your" : "ORBIS"} message. Long-press or right-click for copy and share options.`}
-          className={`select-text whitespace-pre-wrap break-words px-4 py-3 text-[15px] leading-[1.7] tracking-[0.2px] shadow-sm [overflow-wrap:anywhere] touch-manipulation ${
+          className={`select-text whitespace-pre-wrap wrap-break-word px-4 py-3 text-[15px] leading-[1.7] tracking-[0.2px] shadow-xs wrap-anywhere touch-manipulation ${
             userMessage
               ? "rounded-[20px] rounded-tr-[4px] border border-emerald-100 bg-emerald-100/90 font-medium text-slate-800"
               : "rounded-[20px] rounded-tl-[4px] border border-orange-100/80 bg-white/90 font-normal text-slate-800"

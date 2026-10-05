@@ -37,14 +37,14 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
       {attachments.map((att) => (
         <div
           key={att.id}
-          className="relative flex items-center gap-3 rounded-2xl border border-gray-200/60 bg-white/90 px-3 py-2 shadow-sm backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-800/90"
+          className="relative flex items-center gap-3 rounded-2xl border border-gray-200/60 bg-white/90 px-3 py-2 shadow-xs backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-800/90"
         >
           {/* Thumbnail or Icon */}
           {att.type === "image" && att.previewUrl ? (
             <img
               src={att.previewUrl}
               alt="preview"
-              className="h-10 w-10 rounded-xl object-cover shadow-sm"
+              className="h-10 w-10 rounded-xl object-cover shadow-xs"
             />
           ) : (
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-50 shadow-inner dark:bg-gray-900/50">

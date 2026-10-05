@@ -1,3 +1,4 @@
+import { LedgerTransactionDelete } from "./LedgerTransactionDelete";
 import React, { useEffect, useMemo, useState } from "react";
 import type {
   LotteryAccountingClient,
@@ -54,7 +55,7 @@ type EditableField = Readonly<{
 }>;
 
 const CONTROL =
-  "w-full rounded-xl border border-emerald-100 bg-white px-3 py-2.5 text-xs text-slate-800 outline-none placeholder:text-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
+  "w-full rounded-xl border border-emerald-100 bg-white px-3 py-2.5 text-xs text-slate-800 outline-hidden placeholder:text-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
 const PRIMARY =
   "rounded-xl border border-emerald-200 bg-emerald-700 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50";
 const SECONDARY =
@@ -430,6 +431,7 @@ export function LedgerTransactionDetail({
   onBack,
   onRefresh,
   onSellerCorrection,
+  onDeleteLocalSeller,
 }: Readonly<{
   workspace: LotteryWorkspace;
   organizationId: string;
@@ -438,6 +440,7 @@ export function LedgerTransactionDetail({
   onBack: () => void;
   onRefresh: () => Promise<boolean>;
   onSellerCorrection: (partyId: string, occurredAt: string) => void;
+  onDeleteLocalSeller?: (partyId: string, occurredAt: string) => Promise<void>;
 }>) {
   const source = useMemo(() => findSource(workspace, context), [context, workspace]);
   const [editing, setEditing] = useState(false);
@@ -526,7 +529,7 @@ export function LedgerTransactionDetail({
   return (
     <section
       aria-label="Transaction detail"
-      className="rounded-[22px] border border-emerald-100 bg-white p-4 shadow-sm"
+      className="rounded-[22px] border border-emerald-100 bg-white p-4 shadow-xs"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -546,7 +549,7 @@ export function LedgerTransactionDetail({
             <p className="text-[7px] font-black uppercase tracking-[0.08em] text-slate-400">
               {label}
             </p>
-            <p className="mt-1 break-words text-[10px] font-bold text-slate-800">
+            <p className="mt-1 wrap-break-word text-[10px] font-bold text-slate-800">
               {value}
             </p>
           </div>
@@ -563,6 +566,15 @@ export function LedgerTransactionDetail({
           {error}
         </p>
       )}
+
+      <LedgerTransactionDelete key={`${source.kind}:${source.id}`}
+        api={api} organizationId={organizationId} entityId={source.id}
+        entityType={source.kind === "READ_ONLY" ? source.row.source === "LEGACY" ? "LEGACY_STOCKIST_DAY" : null : source.kind}
+        reference={String(source.row.reference || source.id)}
+        localOnly={source.kind === "SELLER_SALE" && source.id.startsWith("local:")}
+        onDeleteLocal={onDeleteLocalSeller ? () => onDeleteLocalSeller(String(source.row.partyId), String(source.row.occurredAt)) : undefined}
+        onRefresh={onRefresh} onBack={onBack}
+      />
 
       {source.kind === "SELLER_SALE" && source.row.status === "POSTED" && (
         <button

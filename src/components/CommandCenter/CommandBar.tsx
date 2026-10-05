@@ -61,7 +61,7 @@ export default function CommandBar({ onCommandSubmit }: CommandBarProps) {
   };
 
   return (
-    <div className="mt-2 w-full rounded-[16px] border border-gray-200 bg-white p-2 shadow-sm">
+    <div className="mt-2 w-full rounded-[16px] border border-gray-200 bg-white p-2 shadow-xs">
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -78,7 +78,7 @@ export default function CommandBar({ onCommandSubmit }: CommandBarProps) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleTextSubmit()}
           placeholder="ORBIS-কে নির্দেশ দিন..."
-          className="flex-1 min-w-0 bg-transparent border-none outline-none text-gray-700 px-1 text-[13px]"
+          className="flex-1 min-w-0 bg-transparent border-none outline-hidden text-gray-700 px-1 text-[13px]"
         />
         <button
           type="button"
@@ -96,7 +96,7 @@ export default function CommandBar({ onCommandSubmit }: CommandBarProps) {
           onChange={(event) =>
             setVoiceLanguage(event.target.value as VoiceLanguage)
           }
-          className="max-w-[48%] bg-transparent text-[11px] text-gray-500 outline-none"
+          className="max-w-[48%] bg-transparent text-[11px] text-gray-500 outline-hidden"
         >
           {VOICE_LANGUAGES.map((language) => (
             <option key={language.value} value={language.value}>

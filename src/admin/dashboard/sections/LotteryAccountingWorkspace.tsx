@@ -1,6 +1,10 @@
+import { lotteryPeriodTds } from "../../models/lotteryAccountingTdsReconciliation";
+import { lotteryBusinessMetrics } from "../../models/lotteryAccountingBusinessMetrics";
+import { accountingBusinessDate, accountingToday } from "../../models/lotteryAccountingBusinessDate";
+import { lotteryExpenseOutstanding } from "../../models/lotteryAccountingExpenseBalance";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, LoaderCircle, RefreshCw, WalletCards } from "lucide-react";
-import { DailySellerEntry } from "./DailySellerEntry";
+import { DailySellerEntry, clearPendingRow } from "./DailySellerEntry";
 import { DailyStockistEntry } from "./DailyStockistEntry";
 import {
   LedgerTransactionDetail,
@@ -25,6 +29,7 @@ import {
 import {
   projectSellerWorkingRecords,
   sellerWorkingRecordConfirmed,
+  sellerWorkingRecordVoided,
 } from "../../models/lotteryAccountingLocalProjection";
 import {
   formatPaise,
@@ -80,10 +85,11 @@ function clearConfirmedSellerWorkingRows(
   currentWorkspace: LotteryWorkspace,
   records: AccountingSellerWorkingRecord[],
   onRemoveFailure: () => void,
+  clearConfirmed = true,
 ) {
   if (!localStore) return;
   for (const record of records) {
-    if (!sellerWorkingRecordConfirmed(currentWorkspace, record)) continue;
+    if (!(clearConfirmed && sellerWorkingRecordConfirmed(currentWorkspace, record)) && !sellerWorkingRecordVoided(currentWorkspace, record)) continue;
     void localStore
       .removeSellerRow(scope, record.partyId, record.occurredAt)
       .catch(onRemoveFailure);
@@ -92,7 +98,7 @@ function clearConfirmedSellerWorkingRows(
 type DailyMode = "SELLER" | "STOCKIST" | "CASH_CUSTOMER" | "EXPENSE";
 type PartyMasterType = Extract<LotteryPartyType, "SELLER" | "STOCKIST" | "CUSTOMER">;
 type PaymentKind = "SELLER" | "STOCKIST" | "CUSTOMER" | "EXPENSE";
-type MoneyMethod = "cashPaise" | "bankPaise" | "upiPaise" | "pwtPaise";
+type MoneyMethod = "cashPaise" | "bankPaise" | "upiPaise" | "chequePaise" | "pwtPaise";
 type LedgerPeriod = "today" | "7d" | "10d" | "month" | "year" | "custom";
 type DashboardPeriod = "today" | "3d" | "7d" | "month" | "custom";
 type SellerFlush = () => Promise<boolean>;
@@ -130,6 +136,7 @@ const PARTY_PAYMENT_METHODS: Array<[MoneyMethod, string]> = [
   ["cashPaise", "Cash"],
   ["bankPaise", "Bank"],
   ["upiPaise", "UPI"],
+  ["chequePaise", "Cheque"],
   ["pwtPaise", "PWT"],
 ];
 
@@ -142,36 +149,23 @@ const DASHBOARD_PERIODS: Array<[DashboardPeriod, string]> = [
 ];
 
 const CONTROL =
-  "w-full rounded-xl border border-emerald-100 bg-white px-3 py-2.5 text-xs text-slate-800 outline-none placeholder:text-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
+  "w-full rounded-xl border border-emerald-100 bg-white px-3 py-2.5 text-xs text-slate-800 outline-hidden placeholder:text-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
 const LIGHT_CARD =
-  "rounded-[22px] border border-emerald-100/90 bg-gradient-to-br from-white via-emerald-50/20 to-orange-50/35 p-4 shadow-[0_10px_28px_rgba(15,68,50,0.055)]";
+  "rounded-[22px] border border-emerald-100/90 bg-linear-to-br from-white via-emerald-50/20 to-orange-50/35 p-4 shadow-[0_10px_28px_rgba(15,68,50,0.055)]";
 const SOFT_BUTTON =
   "rounded-xl border border-emerald-100 bg-white px-3 py-2 text-[10px] font-bold text-slate-600";
 const ACTIVE_BUTTON =
-  "rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-100 to-orange-100 px-3 py-2 text-[10px] font-black text-emerald-900";
+  "rounded-xl border border-emerald-200 bg-linear-to-r from-emerald-100 to-orange-100 px-3 py-2 text-[10px] font-black text-emerald-900";
 const EDIT_PARTY_STORAGE_KEY = "orbis-accounting-edit-party";
 const EDIT_EXPENSE_STORAGE_KEY = "orbis-accounting-edit-expense";
 const ALL_ACCOUNTS = "__ALL__";
 
 function emptyPaymentAmounts(): Record<MoneyMethod, string> {
-  return { cashPaise: "", bankPaise: "", upiPaise: "", pwtPaise: "" };
+  return { cashPaise: "", bankPaise: "", upiPaise: "", chequePaise: "", pwtPaise: "" };
 }
 
-function businessDateToday() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function dateKey(value: string) {
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
-  return match?.[1] || "";
-}
+const businessDateToday = accountingToday;
+const dateKey = accountingBusinessDate;
 
 function addDays(day: string, days: number) {
   const value = new Date(`${day}T00:00:00.000Z`);
@@ -289,6 +283,7 @@ function moneyMethodBalances(workspace: LotteryWorkspace, through?: string) {
     cashPaise: 0n,
     bankPaise: 0n,
     upiPaise: 0n,
+    chequePaise: 0n,
     pwtPaise: 0n,
   };
   for (const payment of workspace.payments) {
@@ -351,40 +346,7 @@ function customerOutstanding(
   return due - partyPaymentTotal(workspace, partyId, "RECEIPT", through);
 }
 
-function expenseOutstanding(
-  workspace: LotteryWorkspace,
-  profileId: string,
-  through: string,
-) {
-  const profile = workspace.expenseProfiles.find((item) => item.id === profileId);
-  const bills = workspace.expenseBills.filter(
-    (bill) => bill.profileId === profileId && throughDate(bill.occurredAt, through),
-  );
-  let due = bills.reduce(
-    (total, bill) => total + BigInt(bill.amountPaise),
-    0n,
-  );
-  if (
-    profile?.scheduleType === "MONTHLY" &&
-    profile.recurringStartsAt &&
-    dateKey(profile.recurringStartsAt) <= through
-  ) {
-    const billingMonth = through.slice(0, 7);
-    const hasMaterializedBill = bills.some(
-      (bill) => bill.billingMonth === billingMonth,
-    );
-    if (!hasMaterializedBill) {
-      due += BigInt(profile.usualAmountPaise || "0");
-    }
-  }
-  const paid = workspace.expensePayments
-    .filter(
-      (payment) =>
-        payment.profileId === profileId && throughDate(payment.occurredAt, through),
-    )
-    .reduce((total, payment) => total + BigInt(payment.totalAmountPaise), 0n);
-  return due - paid;
-}
+const expenseOutstanding = lotteryExpenseOutstanding;
 
 type PriorityRow = {
   id: string;
@@ -445,49 +407,7 @@ function payablePriority(workspace: LotteryWorkspace, through: string) {
   return sortPriorityRows(result);
 }
 
-function periodBusinessMetrics(
-  workspace: LotteryWorkspace,
-  from: string,
-  to: string,
-) {
-  const sales = [...workspace.sales, ...workspace.draftSales].filter((sale) =>
-    inDateRange(sale.occurredAt, from, to),
-  );
-  const purchases = workspace.stockistEntries.filter((entry) =>
-    inDateRange(entry.occurredAt, from, to),
-  );
-  const legacyExpenses = workspace.payments.filter(
-    (payment) =>
-      payment.direction === "EXPENSE" &&
-      inDateRange(payment.occurredAt, from, to),
-  );
-  const expensePayments = workspace.expensePayments.filter((payment) =>
-    inDateRange(payment.occurredAt, from, to),
-  );
-  const sellerGross = sumBigInt(sales.map((sale) => sale.grossSalesPaise));
-  const stockistGross = sumBigInt(
-    purchases.map((entry) => entry.grossPurchasePaise),
-  );
-  const sellerCommission = sumBigInt(sales.map((sale) => sale.commissionPaise));
-  const stockistCommission = sumBigInt(
-    purchases.map((entry) => entry.commissionPaise),
-  );
-  const commissionDifference = stockistCommission - sellerCommission;
-  const expenses =
-    sumBigInt(legacyExpenses.map((item) => item.totalAmountPaise)) +
-    sumBigInt(expensePayments.map((item) => item.totalAmountPaise));
-  return {
-    sales,
-    purchases,
-    sellerGross,
-    stockistGross,
-    sellerCommission,
-    stockistCommission,
-    commissionDifference,
-    expenses,
-    profit: sellerGross - stockistGross + commissionDifference - expenses,
-  };
-}
+const periodBusinessMetrics = lotteryBusinessMetrics;
 
 function Metric({
   label,
@@ -521,13 +441,13 @@ function Metric({
     <button
       type="button"
       onClick={onClick}
-      className={`min-w-0 rounded-2xl border bg-gradient-to-br p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,.9)] ${toneClass}`}
+      className={`min-w-0 rounded-2xl border bg-linear-to-br p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,.9)] ${toneClass}`}
     >
       {content}
     </button>
   ) : (
     <div
-      className={`min-w-0 rounded-2xl border bg-gradient-to-br p-3 ${toneClass}`}
+      className={`min-w-0 rounded-2xl border bg-linear-to-br p-3 ${toneClass}`}
     >
       {content}
     </div>
@@ -726,9 +646,10 @@ export function LotteryAccountingWorkspace({
         if (requestId === refreshRequestRef.current) {
           const devicePrimary =
             nextWorkspace.organization.userLedgerStorage === "DEVICE";
+          const activeLocalRows = localRows.records.filter((record) => !sellerWorkingRecordVoided(nextWorkspace, record));
           const retainedRecords = devicePrimary
-            ? localRows.records
-            : localRows.records.filter(
+            ? activeLocalRows
+            : activeLocalRows.filter(
                 (record) =>
                   !sellerWorkingRecordConfirmed(nextWorkspace, record),
               );
@@ -739,7 +660,7 @@ export function LotteryAccountingWorkspace({
               ? "Device accounting storage could not be read. Cloud data remains available."
               : null,
           );
-          if (!devicePrimary) {
+          {
             clearConfirmedSellerWorkingRows(
               localStore,
               scope,
@@ -752,6 +673,7 @@ export function LotteryAccountingWorkspace({
                   );
                 }
               },
+              !devicePrimary,
             );
           }
         }
@@ -967,7 +889,7 @@ export function LotteryAccountingWorkspace({
 
   return (
     <section className="space-y-3" aria-label="Lottery Accounting data workspace">
-      <header className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-orange-50 p-4 shadow-[0_12px_34px_rgba(20,85,61,.07)]">
+      <header className="rounded-[24px] border border-emerald-100 bg-linear-to-br from-emerald-50 via-white to-orange-50 p-4 shadow-[0_12px_34px_rgba(20,85,61,.07)]">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[9px] font-black uppercase tracking-[0.16em] text-emerald-700">
@@ -980,7 +902,7 @@ export function LotteryAccountingWorkspace({
               Easy outside. The existing accounting rules stay underneath.
             </p>
           </div>
-          <span className="rounded-2xl border border-orange-100 bg-gradient-to-br from-emerald-100 to-orange-100 p-3 text-emerald-800">
+          <span className="rounded-2xl border border-orange-100 bg-linear-to-br from-emerald-100 to-orange-100 p-3 text-emerald-800">
             <WalletCards className="h-5 w-5" />
           </span>
         </div>
@@ -1096,6 +1018,13 @@ export function LotteryAccountingWorkspace({
               organizationId={organizationId}
               api={api}
               refreshWorkspace={refreshWorkspace}
+              deleteLocalSeller={async (partyId, occurredAt) => {
+                if (!localStore) throw new Error("Durable device storage is unavailable.");
+                await localStore.removeSellerRow({ ...localScope, organizationId }, partyId, occurredAt);
+                clearPendingRow(organizationId, partyId, occurredAt);
+                setSellerWorkingRecords((records) => records.filter((record) => record.partyId !== partyId ||
+                  accountingBusinessDate(record.occurredAt) !== accountingBusinessDate(occurredAt)));
+              }}
               openSellerCorrection={(partyId, occurredAt) => {
                 setSellerEditRequest({ partyId, occurredAt, token: Date.now() });
                 setDailyMode("SELLER");
@@ -1172,6 +1101,7 @@ function DashboardPanel({
     sales,
     purchases,
     sellerGross,
+    customerGross,
     stockistGross,
     sellerCommission,
     stockistCommission,
@@ -1180,6 +1110,7 @@ function DashboardPanel({
     profit,
   } = periodBusinessMetrics(workspace, bounds.from, bounds.to);
 
+  const tds = lotteryPeriodTds(workspace, bounds.from, bounds.to);
   const receivables = receivablePriority(workspace, bounds.to);
   const payables = payablePriority(workspace, bounds.to);
   const receivable = receivables.reduce(
@@ -1313,8 +1244,8 @@ function DashboardPanel({
         )}
       </SectionCard>
 
-      <section className="orbis-public-money-panel rounded-[22px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-orange-50 p-4 shadow-[0_12px_30px_rgba(20,85,61,.065)]">
-        <p className="text-[8px] font-black uppercase tracking-[0.1em] text-slate-500">
+      <section className="orbis-public-money-panel rounded-[22px] border border-emerald-100 bg-linear-to-br from-emerald-50 via-white to-orange-50 p-4 shadow-[0_12px_30px_rgba(20,85,61,.065)]">
+        <p className="text-[8px] font-black uppercase tracking-widest text-slate-500">
           Current money
         </p>
         <p className="mt-1 text-3xl font-black tracking-tight text-slate-950">
@@ -1341,7 +1272,7 @@ function DashboardPanel({
                   })
                 }
                 data-money-method={method}
-                className={`orbis-public-money-card min-h-[76px] rounded-xl border p-2.5 text-left shadow-sm transition active:scale-[0.985] ${styles[index]}`}
+                className={`orbis-public-money-card min-h-[76px] rounded-xl border p-2.5 text-left shadow-xs transition active:scale-[0.985] ${styles[index % styles.length]}`}
               >
                 <p className="text-[7px] font-black uppercase tracking-[0.08em] opacity-70">
                   {label}
@@ -1428,6 +1359,7 @@ function DashboardPanel({
         <SectionCard title="Profit & Loss quick details">
           <div className="grid grid-cols-2 gap-2">
             <Metric label="Seller Gross" value={formatPaise(sellerGross)} />
+            <Metric label="Customer Gross" value={formatPaise(customerGross)} />
             <Metric label="Stockist Gross" value={formatPaise(stockistGross)} tone="orange" />
             <Metric label="Expenses" value={formatPaise(expenses)} tone="violet" />
             <Metric label="Net Profit" value={formatPaise(profit)} />
@@ -1476,9 +1408,26 @@ function DashboardPanel({
         )}
       </SectionCard>
 
+      <SectionCard
+        title="TDS reconciliation"
+        hint="Posted entries in this period. Payable and credit remain separate; their difference is a comparison, not a settlement."
+      >
+        <div className="grid grid-cols-2 gap-2">
+          <Metric label="Seller TDS generated" value={formatPaise(tds.generatedPayablePaise)} />
+          <Metric label="Stockist TDS recorded credit" value={formatPaise(tds.recordedCreditPaise)} />
+          <Metric label="TDS comparison difference" value={formatPaise(tds.comparisonDifferencePaise)} tone="orange" />
+          <Metric label="Legacy stockist TDS · review" value={formatPaise(tds.legacyUnclassifiedPaise)} tone="orange" />
+        </div>
+        <p className="mt-2 text-[8px] text-slate-500">
+          Deposits and claims are not recorded here, so these amounts are not a verified outstanding tax balance.
+          Legacy stock entries retain their saved formula and require review before classification. TDS does not enter profit.
+        </p>
+      </SectionCard>
+
       <SectionCard title="Profit & Loss">
         <p className="text-[10px] leading-relaxed text-slate-600">
-          <strong>{formatPaise(sellerGross)}</strong> seller gross −{" "}
+          <strong>{formatPaise(sellerGross)}</strong> seller gross +{" "}
+          <strong>{formatPaise(customerGross)}</strong> customer gross −{" "}
           <strong>{formatPaise(stockistGross)}</strong> stockist gross +{" "}
           <strong>{formatPaise(stockistCommission)}</strong> stockist commission −{" "}
           <strong>{formatPaise(sellerCommission)}</strong> seller commission −{" "}
@@ -1486,7 +1435,7 @@ function DashboardPanel({
           <strong>{formatPaise(profit)}</strong>.
         </p>
         <p className="mt-2 text-[8px] text-slate-500">
-          TDS remains separate from commission profit.
+          TDS stays separate from profit. Expense bills count as cost; their payments change money balances.
         </p>
       </SectionCard>
 
@@ -1683,7 +1632,7 @@ function PriorityList({ rows }: Readonly<{ rows: PriorityRow[] }>) {
 
 function AiCard({ title, text }: Readonly<{ title: string; text: string }>) {
   return (
-    <div className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-3">
+    <div className="rounded-xl border border-violet-100 bg-linear-to-br from-violet-50 to-white p-3">
       <p className="text-[8px] font-black uppercase text-violet-700">{title}</p>
       <p className="mt-1 text-[9px] font-bold text-slate-700">{text}</p>
     </div>
@@ -1764,6 +1713,18 @@ function DailyPanel({
               api.updateDailySellerDraft(saleId, payload),
             )
           }
+          onVoidSeller={api.previewAccountingVoid && api.voidAccountingTransaction ? async (saleId) => {
+            const previewVoid = api.previewAccountingVoid;
+            const saveVoid = api.voidAccountingTransaction;
+            if (!previewVoid || !saveVoid) return false;
+            const preview = await previewVoid("SELLER_SALE", saleId, { organizationId });
+            await saveVoid("SELLER_SALE", saleId, {
+              organizationId, previewToken: preview.previewToken,
+              operationId: globalThis.crypto?.randomUUID?.() || `void-${Date.now()}-${saleId}`,
+            });
+            await refreshWorkspace();
+            return true;
+          } : undefined}
           onDeleteDraft={async (saleId) => {
             await api.deleteDailySellerDraft(saleId, { organizationId });
             await refreshWorkspace();
@@ -2206,7 +2167,7 @@ async function saveUniversalPayment({
     cashPaise: parsed.cashPaise.toString(),
     bankPaise: parsed.bankPaise.toString(),
     upiPaise: parsed.upiPaise.toString(),
-    chequePaise: "0",
+    chequePaise: parsed.chequePaise.toString(),
     pwtPaise: parsed.pwtPaise.toString(),
   };
   const ok = await run(
@@ -2532,7 +2493,7 @@ function LedgerClickableTransactionRow({
           open();
         }
       }}
-      className="cursor-pointer border-t border-slate-100 outline-none hover:bg-emerald-50/40 focus:bg-emerald-50/60"
+      className="cursor-pointer border-t border-slate-100 outline-hidden hover:bg-emerald-50/40 focus:bg-emerald-50/60"
     >
       {includeAccount && <td className="px-2 py-2 font-black">{book.name}</td>}
       <td className="px-2 py-2">{displayDate(transaction.occurredAt)}</td>
@@ -2745,7 +2706,7 @@ function LedgerDayDetail({
         {books.map((book) => (
           <div
             key={book.id}
-            className="rounded-xl border border-emerald-100 bg-gradient-to-br from-white via-emerald-50/45 to-orange-50/45 p-3"
+            className="rounded-xl border border-emerald-100 bg-linear-to-br from-white via-emerald-50/45 to-orange-50/45 p-3"
           >
             <p className="text-[9px] font-black text-slate-900">{book.name}</p>
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -3045,6 +3006,7 @@ function LedgerSelectionContent({
 }
 
 function LedgerPanel({
+  deleteLocalSeller,
   workspace,
   organizationId,
   api,
@@ -3059,6 +3021,7 @@ function LedgerPanel({
   workspace: LotteryWorkspace;
   organizationId: string;
   api: LotteryAccountingClient;
+  deleteLocalSeller: (partyId: string, occurredAt: string) => Promise<void>;
   refreshWorkspace: () => Promise<boolean>;
   openSellerCorrection: (partyId: string, occurredAt: string) => void;
   launch: LedgerLaunch | null;
@@ -3161,7 +3124,7 @@ function LedgerPanel({
         title="Universal Ledger Hub"
         hint="Ledger Book → Type/Subcategory → Particular Party/Account → Period. The same filtering pattern works for every accounting book."
       >
-        <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/65 via-white to-orange-50/70 p-3">
+        <div className="rounded-2xl border border-emerald-100 bg-linear-to-br from-emerald-50/65 via-white to-orange-50/70 p-3">
           <div className="space-y-2">
             <label>
               <span className="text-[8px] font-black uppercase text-slate-500">
@@ -3288,6 +3251,7 @@ function LedgerPanel({
           onBack={() => setSelectedTransaction(null)}
           onRefresh={refreshWorkspace}
           onSellerCorrection={openSellerCorrection}
+          onDeleteLocalSeller={deleteLocalSeller}
         />
       ) : selectedDate ? (
         <LedgerDayDetail
@@ -3378,6 +3342,7 @@ function ledgerSubtypeOptions(
       ["cashPaise", "Cash Book"],
       ["bankPaise", "Bank Book"],
       ["upiPaise", "UPI Book"],
+      ["chequePaise", "Cheque Book"],
       ["pwtPaise", "PWT Book"],
     ];
   if (type === "pwt")
@@ -3796,6 +3761,31 @@ function buildReturnLedgerBooks(
   });
 }
 
+function sellerCommissionOrTdsEntries(workspace: LotteryWorkspace, type: LedgerBookType) {
+  if (type === "tds") return workspace.sales;
+  return [...workspace.sales, ...workspace.draftSales];
+}
+
+function stockistTdsNote(entry: { tdsPaise: string; source?: string }, sellerSide: boolean) {
+  if (sellerSide) return "";
+  if (entry.source === "DAILY") return " · Recorded credit";
+  return " · Legacy tax direction requires review";
+}
+
+function tdsLedgerSummary(sellerSide: boolean, tax: bigint, recordedCredit: bigint): LedgerBook["summary"] {
+  if (sellerSide) return [
+    ["TDS Generated", formatPaise(tax)],
+    ["Deposited", "Not recorded"],
+    ["Outstanding tax", "Not reconciled"],
+  ];
+  return [
+    ["TDS Recorded Credit", formatPaise(recordedCredit)],
+    ["Legacy TDS · review", formatPaise(tax - recordedCredit)],
+    ["Claimed", "Not recorded"],
+    ["Outstanding tax", "Not reconciled"],
+  ];
+}
+
 function buildCommissionOrTdsLedgerBooks(
   workspace: LotteryWorkspace,
   type: Extract<LedgerBookType, "commission" | "tds">,
@@ -3807,7 +3797,7 @@ function buildCommissionOrTdsLedgerBooks(
   const parties = ledgerParties(workspace, sellerSide);
   return parties.map((party) => {
     const entries = sellerSide
-      ? [...workspace.sales, ...workspace.draftSales].filter(
+      ? sellerCommissionOrTdsEntries(workspace, type).filter(
           (sale) =>
             sale.partyId === party.id &&
             inDateRange(sale.occurredAt, from, to),
@@ -3819,6 +3809,8 @@ function buildCommissionOrTdsLedgerBooks(
         );
     const gross = sumBigInt(entries.map((entry) => entry.commissionPaise));
     const tax = sumBigInt(entries.map((entry) => entry.tdsPaise));
+    const recordedCredit = sumBigInt(entries.filter((entry) => "source" in entry && entry.source === "DAILY")
+      .map((entry) => entry.tdsPaise));
     return simpleDerivedBook({
       id: `${type}-${subtype}-${party.id}`,
       type,
@@ -3833,7 +3825,7 @@ function buildCommissionOrTdsLedgerBooks(
             : "Stockist Commission"
           : sellerSide
             ? "Seller TDS Payable"
-            : "Stockist TDS Credit",
+            : "Stockist TDS · credit / legacy review",
       rows: entries.map((entry) => ({
         id: entry.id,
         occurredAt: entry.occurredAt,
@@ -3851,7 +3843,7 @@ function buildCommissionOrTdsLedgerBooks(
             : formatPaise(entry.tdsPaise),
         detail: `Gross commission ${formatPaise(
           entry.commissionPaise,
-        )} · TDS ${formatPaise(entry.tdsPaise)}`,
+        )} · TDS ${formatPaise(entry.tdsPaise)}${stockistTdsNote(entry, sellerSide)}`,
       })),
       summary:
         type === "commission"
@@ -3860,11 +3852,7 @@ function buildCommissionOrTdsLedgerBooks(
               ["TDS", formatPaise(tax)],
               ["Net Commission", formatPaise(gross - tax)],
             ]
-          : [
-              [sellerSide ? "TDS Generated" : "TDS Credit", formatPaise(tax)],
-              [sellerSide ? "Deposited" : "Claimed", formatPaise(0)],
-              ["Balance", formatPaise(tax)],
-            ],
+          : tdsLedgerSummary(sellerSide, tax, recordedCredit),
     });
   });
 }
@@ -4355,7 +4343,7 @@ function LedgerStatement({
         {book.summary.slice(-3).map(([label, value]) => (
           <div
             key={label}
-            className="rounded-xl border border-emerald-100 bg-gradient-to-br from-white via-emerald-50/45 to-orange-50/45 p-3 shadow-sm"
+            className="rounded-xl border border-emerald-100 bg-linear-to-br from-white via-emerald-50/45 to-orange-50/45 p-3 shadow-xs"
           >
             <p className="text-[7px] font-black uppercase tracking-[0.08em] text-slate-400">
               {label}
@@ -4790,7 +4778,7 @@ function MastersPanel({
           </div>
           {partyEditorOpen && (
             <form
-              className="mb-3 rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-orange-50 p-3"
+              className="mb-3 rounded-2xl border border-emerald-100 bg-linear-to-br from-emerald-50 to-orange-50 p-3"
               onSubmit={(event) => void saveParty(event)}
             >
               <div className="grid grid-cols-2 gap-2">
@@ -4857,7 +4845,7 @@ function MastersPanel({
           title="Expenses"
           hint="Expenses → Category → Profile/Name. Both Category and Profile can be added or edited."
         >
-          <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/60 to-orange-50/60 p-3">
+          <div className="rounded-2xl border border-emerald-100 bg-linear-to-br from-emerald-50/60 to-orange-50/60 p-3">
             <p className="text-[7px] font-black uppercase text-slate-500">Top Type</p>
             <p className="mt-1 text-sm font-black">Expenses</p>
             <div className="mt-2 block">
@@ -4938,7 +4926,7 @@ function MastersPanel({
 
           {expenseEditorOpen && (
             <form
-              className="mt-2 rounded-2xl border border-emerald-100 bg-gradient-to-br from-white to-emerald-50/50 p-3"
+              className="mt-2 rounded-2xl border border-emerald-100 bg-linear-to-br from-white to-emerald-50/50 p-3"
               onSubmit={(event) => void saveExpense(event)}
             >
               <div className="grid grid-cols-2 gap-2">

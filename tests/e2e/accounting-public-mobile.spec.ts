@@ -68,6 +68,14 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(layout.overflowing).toEqual([]);
 }
 
+async function expectPaymentMethodCards(page: Page) {
+  const workspace = page.getByRole("region", { name: "Lottery Accounting data workspace" });
+  for (const method of ["Cash", "Bank", "UPI", "Cheque", "PWT"]) {
+    await expect(workspace.getByText(method, { exact: true })).toBeVisible();
+  }
+  await expectNoHorizontalOverflow(page);
+}
+
 async function expectSignatureShell(shell: Locator, appearance: string) {
   await expect(shell).toHaveAttribute("data-accounting-appearance", appearance);
   await expect(shell.getByText("ORBiS Accounting AI")).toBeVisible();
@@ -172,6 +180,8 @@ test("@smoke accounting public language switch keeps greeting and layout", async
 test("@visual accounting public Signature Emerald viewport", async ({ page }) => {
   await openPublicHarness(page);
 
+  await expectPaymentMethodCards(page);
+
   await expect(page).toHaveScreenshot(
     "accounting-public-signature-emerald.png",
     {
@@ -189,6 +199,8 @@ test("@visual accounting public Signature Emerald Dark viewport", async ({ page 
     .getByRole("button", { name: /Signature Emerald Dark/i })
     .click();
   await page.getByRole("button", { name: "Close public menu" }).click();
+
+  await expectPaymentMethodCards(page);
 
   await expect(page).toHaveScreenshot(
     "accounting-public-signature-emerald-dark.png",

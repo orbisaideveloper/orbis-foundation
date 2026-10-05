@@ -119,7 +119,7 @@ export const TermuxObservatory: React.FC = () => {
   }, [task]);
 
   return (
-    <section className="w-full rounded-[24px] border border-indigo-100 bg-white p-5 shadow-sm">
+    <section className="w-full rounded-[24px] border border-indigo-100 bg-white p-5 shadow-xs">
       {/* হেডার */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
@@ -177,7 +177,7 @@ export const TermuxObservatory: React.FC = () => {
                 className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5 text-left hover:border-indigo-300 hover:shadow-md transition-all active:scale-[0.98]"
               >
                 <CheckCircle2
-                  className={`h-5 w-5 flex-shrink-0 ${/PASS|COMPLETED/i.test(t.status) ? "text-emerald-500" : "text-amber-500"}`}
+                  className={`h-5 w-5 shrink-0 ${/PASS|COMPLETED/i.test(t.status) ? "text-emerald-500" : "text-amber-500"}`}
                 />
                 <b className="font-mono text-[13px] text-slate-700">{t.task}</b>
                 <span className="flex-1 truncate text-[13px] font-medium text-slate-500">
@@ -201,7 +201,7 @@ export const TermuxObservatory: React.FC = () => {
 
       {/* লেভেল ২: ডার্ক গ্লাস মোডাল (Drill-Down) */}
       {task && (
-        <div className="fixed inset-0 z-[100] flex justify-center bg-slate-900/60 backdrop-blur-sm p-4 sm:p-6 animate-in fade-in duration-200 overflow-y-auto">
+        <div className="fixed inset-0 z-100 flex justify-center bg-slate-900/60 backdrop-blur-xs p-4 sm:p-6 animate-in fade-in duration-200 overflow-y-auto">
           <div className="relative w-full max-w-2xl h-fit my-auto rounded-[24px] bg-[#0F172A]/90 backdrop-blur-xl border border-white/10 shadow-[0_0_40px_-10px_rgba(0,0,0,0.5)] flex flex-col text-white animate-in zoom-in-95 duration-200">
             {/* টপ বার: Back & Copy */}
             <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-white/10 bg-[#0F172A]/50 backdrop-blur-md rounded-t-[24px]">
@@ -283,7 +283,7 @@ export const TermuxObservatory: React.FC = () => {
                         {files.map((f) => (
                           <div
                             key={f}
-                            className="font-mono text-[11px] text-slate-300 bg-black/30 p-1.5 rounded border border-white/5 break-all"
+                            className="font-mono text-[11px] text-slate-300 bg-black/30 p-1.5 rounded-sm border border-white/5 break-all"
                           >
                             {f}
                           </div>

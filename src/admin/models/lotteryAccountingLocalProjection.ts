@@ -1,3 +1,4 @@
+import { accountingBusinessDate } from "./lotteryAccountingBusinessDate";
 import { rupeesToPaise } from "./lotteryAccountingMoney";
 import { calculateLotterySeller } from "./lotteryAccountingSellerCalculation";
 import type {
@@ -18,10 +19,7 @@ export interface AccountingSellerProjectionRecord {
   updatedAt: number;
 }
 
-function accountingDateKey(value: string) {
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
-  return match?.[1] || "";
-}
+const accountingDateKey = accountingBusinessDate;
 
 function sameSellerDay(
   record: AccountingSellerProjectionRecord,
@@ -103,6 +101,25 @@ function projectDraft(
   };
 }
 
+export function sellerVoidForDay(workspace: LotteryWorkspace, partyId: string, occurredAt: string) {
+  return (workspace.voidedTransactions || []).filter((deletion) => deletion.entityType === "SELLER_SALE" &&
+    deletion.previousSnapshot.partyId === partyId &&
+    accountingDateKey(String(deletion.previousSnapshot.occurredAt)) === accountingDateKey(occurredAt))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+}
+
+export function sellerWorkingRecordVoided(
+  workspace: LotteryWorkspace,
+  record: Pick<AccountingSellerProjectionRecord, "partyId" | "occurredAt" | "row" | "updatedAt">,
+): boolean {
+  const deletion = sellerVoidForDay(workspace, record.partyId, record.occurredAt);
+  if (!deletion) return false;
+  if (record.row.saleId === deletion.entityId) return true;
+  return record.row.replacesVoidId !== deletion.entityId &&
+    !(workspace.sales || []).some((sale) => sale.id === record.row.saleId) &&
+    !(workspace.draftSales || []).some((sale) => sale.id === record.row.saleId);
+}
+
 export function sellerWorkingRecordConfirmed(
   workspace: LotteryWorkspace,
   record: AccountingSellerWorkingRecord,
@@ -125,6 +142,9 @@ export function projectSellerWorkingRecords(
   for (const record of [...records].sort(
     (left, right) => left.updatedAt - right.updatedAt,
   )) {
+    if (sellerWorkingRecordVoided(workspace, record)) continue;
+    if (rowIsZero(record.row) && [...workspace.sales, ...workspace.draftSales]
+      .some((sale) => sale.id === record.row.saleId)) continue;
     sales = sales.filter((sale) => !matchesLocalRecord(record, sale));
     draftSales = draftSales.filter(
       (sale) => !matchesLocalRecord(record, sale),

@@ -331,7 +331,7 @@ AUDIT FILE: ${task.auditFile}
                 type="button"
                 data-testid={`task-${task.id}`}
                 onClick={() => setSelectedTask(task)}
-                className="flex w-full items-center justify-between rounded-xl border border-white/10 p-4 text-left transition-all hover:border-white/30 hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-white/50"
+                className="flex w-full items-center justify-between rounded-xl border border-white/10 p-4 text-left transition-all hover:border-white/30 hover:bg-white/5 focus:outline-hidden focus:ring-1 focus:ring-white/50"
               >
                 <div>
                   <span className="font-semibold">{task.id}</span>

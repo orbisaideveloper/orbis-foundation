@@ -526,6 +526,17 @@ function createPublicLotteryAccountingRouter({
     ),
   );
 
+  router.post("/voids/:entityType/:entityId/preview", (req, res) =>
+    scopedMutation(req, res, async (payload) => ({ preview: await service.previewAccountingVoid({
+      ...payload, entityType: req.params.entityType, entityId: req.params.entityId,
+    }) })),
+  );
+  router.post("/voids/:entityType/:entityId", (req, res) =>
+    scopedMutation(req, res, async (payload, actorId) => ({ deletion: await service.voidAccountingTransaction({
+      ...payload, entityType: req.params.entityType, entityId: req.params.entityId,
+    }, actorId) }), 201),
+  );
+
   router.post("/corrections/:entityType/:entityId", (req, res) =>
     scopedMutation(
       req,

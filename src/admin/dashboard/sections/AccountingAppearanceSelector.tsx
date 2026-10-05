@@ -20,7 +20,7 @@ export function AccountingAppearanceSelector({
 }>) {
   return (
     <section
-      className="rounded-2xl border border-emerald-100 bg-white/90 p-3 shadow-sm"
+      className="rounded-2xl border border-emerald-100 bg-white/90 p-3 shadow-xs"
       aria-label={accountingText(language, "appearance.aria")}
     >
       <div className="flex items-center gap-2">

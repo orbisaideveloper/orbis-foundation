@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom";
 
+const REQUIRE_SIGN_IN_LABEL = "Require sign-in when app reopens";
+
 const EMAIL = "ajay@example.com";
 const PHONE = "+919999999999";
 const DISPLAY_NAME = "Ajay Saha";
@@ -78,10 +80,10 @@ vi.mock("../admin/dashboard/sections/AccountingPublicView", () => ({
       </div>
       {publicUserMode && onRequireSignInOnOpenChange && (
         <label>
-          Require sign-in when app reopens
+          {REQUIRE_SIGN_IN_LABEL}
           <input
             type="checkbox"
-            aria-label="Require sign-in when app reopens"
+            aria-label={REQUIRE_SIGN_IN_LABEL}
             checked={Boolean(requireSignInOnOpen)}
             onChange={(event) =>
               onRequireSignInOnOpenChange(event.target.checked)
@@ -93,10 +95,8 @@ vi.mock("../admin/dashboard/sections/AccountingPublicView", () => ({
   ),
 }));
 
-vi.mock("./publicAccountingApi", async () => {
-  const actual = await vi.importActual<typeof import("./publicAccountingApi")>(
-    "./publicAccountingApi",
-  );
+vi.mock(import("./publicAccountingApi"), async (importOriginal) => {
+  const actual = await importOriginal();
   return { ...actual, ...apiMocks };
 });
 
@@ -332,7 +332,7 @@ describe("PublicAccountingApp", () => {
     ).toBeVisible();
 
     fireEvent.click(
-      screen.getByLabelText("Require sign-in when app reopens"),
+      screen.getByLabelText(REQUIRE_SIGN_IN_LABEL),
     );
 
     expect(

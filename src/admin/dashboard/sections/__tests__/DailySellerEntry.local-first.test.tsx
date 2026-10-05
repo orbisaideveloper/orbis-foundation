@@ -147,6 +147,7 @@ function renderEntry(localStore: LotteryAccountingLocalStore) {
 
 describe("DailySellerEntry local-first projection", () => {
   beforeEach(() => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(RECORDED_AT));
     window.localStorage?.clear?.();
@@ -154,6 +155,7 @@ describe("DailySellerEntry local-first projection", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("updates the daily total from the current local row before the server autosave runs", async () => {

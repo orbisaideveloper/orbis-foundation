@@ -160,13 +160,13 @@ export default function TimeMachineCard() {
   const renderStatusBadge = (status: string) => {
     if (status === "FAILED") {
       return (
-        <span className="text-[10px] bg-red-500/20 text-red-400 border border-red-500/40 px-2 py-0.5 rounded font-bold">
+        <span className="text-[10px] bg-red-500/20 text-red-400 border border-red-500/40 px-2 py-0.5 rounded-sm font-bold">
           ❌ CI FAILED
         </span>
       );
     }
     return (
-      <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-2 py-0.5 rounded font-bold">
+      <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-2 py-0.5 rounded-sm font-bold">
         ✅ PASSED
       </span>
     );
@@ -246,7 +246,7 @@ export default function TimeMachineCard() {
                 placeholder="Search by commit ID or file path..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full pl-9 p-2.5 outline-none"
+                className="bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full pl-9 p-2.5 outline-hidden"
               />
             </div>
           </div>
@@ -264,7 +264,7 @@ export default function TimeMachineCard() {
                 >
                   <div className="flex justify-between items-center border-b border-slate-800/80 pb-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-[12px] font-mono font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-500/20">
+                      <span className="text-[12px] font-mono font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded-sm border border-yellow-500/20">
                         Commit:{" "}
                         {commit.commitId ? commit.commitId.slice(0, 8) : "N/A"}
                       </span>
@@ -312,7 +312,7 @@ export default function TimeMachineCard() {
                           <span className="text-[12px] font-mono text-slate-300 truncate max-w-[210px] group-hover:text-yellow-400">
                             📂 {file.filePath}
                           </span>
-                          <span className="text-[11px] bg-slate-800 hover:bg-yellow-500 hover:text-black text-slate-200 px-2.5 py-1 rounded transition font-medium">
+                          <span className="text-[11px] bg-slate-800 hover:bg-yellow-500 hover:text-black text-slate-200 px-2.5 py-1 rounded-sm transition font-medium">
                             View Code
                           </span>
                         </button>

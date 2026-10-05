@@ -144,7 +144,7 @@ export function BrainChatTestLog({ previewMode }: Readonly<BrainChatTestLogProps
 
   return (
     <div className="space-y-3">
-      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+      <section className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-sm font-black text-slate-900">Continuous Chat Test Log</h3>
@@ -186,7 +186,7 @@ export function BrainChatTestLog({ previewMode }: Readonly<BrainChatTestLogProps
         </section>
       ) : (
         visibleEntries.map((entry) => (
-          <article key={entry.id} className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-sm">
+          <article key={entry.id} className="rounded-[22px] border border-emerald-100 bg-white/85 p-4 shadow-xs">
             <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-semibold text-slate-500">
               <span>{new Intl.DateTimeFormat(BENGALI_LOCALE, { dateStyle: "medium", timeStyle: "medium" }).format(entry.completedAt)}</span>
               <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-1 text-emerald-700">{entry.outcome}</span>

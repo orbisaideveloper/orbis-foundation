@@ -1,3 +1,5 @@
+const { accountingMoneyBalances } = require("./accounting-money-balances.cjs");
+const { reconcileLotteryTds } = require("./accounting-tds-reconciliation.cjs");
 const MONEY_UNIT = "PAISE";
 const RATE_UNIT = "BASIS_POINTS";
 const MAX_RATE_BPS = 10_000n;
@@ -42,9 +44,6 @@ function roundedBasisPoints(amount, basisPoints) {
 function commissionAmount(input, grossSalesPaise) {
   if (input.commissionPaise !== undefined) {
     const commissionPaise = integer(input.commissionPaise, "commissionPaise");
-    if (commissionPaise > grossSalesPaise) {
-      throw accountingError("COMMISSION_EXCEEDS_GROSS", "commissionPaise");
-    }
     return { commissionPaise, commissionRateBps: 0n };
   }
 
@@ -157,12 +156,18 @@ function calculateLotterySale(input) {
 }
 
 function buildLotterySaleLedger(calculatedSale) {
-  const netPayable = integer(calculatedSale.netPayablePaise, "netPayablePaise");
+  const netPayable = integer(calculatedSale.netPayablePaise, "netPayablePaise", {
+    allowNegative: true,
+  });
   const commission = integer(calculatedSale.commissionPaise, "commissionPaise");
   const tds = integer(calculatedSale.tdsPaise, "tdsPaise");
   const gross = integer(calculatedSale.grossSalesPaise, "grossSalesPaise");
   const entries = [
-    { accountCode: "PARTY_RECEIVABLE", side: "DEBIT", amountPaise: netPayable },
+    {
+      accountCode: "PARTY_RECEIVABLE",
+      side: netPayable < 0n ? "CREDIT" : "DEBIT",
+      amountPaise: netPayable < 0n ? -netPayable : netPayable,
+    },
     {
       accountCode: "COMMISSION_EXPENSE",
       side: "DEBIT",
@@ -231,7 +236,7 @@ function validatePayment(input) {
   });
 }
 
-function stockSummary(movements = []) {
+function stockSummary(movements = [], { allowNegative = false } = {}) {
   const totals = { RECEIPT: 0n, DISPATCH: 0n, RETURN: 0n, STOCKIST_RETURN: 0n, ADJUSTMENT: 0n };
   for (const movement of movements) {
     const type = String(movement.type || "").toUpperCase();
@@ -242,7 +247,7 @@ function stockSummary(movements = []) {
   }
   const closing =
     totals.RECEIPT - totals.DISPATCH + totals.RETURN - totals.STOCKIST_RETURN + totals.ADJUSTMENT;
-  if (closing < 0n) throw accountingError("NEGATIVE_STOCK", "stock");
+  if (closing < 0n && !allowNegative) throw accountingError("NEGATIVE_STOCK", "stock");
   return Object.freeze({
     received: totals.RECEIPT.toString(),
     dispatched: totals.DISPATCH.toString(),
@@ -257,6 +262,10 @@ function summarizeLotteryAccounting({
   sales = [],
   payments = [],
   stockMovements = [],
+  stockistEntries = [],
+  customerBills = [],
+  expenseBills = [],
+  expensePayments = [],
 }) {
   const calculatedSales = sales.map(calculateLotterySale);
   const checkedPayments = payments.map(validatePayment);
@@ -275,10 +284,24 @@ function summarizeLotteryAccounting({
   const expenses = checkedPayments
     .filter((payment) => payment.direction === "EXPENSE")
     .reduce((sum, payment) => sum + BigInt(payment.totalAmountPaise), 0n);
-  const outstanding = netPayable - receipts;
-  const operatingResult = netPayable - expenses;
+  const customerGross = total(customerBills, "amountPaise");
+  const purchaseGross = total(stockistEntries, "grossPurchasePaise");
+  const stockistCommission = total(stockistEntries, "commissionPaise");
+  const accruedExpense = total(expenseBills, "amountPaise");
+  const paidExpense = total(expensePayments, "totalAmountPaise");
+  const expenseCost = expenses + accruedExpense;
+  const outstanding = netPayable + customerGross - receipts;
+  const operatingResult = grossSales + customerGross - purchaseGross +
+    stockistCommission - commission - expenseCost;
+  const methodBalances = accountingMoneyBalances(checkedPayments, expensePayments);
+  const cashFlow = Object.entries(methodBalances).reduce((sum, [method, amount]) =>
+    method === "pwtPaise" || method === "chequePaise" ? sum : sum + amount, 0n);
+  const stock = stockSummary(stockMovements, { allowNegative: true });
   const anomalies = [];
-  if (outstanding < 0n) anomalies.push("COLLECTION_EXCEEDS_NET_PAYABLE");
+  if (BigInt(stock.closing) < 0n) anomalies.push("NEGATIVE_STOCK_BALANCE");
+  if (netPayable + customerGross >= 0n && receipts > 0n && outstanding < 0n) {
+    anomalies.push("COLLECTION_EXCEEDS_NET_PAYABLE");
+  }
   if (grossSales > 0n && commission * 100n > grossSales * 25n) {
     anomalies.push("COMMISSION_ABOVE_25_PERCENT");
   }
@@ -291,14 +314,23 @@ function summarizeLotteryAccounting({
     grossSalesPaise: grossSales.toString(),
     commissionPaise: commission.toString(),
     tdsPaise: tds.toString(),
+    tdsReconciliation: Object.freeze(reconcileLotteryTds(calculatedSales, stockistEntries)),
     netPayablePaise: netPayable.toString(),
     collectedPaise: receipts.toString(),
     outgoingPaise: outgoing.toString(),
-    expensePaise: expenses.toString(),
+    expensePaise: expenseCost.toString(),
+    accruedExpensePaise: accruedExpense.toString(),
+    paidExpensePaise: paidExpense.toString(),
+    grossCustomerSalesPaise: customerGross.toString(),
+    grossPurchasePaise: purchaseGross.toString(),
+    stockistCommissionPaise: stockistCommission.toString(),
+    methodBalances: Object.freeze(Object.fromEntries(Object.entries(methodBalances)
+      .map(([method, amount]) => [method, amount.toString()]))),
+    pwtBalancePaise: methodBalances.pwtPaise.toString(),
     outstandingPaise: outstanding.toString(),
     operatingResultPaise: operatingResult.toString(),
-    netCashFlowPaise: (receipts - outgoing).toString(),
-    stock: stockSummary(stockMovements),
+    netCashFlowPaise: cashFlow.toString(),
+    stock,
     anomalies: Object.freeze(anomalies),
   });
 }
@@ -314,7 +346,8 @@ function analyzeLotterySummary(summary) {
       skill: "profit-loss",
       status: operatingResult >= 0n ? "POSITIVE" : "NEGATIVE",
       amountPaise: operatingResult.toString(),
-      sourceFields: ["netPayablePaise", "expensePaise"],
+      sourceFields: ["grossSalesPaise", "grossCustomerSalesPaise", "grossPurchasePaise",
+        "stockistCommissionPaise", "commissionPaise", "expensePaise"],
     }),
     Object.freeze({
       skill: "outstanding-dues",

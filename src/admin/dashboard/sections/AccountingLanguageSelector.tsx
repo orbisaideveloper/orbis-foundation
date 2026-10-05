@@ -15,7 +15,7 @@ export function AccountingLanguageSelector({
 }>) {
   return (
     <section
-      className="rounded-2xl border border-emerald-100 bg-white/90 p-3 shadow-sm"
+      className="rounded-2xl border border-emerald-100 bg-white/90 p-3 shadow-xs"
       aria-label={accountingText(value, "language.aria")}
     >
       <div className="flex items-center gap-2">
@@ -42,7 +42,7 @@ export function AccountingLanguageSelector({
             onClick={() => onChange(item.value)}
             className={`min-h-11 shrink-0 rounded-xl border px-3 py-2 text-left transition ${
               value === item.value
-                ? "border-emerald-300 bg-emerald-50 text-emerald-900 shadow-sm"
+                ? "border-emerald-300 bg-emerald-50 text-emerald-900 shadow-xs"
                 : "border-slate-200 bg-white text-slate-600"
             }`}
           >

@@ -20,6 +20,7 @@ export interface AccountingLocalScope {
 
 export interface AccountingSellerWorkingRow {
   saleId?: string;
+  replacesVoidId?: string;
   partyId: string;
   reference?: string;
   status?: "DRAFT" | "POSTED";

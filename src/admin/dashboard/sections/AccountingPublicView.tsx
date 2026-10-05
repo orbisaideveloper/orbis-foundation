@@ -229,7 +229,7 @@ export function AccountingPublicView({
       aria-label={accountingText(language, "greeting.aria")}
     >
       <div className="orbis-public-greeting-glow" aria-hidden="true" />
-      <div className="relative z-[1] flex items-center gap-2.5">
+      <div className="relative z-1 flex items-center gap-2.5">
         <span className="orbis-public-greeting-mark" aria-hidden="true">
           <Sparkles className="h-3.5 w-3.5" />
         </span>
@@ -285,7 +285,7 @@ export function AccountingPublicView({
 
   return (
     <section
-      className="fixed inset-0 z-[100] overflow-y-auto bg-[#F8FAFC]"
+      className="fixed inset-0 z-100 overflow-y-auto bg-[#F8FAFC]"
       data-testid="accounting-public-viewport"
       aria-label={inspectionLabel}
       lang={accountingHtmlLang(language)}
@@ -336,7 +336,7 @@ export function AccountingPublicView({
           data-testid="accounting-public-shell"
         >
           <header className="orbis-public-app-header">
-            <div className="relative z-[1] flex items-center justify-between gap-2">
+            <div className="relative z-1 flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2.5">
                 <button
                   type="button"

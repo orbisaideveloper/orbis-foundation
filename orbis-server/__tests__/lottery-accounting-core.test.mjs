@@ -101,7 +101,7 @@ describe("Lottery Accounting Core", () => {
     [{ ...saleInput, dispatchQuantity: 1.5 }, "INVALID_INTEGER"],
     [{ ...saleInput, morningReturnQuantity: 101 }, "RETURN_EXCEEDS_DISPATCH"],
     [{ ...saleInput, returnQuantity: 99 }, "RETURN_TOTAL_MISMATCH"],
-    [{ ...saleInput, commissionPaise: 80_001 }, "COMMISSION_EXCEEDS_GROSS"],
+    [{ ...saleInput, commissionPaise: -1 }, "NEGATIVE_VALUE"],
     [{ ...saleInput, ticketRatePaise: -1 }, "NEGATIVE_VALUE"],
   ])("rejects invalid sale input %#", (input, code) => {
     expect(() => calculateLotterySale(input)).toThrow(code);
@@ -160,7 +160,7 @@ describe("Lottery Accounting Core", () => {
     expect(summary).toMatchObject({
       verified: true,
       outstandingPaise: "26080",
-      operatingResultPaise: "70080",
+      operatingResultPaise: "70000",
       netCashFlowPaise: "44000",
       stock: { closing: "39" },
     });

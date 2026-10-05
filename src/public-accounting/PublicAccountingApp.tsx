@@ -27,7 +27,7 @@ const CREATE_ACCOUNT_LABEL = "Create account";
 const SIGN_OUT_LABEL = "Sign out";
 const PAGE_CLASS = "min-h-screen bg-slate-50 px-4 py-6 text-slate-900";
 const CARD_CLASS =
-  "mx-auto w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
+  "mx-auto w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xs";
 const FIELD_CLASS = "mt-3 block text-sm font-medium text-slate-700";
 const INPUT_CLASS = "mt-1 w-full rounded-lg border border-slate-300 p-2";
 const PRIMARY_BUTTON_CLASS =
@@ -146,7 +146,7 @@ function PublishedWorkspace({
 }) {
   return (
     <main className={PAGE_CLASS}>
-      <section className="mx-auto w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="mx-auto w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
@@ -878,7 +878,7 @@ export default function PublicAccountingApp() {
   if (portalError || !account) {
     return (
       <main className={PAGE_CLASS}>
-        <section className="mx-auto w-full max-w-md rounded-2xl border border-red-200 bg-white p-5 shadow-sm">
+        <section className="mx-auto w-full max-w-md rounded-2xl border border-red-200 bg-white p-5 shadow-xs">
           <h1 className="text-xl font-bold">Accounting unavailable</h1>
           <p role="alert" className="mt-3 text-sm text-red-700">
             {portalError || ACCOUNT_UNAVAILABLE}

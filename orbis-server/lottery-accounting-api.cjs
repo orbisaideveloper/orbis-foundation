@@ -6,6 +6,8 @@ const NO_STORE = "no-store";
 const CACHE_CONTROL = "Cache-Control";
 
 const CLIENT_ERROR_CODES = new Set([
+  "INVALID_VOID_TYPE", "VOID_SOURCE_NOT_FOUND", "TRANSACTION_ALREADY_VOIDED",
+  "VOID_CONFLICT", "VOID_OPERATION_REUSED", "VOID_PAYMENT_LINK_REQUIRES_REVIEW", "VOID_LEDGER_NOT_BALANCED", "VOID_LINKED_SOURCE_REQUIRED",
   "DATA_INTEGRITY_ERROR",
   "DRAFT_SALE_NOT_FOUND",
   "EXPENSE_CATEGORY_NOT_FOUND",
@@ -77,7 +79,7 @@ function sendAccountingError(res, error) {
     code === "SELLER_SYNC_OPERATION_REUSED" ||
     code === "CORRECTION_CONFLICT" ||
     code === "CORRECTION_OPERATION_REUSED" ||
-    code === "PAYMENT_HAS_SETTLEMENTS";
+    code === "PAYMENT_HAS_SETTLEMENTS" || code === "VOID_CONFLICT" || code === "VOID_OPERATION_REUSED" || code === "TRANSACTION_ALREADY_VOIDED";
   const status = NOT_FOUND_CODES.has(code)
     ? 404
     : conflictCode
@@ -380,6 +382,19 @@ function createLotteryAccountingRouter({
     } catch (error) {
       return sendAccountingError(res, error);
     }
+  });
+
+  router.post("/voids/:entityType/:entityId/preview", async (req, res) => {
+    try {
+      const preview = await service.previewAccountingVoid({ ...req.body, entityType: req.params.entityType, entityId: req.params.entityId });
+      return res.json({ preview });
+    } catch (error) { return sendAccountingError(res, error); }
+  });
+  router.post("/voids/:entityType/:entityId", async (req, res) => {
+    try {
+      const deletion = await service.voidAccountingTransaction({ ...req.body, entityType: req.params.entityType, entityId: req.params.entityId }, req.adminUser?.id);
+      return res.status(201).json({ deletion });
+    } catch (error) { return sendAccountingError(res, error); }
   });
 
   router.post("/corrections/:entityType/:entityId", async (req, res) => {

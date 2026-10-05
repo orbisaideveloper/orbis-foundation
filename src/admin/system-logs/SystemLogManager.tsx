@@ -71,7 +71,7 @@ function SourceTreeState({
 
 function getFileButtonClass(isErrorFile: boolean, isLatestUpdate: boolean) {
   const baseClass =
-    "w-full text-left flex items-center gap-2 py-1.5 px-2 rounded text-xs my-0.5 transition-all";
+    "w-full text-left flex items-center gap-2 py-1.5 px-2 rounded-sm text-xs my-0.5 transition-all";
 
   if (isErrorFile) {
     return `${baseClass} bg-red-500/20 text-red-400 border border-red-500/50 font-bold animate-pulse`;
@@ -282,7 +282,7 @@ export default function SystemLogManager() {
         <FileCode size={14} className={fileIconClass} />
         <span className="truncate">{item.name}</span>
         {isLatestUpdate && (
-          <span className="ml-auto text-[9px] bg-yellow-500/20 px-1 rounded text-yellow-500">
+          <span className="ml-auto text-[9px] bg-yellow-500/20 px-1 rounded-sm text-yellow-500">
             Updated
           </span>
         )}
@@ -343,7 +343,7 @@ export default function SystemLogManager() {
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
           <div className="bg-[#0f172a] border border-slate-700 rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900 shrink-0">
               <div className="flex items-center gap-3">
@@ -361,7 +361,7 @@ export default function SystemLogManager() {
                       setActiveView("cards");
                       setSearchQuery(""); // Back করলে সার্চ ক্লিয়ার হয়ে যাবে
                     }}
-                    className="px-3 py-1.5 text-xs font-medium bg-slate-800 text-slate-300 rounded hover:bg-slate-700 transition"
+                    className="px-3 py-1.5 text-xs font-medium bg-slate-800 text-slate-300 rounded-sm hover:bg-slate-700 transition"
                   >
                     Back to Cards
                   </button>
@@ -454,7 +454,7 @@ export default function SystemLogManager() {
                         <button
                           type="button"
                           onClick={handleCopyTree}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition ${isTreeCopied ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-blue-400 hover:bg-slate-700"}`}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm transition ${isTreeCopied ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-blue-400 hover:bg-slate-700"}`}
                         >
                           {isTreeCopied ? (
                             <Check size={14} />
@@ -476,7 +476,7 @@ export default function SystemLogManager() {
                           placeholder="Search files or folders..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded-lg pl-9 p-2.5 outline-none focus:border-blue-500 transition-colors"
+                          className="w-full bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded-lg pl-9 p-2.5 outline-hidden focus:border-blue-500 transition-colors"
                         />
                       </div>
 
@@ -500,18 +500,18 @@ export default function SystemLogManager() {
                           <button
                             type="button"
                             onClick={() => setSelectedFile(null)}
-                            className="p-1.5 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 shrink-0"
+                            className="p-1.5 bg-slate-800 text-slate-300 rounded-sm hover:bg-slate-700 shrink-0"
                           >
                             <ChevronLeft size={16} />
                           </button>
-                          <span className="text-xs font-mono text-slate-300 truncate max-w-[150px] sm:max-w-md bg-slate-800 px-2 py-1 rounded">
+                          <span className="text-xs font-mono text-slate-300 truncate max-w-[150px] sm:max-w-md bg-slate-800 px-2 py-1 rounded-sm">
                             {selectedFile.split("/").pop()}
                           </span>
                         </div>
                         <button
                           type="button"
                           onClick={handleCopyCode}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-all shrink-0 ${isCopied ? "bg-emerald-500/20 text-emerald-400" : "bg-blue-600 text-white hover:bg-blue-500 shadow-md"}`}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-bold transition-all shrink-0 ${isCopied ? "bg-emerald-500/20 text-emerald-400" : "bg-blue-600 text-white hover:bg-blue-500 shadow-md"}`}
                         >
                           {isCopied ? <Check size={14} /> : <Copy size={14} />}
                           {isCopied ? "Copied!" : "Copy Code"}
