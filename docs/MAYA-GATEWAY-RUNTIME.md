@@ -2,7 +2,10 @@
 
 Status: backend route and restricted provider service implemented; live use
 remains unavailable until Admin capability authorization and origins are wired.
-This is not a complete release, live provider verification or Admin integration.
+Gateway source is committed at `a35dc66527c7295ce6b33be9528385d73c264e38`
+and was observed in the Foundation production deployment on 2026-10-05.
+This is not a complete Maya release, live provider verification or Admin integration.
+See MIGRATION-CHECKPOINT-20261006.md for migration and runtime evidence.
 
 `bridge.cjs` mounts `/api/maya` before its general CORS and JSON handlers.
 POST `/api/maya/request` accepts the existing `maya.v1` contract. The dedicated

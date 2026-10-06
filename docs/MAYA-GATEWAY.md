@@ -1,8 +1,10 @@
 # Maya gateway: first contract increment
 
 Status: this document describes the first contract increment. The subsequent
-restricted HTTP gateway is documented in MAYA-GATEWAY-RUNTIME.md. Live use,
-account registration and deployment remain unverified and unavailable. Foundation baseline: 85d2601b4e8bdafb5473220a2ab006da52a0c659.
+restricted HTTP gateway is documented in MAYA-GATEWAY-RUNTIME.md. Gateway source
+is committed at `a35dc66527c7295ce6b33be9528385d73c264e38` and was observed deployed
+on Foundation main on 2026-10-05. Live Maya AI, membership and full account
+integration remain unverified/disabled. See MIGRATION-CHECKPOINT-20261006.md.
 
 ## Existing boundaries inspected
 
@@ -41,7 +43,7 @@ positions, houses or aspects. Interpretation remains separate from calculations.
 Requests are limited to 32 KiB UTF-8 JSON and results to 48 KiB. Text has separate
 character bounds. Contract validators do not authenticate or authorize users.
 
-## Required next gateway increment
+## Implemented restricted gateway and remaining wiring
 
 - Server-verified shared Supabase token; separate Admin-controlled Maya
   capability authorization, with unavailable authorization denied.
@@ -50,6 +52,10 @@ character bounds. Contract validators do not authenticate or authorize users.
 - No privileged repository tools, accounting workspace creation, conversation
   archive, raw audio storage, prompt logging or automatic learning capture.
 - Safe versioned error responses and contract/integration tests.
+
+The HTTP/parser/origin/rate/provider boundaries below are implemented in the
+restricted runtime. The real Admin authorization adapter and live end-to-end
+verification remain pending; prepared source alone does not enable requests.
 
 ## Current owner directions
 
@@ -60,7 +66,9 @@ excluded from the current scope. Forgot-password uses email recovery/reset;
 session restoration and logout are required. Supabase Auth owns credentials
 and sessions. Admin owns canonical UUIDv7 identity and membership; an ordinary
 signup must never automatically grant owner privileges. Deployment Auth
-configuration and these account flows still require implementation/verification.
+configuration and the complete Maya identity/membership flow still require live
+verification/integration. Maya already contains an interim shared Auth/password UI;
+that UI is not proof of Admin membership or live AI authorization.
 DOB/time/place are requested progressively when relevant. Foundation Accounting
 is not the Maya account flow. Personal Dream/Astro/Chat history remains
 device-local (PWA IndexedDB, later Android app-private storage).

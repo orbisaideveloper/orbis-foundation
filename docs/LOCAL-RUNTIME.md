@@ -26,3 +26,6 @@ Reviewed mutation score: 77.43%.
 Automated historical replay and complete live-data reconciliation
 remain follow-up work; do not treat them as completed.
 Review migration status before deploying schema-dependent features.
+The two reviewed accounting constraint migrations were applied/validated on
+2026-10-06; see MIGRATION-CHECKPOINT-20261006.md. This is manual SQL evidence,
+not a completed Prisma migration baseline or historical replay system.

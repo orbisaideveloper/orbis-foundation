@@ -1,13 +1,14 @@
-# ORBIS Termux / Android / Offline Intelligence Observatory
+# ORBIS Foundation
 
-FIXED installer package.
+Shared ORBIS AI/backend platform, Foundation application and Accounting domain.
+The Termux Observatory is one subsystem, not the whole application.
 
-Run in Termux:
-cd ~/orbis-foundation
-unzip -o ORBIS-Termux-Observatory-Installer-FIXED.zip
-bash install.sh
-
-The installer creates a safety backup, installs the observatory, adds the repository-backed API, documents the workflow, runs type-check/tests/build, commits, and pushes main.
+Current Maya/accounting checkpoint and database application evidence:
+[`docs/MIGRATION-CHECKPOINT-20261006.md`](docs/MIGRATION-CHECKPOINT-20261006.md).
+Permanent local preview: [`docs/LOCAL-RUNTIME.md`](docs/LOCAL-RUNTIME.md).
+Source edits and verification originate in owner Termux; commit/push and deploy
+remain explicit owner actions. Do not use a historical installer as an automatic
+commit/push or startup path.
 
 ## Backend architecture (TASK-017: One Canonical Backend)
 
@@ -31,11 +32,11 @@ canonical backend, on two different ports, with Vite proxying `/api/*` to
 the backend.
 
 ```bash
-# Terminal 1 — canonical backend, on a port other than Vite's 3000
-PORT=3001 node orbis-server/bridge.cjs
+# Session 1 — frontend on localhost:3000
+bash scripts/orbis-local-dev.sh
 
-# Terminal 2 — frontend dev server (proxies /api/* to the backend above)
-npm run dev
+# Session 2 — canonical backend on localhost:3001
+bash scripts/orbis-local-backend.sh
 ```
 
 If you start the backend on a different port than `3001`, set
