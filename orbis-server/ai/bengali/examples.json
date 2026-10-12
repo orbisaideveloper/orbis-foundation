@@ -1,0 +1,164 @@
+[
+  {
+    "id": "scope-foundation",
+    "intent": "clarify-product-scope",
+    "context": "আগের আলোচনা Maya বা জ্যোতিষ নিয়ে ছিল।",
+    "variants": [
+      "আমি ফাউন্ডেশনের এআই এর ক্ষেত্রে বলছি",
+      "শুধুমাত্র জ্যোতিষের ক্ষেত্রে না",
+      "মায়া না ফাউন্ডেশনের কথা বলছি"
+    ],
+    "meaning": "অনুরোধটি সব পণ্যের সাধারণ Foundation AI নিয়ে।",
+    "response": "Foundation-এর সাধারণ ভাষা বোঝার উন্নতি নিয়ে উত্তর দিন; Maya-তে সীমাবদ্ধ করবেন না।",
+    "status": "approved",
+    "source": "owner-reviewed-discussion-2026-10-07"
+  },
+  {
+    "id": "understanding-check",
+    "intent": "check-understanding",
+    "context": "ব্যবহারকারী আগে নির্দেশ বা ব্যাখ্যা দিয়েছেন।",
+    "variants": [
+      "বুঝতে পারলে",
+      "আমার কথাটা বুঝতে পারলে",
+      "বুঝাতে পারলাম তোমাকে"
+    ],
+    "meaning": "আগের কথার উদ্দেশ্য ঠিক বোঝা হয়েছে কি না যাচাই করছেন।",
+    "response": "মূল উদ্দেশ্য সংক্ষেপে নিজের ভাষায় বলুন। এটিকে নতুন কাজের অনুমোদন ধরে নেবেন না।",
+    "status": "approved",
+    "source": "owner-reviewed-discussion-2026-10-07"
+  },
+  {
+    "id": "feasibility-question",
+    "intent": "ask-feasibility",
+    "context": "কাজটির সম্ভাব্যতা নিয়ে আলোচনা হচ্ছে; সরাসরি বাস্তবায়নের নির্দেশ নেই।",
+    "variants": [
+      "এটা তুমি পারবে তো",
+      "এটা হবে কি",
+      "এরকম করা যাবে কি"
+    ],
+    "meaning": "কাজটি সম্ভব কি না জানতে চাইছেন; প্রসঙ্গ অনুযায়ী এটি অনুরোধও হতে পারে।",
+    "response": "সম্ভাব্যতা ও দরকারি শর্ত বলুন। বাক্যটি একা দেখে অনুমতি নির্ধারণ করবেন না; আগের নির্দেশ দেখুন।",
+    "status": "approved",
+    "source": "owner-reviewed-discussion-2026-10-07"
+  },
+  {
+    "id": "start-discussed-work",
+    "intent": "start-discussed-work",
+    "context": "একটি স্পষ্ট পরিকল্পনা আগে আলোচনা হয়েছে।",
+    "variants": [
+      "ঠিক আছে তাহলে শুরু করে দাও",
+      "ঠিক আছে করো",
+      "তাহলে এটাকে আমরা শুরু করে দেব"
+    ],
+    "meaning": "আলোচিত কাজ শুরু করার নির্দেশ।",
+    "response": "পূর্বে নির্ধারিত সীমায় কাজ শুরু করুন। নতুন খরচ, প্রকাশ বা অনুমতির সীমা নিজে বাড়াবেন না।",
+    "status": "approved",
+    "source": "owner-reviewed-discussion-2026-10-07"
+  },
+  {
+    "id": "learn-without-repetition",
+    "intent": "curate-language-examples",
+    "context": "Foundation-এর বাংলা উদাহরণভান্ডারের নকশা নিয়ে আলোচনা।",
+    "variants": [
+      "কিন্তু রিপিট করবে না",
+      "কথার টোন হাজার রকম হতে পারে",
+      "প্রসঙ্গ অনুযায়ী উদ্দেশ্য"
+    ],
+    "meaning": "একই উদ্দেশ্যের দরকারি ভাষাভঙ্গি এক এন্ট্রিতে রাখতে হবে; নতুন অর্থ আলাদা রাখতে হবে।",
+    "response": "বাক্য, প্রসঙ্গ, উদ্দেশ্য, সঠিক উত্তর ও সংশোধন রাখুন। শব্দ জমা বা ব্যবহারকারীর প্রশংসাকে factual verification ভাববেন না।",
+    "status": "approved",
+    "source": "owner-reviewed-discussion-2026-10-07"
+  },
+  {
+    "id": "compact-input-reference",
+    "intent": "compact-chat-input",
+    "context": "ফাইল আপলোড যোগ করার পরে আলাদা বোতামের সারিতে মোবাইল চ্যাটের জায়গা কমেছে।",
+    "variants": [
+      "প্লাসটাকে এরকম বাইরে",
+      "স্ক্রিনের সাথে adjustment হচ্ছে না",
+      "ঠিক সেইরকমভাবে করো"
+    ],
+    "meaning": "পরিচিত চ্যাট ইনপুটের মতো লেখার বক্সের মধ্যে ছোট প্লাস ও চাপলে ফাইল অপশন চান; স্থায়ী আলাদা সারি চান না।",
+    "response": "প্রসঙ্গের UI অনুরোধ সংক্ষেপে বুঝিয়ে বলুন; ছোট প্লাস ইনপুটের মধ্যে রাখুন, অপশন চাহিদামতো খুলুন এবং মোবাইলের প্রস্থ ও কথোপকথনের জায়গা যাচাই করুন। অসমর্থিত ফাইল পড়তে পারার দাবি করবেন না।",
+    "status": "approved",
+    "source": "owner-explicit-ui-correction-2026-10-07"
+  },
+  {
+    "id": "paired-feedback-candidate",
+    "intent": "curate-user-assistant-pairs",
+    "context": "Foundation-এর বাংলা তথ্যভাণ্ডারে আলোচনা ও উত্তরের উদাহরণ সংগ্রহ হচ্ছে।",
+    "variants": [
+      "আমার কথা প্লাস তোমার answer দুটাই",
+      "ভুল না হলে তো আমি কিছু বলি না"
+    ],
+    "meaning": "ব্যবহারকারী ও সহকারীর বক্তব্য জোড়া করে রাখতে চান; পরের সংশোধনও রাখতে চান। নীরবতাকে ইতিবাচক সংকেত মনে করেন।",
+    "response": "বাছাই করা কথোপকথন জোড়া ও সংশোধন রাখা যায়। সংশোধন না থাকা উত্তর candidate হিসেবে রাখুন; সেটি যাচাইকৃত সঠিক উত্তর নয়। যাচাইয়ের পরে approved উদাহরণ হিসেবে ব্যবহার করুন।",
+    "status": "candidate",
+    "source": "owner-discussion-2026-10-07",
+    "feedback": "no-explicit-answer-validation",
+    "assistant_answer": "তোমার কথা ও আমার উত্তরের উদাহরণও তথ্যভাণ্ডারে রাখব; সংশোধন না করা উত্তরকে যাচাইয়ের অপেক্ষায় রাখব।",
+    "corrections": []
+  },
+  {
+    "id": "visible-local-workflow",
+    "intent": "persistent-local-preview-and-reports",
+    "context": "ORBIS প্রকল্পের local development ও পরীক্ষা নিয়ে মালিকের নির্দেশ।",
+    "variants": [
+      "লোকাল সার্ভারে চালিয়ে দেখতে চাই",
+      "কাজ চলবে দেখতে পাবো",
+      "কাজ শেষ হয়ে গেলে তারপরে রিপোর্ট আসবে"
+    ],
+    "meaning": "লোকালহোস্টে অ্যাপের অগ্রগতি দেখতে চান এবং পরীক্ষার চলতি output ও শেষে সম্পূর্ণ রিপোর্ট চান। সব রেপোতে প্রক্রিয়া নথিবদ্ধ ও পুনর্ব্যবহারযোগ্য হবে।",
+    "response": "Local preview এবং automated checks আলাদা করে চালান। পরীক্ষা চলার output দেখান, শেষে প্রকৃত exit status সহ সম্পূর্ণ রিপোর্ট দিন। শুধু source সংগ্রহ বা স্বাস্থ্যপরীক্ষাকে সম্পূর্ণ পরীক্ষা বলবেন না। রেপোতে start/test commands রাখুন।",
+    "status": "approved",
+    "source": "owner-explicit-workflow-correction-2026-10-08"
+  },
+  {
+    "id": "defer-foundation-push-20261008",
+    "intent": "defer-related-repository-release",
+    "context": "Maya coverage-এর কাজ চলাকালীন Foundation-এর কাজ ও commit/push-এর সময় নিয়ে আলোচনা।",
+    "variants": [
+      "পরে কমিট পুশ করব",
+      "এদিকে তো কভারেজের কাজ করতেই করছি আমরা"
+    ],
+    "meaning": "Foundation-এর কাজ রেখে দিয়ে তার commit/push পরে করতে চান; বর্তমান Maya coverage কাজ চালাতে চান।",
+    "response": "কোন repo-র কাজ এখন চলছে এবং কোনটির release পরে হবে স্পষ্ট করুন। commit/push সম্পন্ন হয়েছে বলে দাবি করবেন না।",
+    "status": "candidate",
+    "source": "owner-discussion-2026-10-08",
+    "assistant_answer": "কোন repo-র কাজ এখন চলছে এবং কোনটির release পরে হবে স্পষ্ট করুন। commit/push সম্পন্ন হয়েছে বলে দাবি করবেন না।",
+    "feedback": "pending-explicit-answer-review",
+    "corrections": []
+  },
+  {
+    "id": "coverage-target-20261008",
+    "intent": "preserve-full-coverage-target",
+    "context": "টেস্ট pass হলেও চারটি coverage মাপকাঠি এখনো ১০০% নয়।",
+    "variants": [
+      "একশো পার্সেন্ট করো",
+      "একশো পার্সেন্ট কেন হবে না"
+    ],
+    "meaning": "বাকি পরিস্থিতির অর্থপূর্ণ টেস্ট দিয়ে আগের ১০০% লক্ষ্য পূরণ করতে চান।",
+    "response": "পরিমাপ করা coverage ও test pass আলাদা করে বলুন। threshold কমিয়ে বা code বাদ দিয়ে pass দেখাবেন না; test coverage-কে AI উত্তরের accuracy বলবেন না।",
+    "status": "candidate",
+    "source": "owner-discussion-2026-10-08",
+    "assistant_answer": "পরিমাপ করা coverage ও test pass আলাদা করে বলুন। threshold কমিয়ে বা code বাদ দিয়ে pass দেখাবেন না; test coverage-কে AI উত্তরের accuracy বলবেন না।",
+    "feedback": "pending-explicit-answer-review",
+    "corrections": []
+  },
+  {
+    "id": "incremental-bank-status-20261008",
+    "intent": "inspect-and-extend-language-bank",
+    "context": "বিভিন্ন repo-তে কাজের পাশাপাশি বাংলা উদ্দেশ্য ও উত্তর সংগ্রহের অগ্রগতি জানতে চান।",
+    "variants": [
+      "ওখানে কি কথা রাখছো",
+      "এর মধ্যে থেকে যতটা পারো ওখানে আস্তে আস্তে রাখার চেষ্টা"
+    ],
+    "meaning": "কী উদাহরণ রাখা হচ্ছে তার নির্দিষ্ট তথ্য চান এবং উপযুক্ত নতুন উদাহরণ ক্রমশ যোগ করতে বলছেন।",
+    "response": "বর্তমান bank দেখে উদাহরণ জানান। অর্থ অনুযায়ী duplicate এড়ান; user utterance, প্রসঙ্গ, উদ্দেশ্য, expected guidance ও assistant answer জোড়া রাখুন। নতুন উত্তর candidate রাখুন; সংরক্ষণকে completed fine-tuning বলবেন না।",
+    "status": "candidate",
+    "source": "owner-discussion-2026-10-08",
+    "assistant_answer": "বর্তমান bank দেখে উদাহরণ জানান। অর্থ অনুযায়ী duplicate এড়ান; user utterance, প্রসঙ্গ, উদ্দেশ্য, expected guidance ও assistant answer জোড়া রাখুন। নতুন উত্তর candidate রাখুন; সংরক্ষণকে completed fine-tuning বলবেন না।",
+    "feedback": "pending-explicit-answer-review",
+    "corrections": []
+  }
+]

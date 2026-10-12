@@ -5,6 +5,8 @@ import { LotteryAccountingWorkspace } from "../LotteryAccountingWorkspace";
 import type { LotteryAccountingClient } from "../../../models/lotteryAccountingClient";
 import type { LotteryWorkspace } from "../../../models/lotteryAccountingTypes";
 
+const LEDGER_BOOK_LABEL = "Ledger Book";
+const LEDGER_PARTY_LABEL = "Ledger Party";
 const ORGANIZATION_NAME = "Demo Lottery";
 const ORGANIZATION_OVERVIEW = `${ORGANIZATION_NAME} dashboard`;
 const SELLER_DISPATCH_LABEL = "Seller A dispatch";
@@ -367,8 +369,8 @@ describe("LotteryAccountingWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
     expect(await screen.findByText(UNIVERSAL_LEDGER_HUB)).toBeInTheDocument();
-    expect(screen.getByLabelText("Ledger Book")).toHaveValue("seller");
-    expect(screen.getByLabelText("Ledger Party")).toHaveValue("party-1");
+    expect(screen.getByLabelText(LEDGER_BOOK_LABEL)).toHaveValue("seller");
+    expect(screen.getByLabelText(LEDGER_PARTY_LABEL)).toHaveValue("party-1");
     expect(
       screen.getByLabelText("Ledger period summary"),
     ).toBeInTheDocument();
@@ -924,7 +926,12 @@ describe("LotteryAccountingWorkspace", () => {
         occurredAt: CURRENT_RECORDED_AT,
       });
 
-      const view = render(<LotteryAccountingWorkspace api={api} />);
+      const view = render(
+        <LotteryAccountingWorkspace
+          api={api}
+          localScope={{ ownerKind: "ADMIN_REAL", ownerId: `receipt-scenario-${index}` }}
+        />,
+      );
       await screen.findByText(ORGANIZATION_OVERVIEW);
       fireEvent.click(screen.getByRole("button", { name: "Payment" }));
       await screen.findByText(AMOUNT_TO_RECEIVE_LABEL);
@@ -1094,7 +1101,7 @@ describe("LotteryAccountingWorkspace", () => {
     await screen.findByText(ORGANIZATION_OVERVIEW);
     fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
 
-    const partySelect = await screen.findByLabelText("Ledger Party");
+    const partySelect = await screen.findByLabelText(LEDGER_PARTY_LABEL);
     expect(
       within(partySelect).getByRole("option", { name: "All accounts (2)" }),
     ).toBeInTheDocument();
@@ -1215,7 +1222,7 @@ describe("LotteryAccountingWorkspace", () => {
 
     expect(await screen.findByText(UNIVERSAL_LEDGER_HUB)).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByLabelText("Ledger Book")).toHaveValue("money");
+      expect(screen.getByLabelText(LEDGER_BOOK_LABEL)).toHaveValue("money");
       expect(screen.getByLabelText("Ledger type")).toHaveValue("cashPaise");
       expect(screen.getByLabelText(LEDGER_FROM_DATE_LABEL)).toHaveValue(
         ACCOUNTING_ENTRY_DATE,
@@ -1227,3 +1234,35 @@ describe("LotteryAccountingWorkspace", () => {
   });
 
 });
+
+
+it("restores the same owner ledger, party and custom dates after remount", async () => {
+  const api = createApi();
+  const scope = { ownerKind: "ADMIN_REAL", ownerId: "resume-owner-a" } as const;
+  const first = render(<LotteryAccountingWorkspace api={api} localScope={scope} />);
+  await screen.findByText(ORGANIZATION_OVERVIEW);
+  fireEvent.click(screen.getByRole("button", { name: "Ledger" }));
+  await screen.findByText(UNIVERSAL_LEDGER_HUB);
+  fireEvent.change(screen.getByLabelText(LEDGER_BOOK_LABEL), { target: { value: "stockist" } });
+  await waitFor(() => expect(screen.getByLabelText(LEDGER_PARTY_LABEL)).toHaveValue(STOCKIST_ID));
+  fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+  fireEvent.change(screen.getByLabelText(LEDGER_FROM_DATE_LABEL), { target: { value: BACKDATED_ENTRY_DATE } });
+  fireEvent.change(screen.getByLabelText(LEDGER_TO_DATE_LABEL), { target: { value: ACCOUNTING_ENTRY_DATE } });
+  first.unmount();
+
+  const second = render(<LotteryAccountingWorkspace api={api} localScope={scope} />);
+  await screen.findByText(UNIVERSAL_LEDGER_HUB);
+  expect(screen.getByLabelText("Accounting organization")).toHaveValue("org-1");
+  expect(screen.getByLabelText(LEDGER_BOOK_LABEL)).toHaveValue("stockist");
+  expect(screen.getByLabelText(LEDGER_PARTY_LABEL)).toHaveValue(STOCKIST_ID);
+  expect(screen.getByLabelText(LEDGER_FROM_DATE_LABEL)).toHaveValue(BACKDATED_ENTRY_DATE);
+  expect(screen.getByLabelText(LEDGER_TO_DATE_LABEL)).toHaveValue(ACCOUNTING_ENTRY_DATE);
+  expect(api.createParty).not.toHaveBeenCalled();
+  expect(api.recordPayment).not.toHaveBeenCalled();
+  expect(api.loadWorkspace).toHaveBeenCalledTimes(2);
+  second.unmount();
+
+  render(<LotteryAccountingWorkspace api={api} localScope={{ ownerKind: "ADMIN_REAL", ownerId: "resume-owner-b" }} />);
+  expect(await screen.findByText(ORGANIZATION_OVERVIEW)).toBeInTheDocument();
+  expect(screen.queryByText(UNIVERSAL_LEDGER_HUB)).not.toBeInTheDocument();
+}, 15000);

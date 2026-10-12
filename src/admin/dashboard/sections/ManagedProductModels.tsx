@@ -1,3 +1,4 @@
+import { navigationChoice, navigationKey, useNavigationState } from "../../navigation/useNavigationState";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -40,6 +41,14 @@ type ModuleTab =
   | "skills"
   | "review"
   | "versions";
+
+function managedNavigationScope(previewMode: boolean): string {
+  return navigationKey("managed-models", previewMode ? "preview" : "live");
+}
+
+const validScreen = navigationChoice<WorkspaceScreen>(["catalog", "model", "module"]);
+const validModuleTab = navigationChoice<ModuleTab>(["accounting", "overview", "data", "workflow", "skills", "review", "versions"]);
+const validViewMode = navigationChoice<AccountingViewMode>(["CURRENT", "PREVIEW", "LIVE"]);
 
 const MODULE_TABS: Array<[ModuleTab, string]> = [
   ["accounting", "Accounting"],
@@ -208,9 +217,10 @@ export function ManagedProductModels({
   lotteryAccountingDemoApi = lotteryAccountingDemoClient,
 }: Readonly<ManagedProductModelsProps>) {
   const [models, setModels] = useState<ManagedProductModel[]>([]);
-  const [screen, setScreen] = useState<WorkspaceScreen>(initialScreen);
-  const [tab, setTab] = useState<ModuleTab>("overview");
-  const [viewMode, setViewMode] = useState<AccountingViewMode>("CURRENT");
+  const scope = managedNavigationScope(previewMode);
+  const [screen, setScreen] = useNavigationState<WorkspaceScreen>(scope + ":screen", initialScreen, validScreen);
+  const [tab, setTab] = useNavigationState<ModuleTab>(scope + ":tab", "overview", validModuleTab);
+  const [viewMode, setViewMode] = useNavigationState<AccountingViewMode>(scope + ":mode", "CURRENT", validViewMode);
   const [isLoading, setIsLoading] = useState(!previewMode);
   const [workingAction, setWorkingAction] = useState<
     "review" | "publish" | null

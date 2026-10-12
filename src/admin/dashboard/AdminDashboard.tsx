@@ -1,3 +1,4 @@
+import { navigationBoolean, navigationChoice, navigationKey, useNavigationState } from "../navigation/useNavigationState";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
@@ -46,6 +47,8 @@ type DashboardView =
   | "diagnostics"
   | "data"
   | "releases";
+
+const validDashboardView = navigationChoice<DashboardView>(["overview", "market", "modules", "accounting", "models", "runtime", "brain", "diagnostics", "data", "releases"]);
 
 type BrainDetailTab = "status" | "test-log" | "learning" | "scan" | "changes";
 
@@ -463,8 +466,9 @@ const ReadOnlyChatPreview: React.FC<{ onClose: () => void }> = ({ onClose }) => 
 export function AdminDashboard({
   previewMode = false,
 }: Readonly<AdminDashboardProps>) {
-  const [activeView, setActiveView] = useState<DashboardView>("overview");
-  const [chatOpen, setChatOpen] = useState(false);
+  const scope = navigationKey("foundation-admin", previewMode ? "preview" : "live");
+  const [activeView, setActiveView] = useNavigationState<DashboardView>(scope + ":view", "overview", validDashboardView);
+  const [chatOpen, setChatOpen] = useNavigationState(scope + ":chat", false, navigationBoolean);
   const [moreOpen, setMoreOpen] = useState(false);
   const [systemStats, setSystemStats] = useState<SystemStats>(EMPTY_SYSTEM_STATS);
   const [providerStatus, setProviderStatus] = useState<ProviderStatus>({

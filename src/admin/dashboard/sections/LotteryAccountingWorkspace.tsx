@@ -1,3 +1,4 @@
+import { navigationBoolean, navigationChoice, navigationDate, navigationDateString, navigationKey, navigationString, useNavigationState } from "../../navigation/useNavigationState";
 import { lotteryPeriodTds } from "../../models/lotteryAccountingTdsReconciliation";
 import { lotteryBusinessMetrics } from "../../models/lotteryAccountingBusinessMetrics";
 import { accountingBusinessDate, accountingToday } from "../../models/lotteryAccountingBusinessDate";
@@ -122,6 +123,11 @@ type LedgerBookType =
   | "money"
   | "pwt"
   | "stock";
+
+const validWorkspaceTab = navigationChoice<WorkspaceTab>(["dashboard", "daily", "payment", "ledger", "ai", "masters"]);
+const validLedgerBook = navigationChoice<LedgerBookType>(["seller", "customer", "stockist", "sale", "purchase", "return", "commission", "tds", "expense", "payment", "money", "pwt", "stock"]);
+const validLedgerPeriod = navigationChoice<LedgerPeriod>(["today", "7d", "10d", "month", "year", "custom"]);
+const validLedgerView = navigationChoice<"list" | "table">(["list", "table"]);
 
 const WORKSPACE_TABS: Array<[WorkspaceTab, string]> = [
   ["dashboard", "Dashboard"],
@@ -574,13 +580,15 @@ export function LotteryAccountingWorkspace({
   const [organizations, setOrganizations] = useState<
     LotteryWorkspace["organization"][]
   >([]);
-  const [organizationId, setOrganizationId] = useState("");
+  const ownerScope = navigationKey("accounting", localScope.ownerKind, localScope.ownerId);
+  const [organizationId, setOrganizationId] = useNavigationState(ownerScope + ":organization", "", navigationString);
+  const navigationScope = navigationKey("accounting", localScope.ownerKind, localScope.ownerId, organizationId);
   const [workspace, setWorkspace] = useState<LotteryWorkspace | null>(null);
   const [sellerWorkingRecords, setSellerWorkingRecords] = useState<
     AccountingSellerWorkingRecord[]
   >([]);
   const [localStoreWarning, setLocalStoreWarning] = useState<string | null>(null);
-  const [tab, setTab] = useState<WorkspaceTab>("dashboard");
+  const [tab, setTab] = useNavigationState<WorkspaceTab>(navigationScope + ":tab", "dashboard", validWorkspaceTab);
   const dashboardToday = businessDateToday();
   const [dashboardPeriod, setDashboardPeriod] =
     useState<DashboardPeriod>("today");
@@ -621,7 +629,7 @@ export function LotteryAccountingWorkspace({
     } finally {
       setLoading(false);
     }
-  }, [api]);
+  }, [api, setOrganizationId]);
 
   const refreshWorkspace = useCallback(
     async (nextId = organizationId) => {
@@ -745,8 +753,11 @@ export function LotteryAccountingWorkspace({
   }, [loadOrganizations]);
 
   useEffect(() => {
+    // Resolve the restored organization against the current owner's list first.
+    // Otherwise loading completion starts a second, competing workspace request.
+    if (loading) return;
     if (organizationId) void refreshWorkspace(organizationId);
-    else if (!loading) setTab("masters");
+    else setTab("masters");
   }, [organizationId, loading, refreshWorkspace]);
 
   const run: AccountingRun = async (
@@ -1014,6 +1025,7 @@ export function LotteryAccountingWorkspace({
           )}
           {tab === "ledger" && (
             <LedgerPanel
+              navigationScope={navigationScope}
               workspace={projectSellerWorkingRecords(workspace, sellerWorkingRecords)}
               organizationId={organizationId}
               api={api}
@@ -3006,6 +3018,7 @@ function LedgerSelectionContent({
 }
 
 function LedgerPanel({
+  navigationScope,
   deleteLocalSeller,
   workspace,
   organizationId,
@@ -3018,6 +3031,7 @@ function LedgerPanel({
   editParty,
   editExpense,
 }: Readonly<{
+  navigationScope: string;
   workspace: LotteryWorkspace;
   organizationId: string;
   api: LotteryAccountingClient;
@@ -3031,15 +3045,15 @@ function LedgerPanel({
   editExpense: (profile: LotteryExpenseProfile) => void;
 }>) {
   const today = businessDateToday();
-  const [bookType, setBookType] = useState<LedgerBookType>("seller");
-  const [subtype, setSubtype] = useState("seller");
-  const [accountId, setAccountId] = useState("");
-  const [period, setPeriod] = useState<LedgerPeriod>("today");
-  const [from, setFrom] = useState(today);
-  const [to, setTo] = useState(today);
-  const [view, setView] = useState<"list" | "table">("list");
-  const [statementOpen, setStatementOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [bookType, setBookType] = useNavigationState<LedgerBookType>(navigationScope + ":book", "seller", validLedgerBook);
+  const [subtype, setSubtype] = useNavigationState(navigationScope + ":subtype", "seller", navigationString);
+  const [accountId, setAccountId] = useNavigationState(navigationScope + ":account", "", navigationString);
+  const [period, setPeriod] = useNavigationState<LedgerPeriod>(navigationScope + ":period", "today", validLedgerPeriod);
+  const [from, setFrom] = useNavigationState(navigationScope + ":from", today, navigationDateString);
+  const [to, setTo] = useNavigationState(navigationScope + ":to", today, navigationDateString);
+  const [view, setView] = useNavigationState<"list" | "table">(navigationScope + ":layout", "list", validLedgerView);
+  const [statementOpen, setStatementOpen] = useNavigationState(navigationScope + ":statement", false, navigationBoolean);
+  const [selectedDate, setSelectedDate] = useNavigationState<string | null>(navigationScope + ":day", null, navigationDate);
   const [selectedTransaction, setSelectedTransaction] = useState<LedgerTransactionContext | null>(null);
 
   useEffect(() => {
@@ -3086,12 +3100,16 @@ function LedgerPanel({
     [bookType, bounds.from, bounds.to, subtype, workspace],
   );
 
+  const previousBooks = useRef({ scope: navigationScope, books });
   useEffect(() => {
     setAccountId((current) => resolveLedgerAccountId(current, books));
-    setStatementOpen(false);
-    setSelectedDate(null);
-    setSelectedTransaction(null);
-  }, [books]);
+    if (previousBooks.current.scope === navigationScope && previousBooks.current.books !== books) {
+      setStatementOpen(false);
+      setSelectedDate(null);
+      setSelectedTransaction(null);
+    }
+    previousBooks.current = { scope: navigationScope, books };
+  }, [books, navigationScope, setAccountId, setStatementOpen, setSelectedDate]);
 
   const needsSubtype = subtypeOptions.length > 1 || bookType === "expense";
   const needsAccount = !new Set<LedgerBookType>(["money", "pwt", "stock"]).has(

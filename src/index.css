@@ -17,3 +17,16 @@
     border-color: var(--color-gray-200, currentcolor);
   }
 }
+
+/* Keep Admin auth actions readable without modern CSS colour support.
+   Scope this fallback to auth submit buttons; accounting themes stay separate. */
+.orbis-admin-auth-submit {
+  background-color: #0f172a;
+  color: #ffffff;
+}
+
+.orbis-admin-auth-submit:disabled {
+  background-color: #334155;
+  color: #ffffff;
+  opacity: 1;
+}

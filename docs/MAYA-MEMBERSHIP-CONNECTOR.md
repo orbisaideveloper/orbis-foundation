@@ -1,0 +1,11 @@
+# Maya central permission connector — local candidate
+
+The canonical gateway now uses a server-only Admin authorization adapter. Missing configuration denies use. Flat Foundation provider `content` responses are parsed correctly, retaining old nested compatibility. No provider credentials, repository capabilities or history database are added to Maya.
+
+Admin owns `database/control/maya-membership.sql` and `supabase/functions/orbis-maya-access`. This is additive reviewed source, NOT an applied migration or deployed function. Customer permissions are separate from owner/deployment controls. No account is enrolled automatically. Policy requires an enabled unexpired grant for the exact source project, Auth issuer, auth UUID and capability, an active canonical UUIDv7 person and an existing unrevoked Foundation user reference. Email/name or user metadata never grants access.
+
+Server configuration: MAYA_MEMBERSHIP_URL, MAYA_MEMBERSHIP_SERVICE_KEY, MAYA_MEMBERSHIP_SOURCE_PROJECT_ID, SUPABASE_URL/ANON_KEY and MAYA_ALLOWED_ORIGINS. Use a dedicated Foundation product service key registered in the central registry. Never use a browser, Admin user or Supabase service-role key as that product key. The server accepts only HTTPS, disallows redirects, uses a seven-second deadline and never caches an allow decision.
+
+Local-only entry: `node orbis-server/maya-local.cjs`, binds 127.0.0.1:3001. It loads private ~/.config/orbis/maya-gateway.env and the existing hf.env loader; no Prisma/Accounting runtime is started. Production still uses bridge.cjs. Set Maya's Git-ignored VITE_MAYA_GATEWAY_URL to http://localhost:3001/api/maya/request then restart Vite. All secrets remain outside Git/browser code.
+
+Pending before live certification: verify/apply central membership schema through managed migration workflow, deploy/check Edge function with verify_jwt=false (product service-key authorization is inside the function), verify real Foundation Auth UUID/canonical binding, explicitly grant customer capabilities, configure private server credentials, verify allow/deny/revocation and obtain a real provider reply. Schema creation, mocked tests or a CORS preflight do not certify AI access. Astro remains unavailable pending deterministic calculation. This source patch performs no migration, enrollment, deploy, commit or push.

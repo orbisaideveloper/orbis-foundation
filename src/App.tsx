@@ -125,7 +125,7 @@ function AdminLoginForm() {
           <button
             type="submit"
             disabled={isSubmitting || !adminEmail}
-            className="mt-5 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="orbis-admin-auth-submit mt-5 w-full rounded-lg px-4 py-2 font-semibold disabled:cursor-not-allowed"
           >
             {isSubmitting ? loadingLabel : submitLabel}
           </button>

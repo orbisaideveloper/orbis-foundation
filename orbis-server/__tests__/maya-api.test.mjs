@@ -25,6 +25,22 @@ function setup(options = {}) {
 }
 
 describe("Maya gateway boundary", () => {
+  it("generates fresh correlation IDs and keeps policy outages separate from denials", async () => {
+    const fixture = setup();
+    fixture.authorizeCapability.mockRejectedValueOnce(Object.assign(new Error("private"), { code: "MAYA_POLICY_UNAVAILABLE" }));
+    const failed = await fixture.send().set("X-Request-ID", "untrusted-client-id");
+    expect(failed.status).toBe(503);
+    expect(failed.body.error.code).toBe("MAYA_SERVICE_UNAVAILABLE");
+    expect(failed.headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(failed.text).not.toContain("private");
+    fixture.authorizeCapability.mockRejectedValueOnce(Object.assign(new Error("private"), { code: "MAYA_POLICY_TIMEOUT" }));
+    expect((await fixture.send()).status).toBe(504);
+    fixture.authorizeCapability.mockResolvedValueOnce(false);
+    expect((await fixture.send()).status).toBe(403);
+    expect(fixture.providerManager.generateChat).not.toHaveBeenCalled();
+    const success = await fixture.send();
+    expect(success.headers["x-request-id"]).not.toBe(failed.headers["x-request-id"]);
+  });
   it("fails closed without the Admin authorization adapter", async () => {
     const fixture = setup({ authorizeCapability: undefined });
     expect((await fixture.send()).body.error.code).toBe("MAYA_AUTHORIZATION_UNAVAILABLE");
@@ -54,7 +70,7 @@ describe("Maya gateway boundary", () => {
   it("rejects malformed, oversized and privileged inputs", async () => {
     const { app, send, providerManager } = setup();
     expect((await send({ ...body(), capability: "termux.repository.patch" })).status).toBe(400);
-    expect((await send({ ...body(), capability: "astro.interpretation" })).status).toBe(503);
+    expect((await send({ ...body(), capability: "astro.interpretation" })).status).toBe(400);
     expect((await send({ huge: "x".repeat(40000) })).status).toBe(413);
     expect((await supertest(app).post(PATH).set("Origin", ORIGIN).set("Authorization", "Bearer test").type("json").send("{")).status).toBe(400);
     expect(providerManager.generateChat).not.toHaveBeenCalled();

@@ -1,3 +1,4 @@
+const GroqProvider = require("./providers/GroqProvider.cjs");
 const OllamaProvider = require("./providers/OllamaProvider.cjs");
 const HuggingFaceProvider = require("./providers/HuggingFaceProvider.cjs");
 const { modelRouter } = require("./models/ModelRouter.cjs");
@@ -121,6 +122,9 @@ class AIProviderManager {
     const huggingFace = new HuggingFaceProvider();
     this.registerProvider(huggingFace);
 
+    if (process.env.GROQ_ENABLED === "true") {
+      this.registerProvider(new GroqProvider());
+    }
     this.setActiveProvider("Ollama");
   }
 
@@ -145,6 +149,22 @@ class AIProviderManager {
   }
 
   buildCandidates(messages, options, active) {
+    if (options.preferredProvider === "Groq") {
+      const provider = this.providers.get("Groq");
+      if (!provider) throw new Error("PROVIDER_UNAVAILABLE");
+      return {
+        selection: { task: options.task, reason: "configured-groq" },
+        candidates: [{ provider, model: null, source: "configured-provider" }],
+      };
+    }
+    if (options.preferredProvider === "Ollama") {
+      const provider = this.providers.get("Ollama");
+      if (!provider) throw new Error("PROVIDER_UNAVAILABLE");
+      return {
+        selection: { task: options.task, reason: "maya-configured-ollama" },
+        candidates: [{ provider, model: null, source: "maya-configured-provider" }],
+      };
+    }
     const selection = modelRouter.select(messages, {
       task: options.task,
       requirements: options.requirements,
@@ -214,6 +234,12 @@ class AIProviderManager {
     const requestOptions = {
       timeoutMs: options.timeoutMs || 30_000,
     };
+
+    // Explicit server-owned output requirements; unrelated callers retain defaults.
+    if (options.responseFormat === "json_object") requestOptions.responseFormat = "json_object";
+    if (Number.isInteger(options.maxTokens) && options.maxTokens >= 256 && options.maxTokens <= 4096) {
+      requestOptions.maxTokens = options.maxTokens;
+    }
 
     if (candidate.model?.modelId) {
       requestOptions.model = candidate.model.modelId;

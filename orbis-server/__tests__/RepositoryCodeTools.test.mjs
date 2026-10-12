@@ -1,6 +1,8 @@
 // @vitest-environment node
 
 import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import {
@@ -21,6 +23,7 @@ const {
 const PACKAGE_JSON = "package.json";
 const SOURCE_POLICY_FILE =
   "orbis-server/source-access-policy.cjs";
+const SEARCH_TERM = "ALLOWED_SOURCE_ROOTS";
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(testDirectory, "../..");
@@ -81,23 +84,29 @@ describe("Phase 3 RepositoryCodeTools", () => {
   });
 
   it("performs bounded literal source search with path and line evidence", () => {
-    const tool = enabledTool();
-
-    const result = tool.search(
-      "ALLOWED_SOURCE_ROOTS",
-      { limit: 10 },
-    );
-
-    expect(result.matches).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          path: SOURCE_POLICY_FILE,
-          line: expect.any(Number),
-        }),
-      ]),
-    );
-
-    expect(result.matches.length).toBeLessThanOrEqual(10);
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "orbis-source-search-"));
+    try {
+      fs.mkdirSync(path.join(fixture, "orbis-server"));
+      fs.writeFileSync(path.join(fixture, SOURCE_POLICY_FILE),
+        `// fixture\nconst ${SEARCH_TERM} = [];\n${SEARCH_TERM};\n`);
+      fs.writeFileSync(path.join(fixture, ".env"), `${SEARCH_TERM}=private`);
+      fs.mkdirSync(path.join(fixture, "node_modules"));
+      fs.writeFileSync(path.join(fixture, "node_modules", "ignored.cjs"), SEARCH_TERM);
+      const tool = enabledTool({ repositoryRoot: fixture });
+      const result = tool.search(SEARCH_TERM.toLowerCase(), { limit: 10 });
+      expect(result.matches).toEqual([
+        { path: SOURCE_POLICY_FILE, line: 2, text: `const ${SEARCH_TERM} = [];` },
+        { path: SOURCE_POLICY_FILE, line: 3, text: `${SEARCH_TERM};` },
+      ]);
+      expect(result.indexedFileCount).toBe(1);
+      expect(result.truncated).toBe(false);
+      const bounded = tool.search(SEARCH_TERM, { limit: 1 });
+      expect(bounded.matches).toEqual([result.matches[0]]);
+      expect(bounded.truncated).toBe(true);
+      expect(tool.search(".*").matches).toEqual([]);
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
   });
 
   it("reports read-only Git state and hides disallowed worktree paths", () => {

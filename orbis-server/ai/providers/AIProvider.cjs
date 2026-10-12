@@ -12,6 +12,18 @@ class AIProvider {
     );
   }
 
+  getChatRequestOptions(options) {
+    const request = {};
+    if (options.responseFormat === "json_object") {
+      request.response_format = { type: "json_object" };
+    }
+    if (Number.isInteger(options.maxTokens)
+        && options.maxTokens >= 256 && options.maxTokens <= 4096) {
+      request.max_tokens = options.maxTokens;
+    }
+    return request;
+  }
+
   getMetadata() {
     return {
       name: this.name,

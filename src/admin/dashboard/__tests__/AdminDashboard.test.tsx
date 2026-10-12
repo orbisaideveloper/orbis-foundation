@@ -324,4 +324,17 @@ describe("AdminDashboard", () => {
       "sm:grid-cols-2",
     );
   });
+  it("restores Accounting AI and its inner module tab after dashboard remount", async () => {
+    const first = render(<AdminDashboard />);
+    await screen.findByText(/Your ORBIS\. Visible\./i);
+    fireEvent.click(screen.getByRole("button", { name: /ORBiS Accounting AI/i }));
+    await screen.findByRole("region", { name: "ORBiS Accounting AI model home" });
+    fireEvent.click(screen.getByRole("button", { name: /Lottery Accounting/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Data" }));
+    expect(screen.getByText("Real data contract")).toBeInTheDocument();
+    first.unmount();
+    render(<AdminDashboard />);
+    expect(await screen.findByText("Real data contract")).toBeInTheDocument();
+  });
+
 });

@@ -34,6 +34,10 @@ class OllamaProvider extends AIProvider {
           model: this.model,
           messages: messages,
           stream: false,
+          ...(options.responseFormat === "json_object" && !this.apiKey
+            ? { format: "json" } : {}),
+          ...(Number.isInteger(options.maxTokens)
+            ? { options: { num_predict: options.maxTokens } } : {}),
         }),
         signal: controller.signal,
       });
@@ -48,6 +52,9 @@ class OllamaProvider extends AIProvider {
       }
 
       const data = await response.json();
+      if (data?.done === false || data?.done_reason === "length") {
+        throw new Error("Incomplete AI response");
+      }
       const content = data?.message?.content?.trim() || "";
 
       if (!content) {

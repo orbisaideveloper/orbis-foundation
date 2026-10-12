@@ -55,9 +55,9 @@ describe("Maya capability contracts", () => {
     expect(validateMayaRequest(circular).valid).toBe(false);
   });
 
-  it("keeps Astro disabled until a deterministic facts contract is approved", () => {
+  it("rejects Astro without calculated chart facts", () => {
     expect(validateMayaRequest(request("astro.interpretation", {})).code)
-      .toBe("MAYA_ASTRO_NOT_READY");
+      .toBe("MAYA_INPUT_INVALID");
   });
 
   it("accepts bounded alternating follow-up context", () => {

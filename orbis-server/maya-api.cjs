@@ -1,4 +1,5 @@
 const express = require("express");
+const { runWithTrace, currentTrace, logEvent, safeCode } = require("./ai/maya/MayaDiagnostics.cjs");
 const { validateMayaRequest, MAYA_CONTRACT_VERSION } = require("./ai/maya/MayaContract.cjs");
 const { generateMayaResult } = require("./ai/maya/MayaService.cjs");
 
@@ -36,6 +37,20 @@ function createMayaRouter({
   const busyUsers = new Set();
   const windowMs = 60_000;
 
+  router.use((req, res, next) => runWithTrace(() => {
+    const trace = currentTrace();
+    trace.phase = "auth";
+    res.set("X-Request-ID", trace.id);
+    res.set("Access-Control-Expose-Headers", "X-Request-ID");
+    logEvent("request.start");
+    // finish callbacks can run outside the request's async context.
+    res.once("finish", () => {
+      logEvent("request.finish", { status: res.statusCode,
+        durationMs: Date.now() - trace.startedAt, phase: trace.phase }, trace);
+    });
+    next();
+  }));
+
   router.use((req, res, next) => {
     res.set("Cache-Control", "no-store");
     res.set("X-Content-Type-Options", "nosniff");
@@ -57,7 +72,7 @@ function createMayaRouter({
     return next();
   });
 
-  router.post("/request", express.json({ limit: "32kb", strict: true }), (req, res, next) => {
+  router.post("/request", express.json({ limit: "2mb", strict: true }), (req, res, next) => {
     if (!req.is("application/json")) return sendFailure(res, 415, "MAYA_JSON_REQUIRED");
     return authMiddleware(req, res, next);
   }, async (req, res) => {
@@ -65,7 +80,7 @@ function createMayaRouter({
     if (typeof userId !== "string" || !userId) return sendFailure(res, 401, "MAYA_AUTH_REQUIRED");
     const validation = validateMayaRequest(req.body);
     if (!validation.valid) {
-      const status = validation.code === "MAYA_ASTRO_NOT_READY" ? 503 : 400;
+      const status = validation.code === "MAYA_REQUEST_TOO_LARGE" ? 413 : validation.code === "MAYA_ASTRO_NOT_READY" ? 503 : 400;
       return sendFailure(res, status, validation.code);
     }
     const now = clock();
@@ -88,11 +103,19 @@ function createMayaRouter({
     busyUsers.add(userId);
     let providerStarted = false;
     try {
+      logEvent("auth.accepted", { capability: validation.data.capability });
+      currentTrace().phase = "policy";
+      logEvent("policy.start", { capability: validation.data.capability });
       const authorized = await deadline(
         () => authorizeCapability({ userId, projectId: "orbis-maya", capability: validation.data.capability }),
         policyTimeoutMs,
       );
-      if (authorized !== true) return sendFailure(res, 403, "MAYA_CAPABILITY_DENIED");
+      if (authorized !== true) {
+        logEvent("policy.denied");
+        return sendFailure(res, 403, "MAYA_CAPABILITY_DENIED");
+      }
+      logEvent("policy.allowed");
+      currentTrace().phase = "provider";
       const pending = Promise.resolve().then(() => generateMayaResult(providerManager, validation.data));
       providerStarted = true;
       // Keep the slot until underlying provider work settles, even after an HTTP timeout.
@@ -103,7 +126,8 @@ function createMayaRouter({
         capability: validation.data.capability, language: validation.data.language, result,
       });
     } catch (error) {
-      const timedOut = error?.message === "MAYA_TIMEOUT" || error?.code === "PROVIDER_TIMEOUT";
+      logEvent("request.failed", { phase: currentTrace().phase, code: safeCode(error) });
+      const timedOut = error?.message === "MAYA_TIMEOUT" || error?.code === "PROVIDER_TIMEOUT" || error?.code === "MAYA_POLICY_TIMEOUT";
       return sendFailure(res, timedOut ? 504 : 503, timedOut ? "MAYA_TIMEOUT" : "MAYA_SERVICE_UNAVAILABLE");
     } finally {
       if (!providerStarted) busyUsers.delete(userId);

@@ -1,4 +1,5 @@
 const AIProvider = require("./AIProvider.cjs");
+const { logEvent, safeCode } = require("../maya/MayaDiagnostics.cjs");
 
 const DEFAULT_ENDPOINT =
   "https://router.huggingface.co/v1/chat/completions";
@@ -12,6 +13,7 @@ function normalizeProviderErrorCode(error) {
   if (error?.code === "PROVIDER_AUTH_FAILED") {
     return "PROVIDER_AUTH_FAILED";
   }
+
 
   if (
     typeof error?.code === "string" &&
@@ -38,6 +40,7 @@ class HuggingFaceProvider extends AIProvider {
 
   async generateChat(messages, options = {}) {
     if (!this.token) {
+      logEvent("provider.failed", { code: "PROVIDER_UNAVAILABLE" });
       const error = new Error("PROVIDER_UNAVAILABLE");
       error.code = error.message;
       this.markUnavailable();
@@ -50,6 +53,8 @@ class HuggingFaceProvider extends AIProvider {
     );
 
     const requestModel = options.model || this.model;
+    const startedAt = Date.now();
+    logEvent("provider.start", { model: requestModel });
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -64,10 +69,12 @@ class HuggingFaceProvider extends AIProvider {
           model: requestModel,
           messages,
           stream: false,
+          ...this.getChatRequestOptions(options),
         }),
         signal: controller.signal,
       });
 
+      logEvent("provider.http", { status: response.status, durationMs: Date.now() - startedAt });
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           const error = new Error("PROVIDER_AUTH_FAILED");
@@ -85,6 +92,13 @@ class HuggingFaceProvider extends AIProvider {
       const data = await response.json();
       const content =
         data?.choices?.[0]?.message?.content?.trim() || "";
+      logEvent("provider.ready", {
+        model: requestModel, contentLength: content.length,
+        reasoningPresent: Boolean(data?.choices?.[0]?.message?.reasoning_content || data?.choices?.[0]?.message?.reasoning),
+        completionTokens: data?.usage?.completion_tokens,
+        finishReason: data?.choices?.[0]?.finish_reason,
+        durationMs: Date.now() - startedAt,
+      });
 
       if (!content) {
         throw new Error("PROVIDER_EMPTY_RESPONSE");
@@ -100,6 +114,7 @@ class HuggingFaceProvider extends AIProvider {
         },
       };
     } catch (error) {
+      logEvent("provider.failed", { model: requestModel, code: safeCode(error) === "UNKNOWN" ? normalizeProviderErrorCode(error) : safeCode(error), durationMs: Date.now() - startedAt });
       this.markUnavailable();
       console.error(`[${this.name}_PROVIDER] Request failed`);
 

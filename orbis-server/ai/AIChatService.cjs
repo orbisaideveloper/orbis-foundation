@@ -1,3 +1,4 @@
+const { exampleInstruction } = require("./bengali/BengaliExamples.cjs");
 const {
   repositoryAgentLoop,
 } = require("./agent/RepositoryAgentLoop.cjs");
@@ -721,6 +722,8 @@ class AIChatService {
         "matching integrated capability actually succeeded in this exchange.",
     });
 
+    const languageExamples = exampleInstruction(formattedMessages);
+    if (languageExamples) aiMessages.splice(1, 0, { role: "system", content: languageExamples });
     const providerResponse =
       await this.agentLoop.run(aiMessages);
 
